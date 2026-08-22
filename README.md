@@ -1,4 +1,7 @@
-![flow-review](assets/banner.svg)
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/banner-dark.svg">
+  <img src="assets/banner.svg" alt="flow-review">
+</picture>
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Plugin](https://img.shields.io/badge/plugin-flow--review-informational.svg)
@@ -147,6 +150,13 @@ through whichever lens set applies to each surface's kind. Findings pass through
 `fr.findings.demote_repeats` so a stale, unchanged finding collapses to a count instead of
 retraining you to skip the report.
 
+## Going deeper
+
+- [docs/walkthrough.md](docs/walkthrough.md) -- one worked example, from install through a first
+  run's setup interview to a second run's report
+- [docs/concepts.md](docs/concepts.md) -- the vocabulary flow-review uses, and where each term
+  lives in the code
+
 ## Requirements
 
 Python 3.10+. Standard library only -- no `pip install`, no third-party packages.
@@ -159,6 +169,17 @@ in this repository are all original work, released under the MIT license -- see 
 If that ever changes -- a dependency gets added, a file gets vendored, an algorithm gets lifted from
 somewhere else -- it is credited right here with an upstream URL and an author's name, never
 included silently.
+
+## Related
+
+flow-review is one of three sibling plugins, one product per repository, each installable on its
+own:
+
+| Repo | What it does |
+|---|---|
+| flow-review (this repo) | drives your product end to end like a first-time user and returns ranked findings plus a design critique |
+| [skill-finder](https://github.com/Bilohit/skill-finder) | picks a session's skill loadout deliberately -- reads no files, spawns no agents |
+| [build-state](https://github.com/Bilohit/build-state) | imprints a `/boot` you can trust: session continuity from a computed baton, an append-only ledger and a verification ladder |
 
 ## Contributing
 

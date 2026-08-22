@@ -50,6 +50,9 @@ python -m pytest test_readme.py -q
   is the mechanism that protects a hand edit.
 - No emoji, no arrow characters, no typographic dashes in anything you write here -- use `->` and
   `--`. Keep the register plain: this is a QA tool, not a pitch.
+- A comment starting `ponytail:` marks a deliberate simplification with a known ceiling -- it names
+  the shortcut and the upgrade path. Do not "fix" one silently; either the ceiling is being hit and
+  the named upgrade goes in, or the comment stays.
 - Do not vendor third-party code without an upstream URL and an author credit in `README.md`'s
   Credits section -- see that section for the current status.
 
@@ -58,5 +61,5 @@ python -m pytest test_readme.py -q
 Run `python -m pytest -q` from the repository root and make sure it is clean. If you touched
 `README.md`, `assets/`, `docs/`, or this file, also run `python -m pytest test_readme.py -q`
 directly, and check the changed files by eye for a stray emoji, arrow, or a leading byte-order
-mark -- `test_readme.py` only checks `README.md` and the two SVGs for these, not every file you
-might touch.
+mark -- `test_readme.py` only checks `README.md` and the SVGs in `assets/` for these, not every
+file you might touch.
