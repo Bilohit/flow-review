@@ -1,17 +1,18 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 260" role="img" aria-label="flow-review banner">
-  <rect x="1" y="1" width="1198" height="258" fill="none" stroke="currentColor" stroke-width="2"/>
+  <rect x="0" y="0" width="1200" height="260" fill="#FFFFFF"/>
+  <rect x="1" y="1" width="1198" height="258" fill="none" stroke="#141414" stroke-width="2"/>
   <g transform="translate(60,60)">
-    <rect x="0" y="0" width="140" height="140" fill="none" stroke="currentColor" stroke-width="4"/>
-    <path d="M28 100 L58 50 L84 82 L112 34" fill="none" stroke="currentColor" stroke-width="6"
+    <rect x="0" y="0" width="140" height="140" fill="none" stroke="#141414" stroke-width="4"/>
+    <path d="M28 100 L58 50 L84 82 L112 34" fill="none" stroke="#141414" stroke-width="6"
           stroke-linecap="round" stroke-linejoin="round"/>
-    <circle cx="28" cy="100" r="6" fill="currentColor"/>
-    <circle cx="58" cy="50" r="6" fill="currentColor"/>
-    <circle cx="84" cy="82" r="6" fill="currentColor"/>
-    <circle cx="112" cy="34" r="6" fill="currentColor"/>
+    <circle cx="28" cy="100" r="6" fill="#141414"/>
+    <circle cx="58" cy="50" r="6" fill="#141414"/>
+    <circle cx="84" cy="82" r="6" fill="#141414"/>
+    <circle cx="112" cy="34" r="6" fill="#141414"/>
   </g>
   <text x="240" y="130" font-family="monospace, sans-serif" font-size="72" font-weight="700"
-        fill="currentColor">flow-review</text>
+        fill="#141414">flow-review</text>
   <text x="242" y="172" font-family="monospace, sans-serif" font-size="22" letter-spacing="1"
-        fill="currentColor">drive it. prove it. review it.</text>
-  <line x1="240" y1="190" x2="1140" y2="190" stroke="currentColor" stroke-width="2"/>
+        fill="#141414">drive it. prove it. review it.</text>
+  <line x1="240" y1="190" x2="1140" y2="190" stroke="#141414" stroke-width="2"/>
 </svg>

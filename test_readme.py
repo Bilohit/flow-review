@@ -30,14 +30,15 @@ def test_readme_has_no_emoji():
             assert ord(ch) < 0x2190, f"emoji or symbol {ch!r} in {path}"
 
 
-def test_svgs_use_currentcolor_only():
-    """One asset, both GitHub themes. A literal hex ink is the defect -- a '#' in a url(#id)
-    reference is not, so match hex colours specifically rather than banning the character."""
-    hex_colour = re.compile(r"#(?:[0-9a-fA-F]{3}){1,2}\b")
+def test_svgs_are_dark_ink_on_an_explicit_white_plate():
+    """These marks ship on a white plate, so the ink is a fixed near-black rather than
+    currentColor: an inherited ink on a white ground goes invisible the moment the host
+    page is dark. Both halves are asserted, because either one alone is the bug."""
     for name in ("mark.svg", "banner.svg"):
         text = (ROOT / "assets" / name).read_text(encoding="utf-8")
-        assert "currentColor" in text
-        assert not hex_colour.search(text), f"{name} carries a literal colour"
+        assert "currentColor" not in text, f"{name} inherits its ink onto a white plate"
+        assert 'fill="#FFFFFF"' in text, f"{name} has no white plate"
+        assert "#141414" in text, f"{name} does not use the fixed ink"
 
 
 def test_credits_link_every_third_party_upstream():
