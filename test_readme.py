@@ -19,7 +19,7 @@ ROOT_DOCS = (
 
 def test_readme_has_both_install_paths_and_the_marketplace_name():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "/plugin marketplace add Bilohit/build-state" in text
+    assert "/plugin marketplace add Bilohit/flow-review" in text
     assert "/plugin install flow-review" in text
 
 

@@ -10,7 +10,7 @@ described is the real code, not an invented one.
 Inside your own project, in Claude Code:
 
 ```
-/plugin marketplace add Bilohit/build-state
+/plugin marketplace add Bilohit/flow-review
 /plugin install flow-review
 ```
 

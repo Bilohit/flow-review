@@ -54,7 +54,7 @@ count instead of repeating verbatim.
 ## Install
 
 ```
-/plugin marketplace add Bilohit/build-state
+/plugin marketplace add Bilohit/flow-review
 /plugin install flow-review
 ```
 

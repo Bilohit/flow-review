@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parent
 
 def test_marketplace_is_valid_json_and_lists_flow_review():
     data = json.loads((ROOT / ".claude-plugin" / "marketplace.json").read_text(encoding="utf-8"))
-    assert data["name"] == "build-state"
+    assert data["name"] == "flow-review"
     names = [p["name"] for p in data["plugins"]]
     assert "flow-review" in names
 
