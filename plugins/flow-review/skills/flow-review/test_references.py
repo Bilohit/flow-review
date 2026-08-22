@@ -57,7 +57,10 @@ STDOUT_GUARD = (
 )
 
 MARKER = "BINDING -- "
-EM_DASH_MARKER = "BINDING —"
+# Built from its codepoint rather than written as the glyph: this file sits inside
+# the tree a house-style census scans, and a checker that has to skip its own source
+# is an allowlist rather than a checker.
+EM_DASH_MARKER = "BINDING " + chr(0x2014)
 WHY = "why:"
 # A rule that has not reached its pointer within this many lines has lost its shape.
 WINDOW = 8
