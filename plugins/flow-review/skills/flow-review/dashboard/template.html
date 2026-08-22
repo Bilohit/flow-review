@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flow-review</title>
+{{REFRESH}}
+<style>
+/* Dark, grayscale token set. Grayscale is the whole palette; green/yellow/red
+   carry state and nothing else. */
+:root{
+  --bg:#0a0a0a;
+  --surface:#262626;
+  --border:#383838;
+  --accent:#737373;
+  --panel:#191919;
+  /* index.css also carries --text-3 #7a7a7a; it clears 4.5:1 on --bg but only
+     4.0:1 on the #191919 panel every surface here sits on, so this page uses
+     two text tiers and lets size and tracking carry the rest of the hierarchy. */
+  --text-1:#fafafa;
+  --text-2:#a1a1a1;
+  --green:#4ade80;
+  --yellow:#facc15;
+  --red:#ff6467;
+  --radius:0px;
+  --ease:cubic-bezier(0.16,1,0.3,1);
+}
+*{box-sizing:border-box;margin:0;padding:0;border-radius:var(--radius)}
+html{background:var(--bg)}
+body{
+  background:var(--bg);
+  color:var(--text-1);
+  font-family:"Geist Mono",ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  font-size:13px;
+  line-height:1.5;
+  padding:16px;
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+
+/* ---- top bar: mode, elapsed, flows, severity counts. Nothing else. ---- */
+.bar{
+  display:flex;
+  align-items:center;
+  gap:20px;
+  flex-wrap:wrap;
+  border:1px solid var(--border);
+  background:var(--panel);
+  padding:9px 14px;
+}
+.mode{
+  border:1px solid var(--border);
+  color:var(--text-2);
+  padding:1px 8px;
+  font-size:11px;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+}
+.stat{display:flex;align-items:baseline;gap:8px;min-width:0}
+.k{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-2)}
+.v{font-size:13px;color:var(--text-1);font-variant-numeric:tabular-nums}
+.sevs{display:flex;align-items:baseline;gap:14px;margin-left:auto}
+.count{display:flex;align-items:baseline;gap:6px}
+.count .lab{font-size:11px;letter-spacing:.1em;border:1px solid;padding:0 5px}
+.count .n{font-size:13px;font-variant-numeric:tabular-nums}
+.c-p0 .lab,.c-p0 .n{color:var(--red);border-color:var(--red)}
+.c-p1 .lab,.c-p1 .n{color:var(--yellow);border-color:var(--yellow)}
+.c-p2 .lab,.c-p2 .n{color:var(--text-2);border-color:var(--border)}
+/* nothing found yet is not a state worth colouring */
+.count.is-zero .lab,.count.is-zero .n{color:var(--text-2);border-color:var(--border)}
+
+/* ---- triptych ---- */
+.lanes{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:1px;
+  background:var(--border);
+  border:1px solid var(--border);
+}
+.lane{
+  background:var(--panel);
+  padding:12px 14px 14px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  min-width:0;
+}
+.lane-head{display:flex;align-items:center;gap:10px;min-width:0}
+.lane-name{
+  font-size:11px;
+  font-weight:400;
+  letter-spacing:.16em;
+  text-transform:uppercase;
+  color:var(--text-2);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.state{
+  margin-left:auto;
+  flex:none;
+  font-size:10px;
+  letter-spacing:.14em;
+  text-transform:uppercase;
+  border:1px solid var(--border);
+  color:var(--text-2);
+  padding:0 6px;
+}
+.lane-running .state,.lane-recovering .state{color:var(--yellow);border-color:var(--yellow)}
+.lane-done .state{color:var(--green);border-color:var(--green)}
+.lane-halted .state,.lane-degraded .state{color:var(--red);border-color:var(--red)}
+.lane-idle .state{color:var(--text-2);border-color:var(--border)}
+
+/* fixed box: a new screenshot never reflows the page */
+.shot{
+  position:relative;
+  width:100%;
+  aspect-ratio:3/4;
+  max-height:34vh;
+  background:var(--surface);
+  border:1px solid var(--border);
+  overflow:hidden;
+}
+.lane[data-lane="desktop"] .shot{aspect-ratio:16/10}
+.shot img{display:block;width:100%;height:100%;object-fit:contain}
+.shot-empty::after{
+  content:"NO SCREENSHOT YET";
+  position:absolute;
+  inset:0;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  font-size:10px;
+  letter-spacing:.16em;
+  color:var(--text-2);
+}
+.current{
+  font-size:12px;
+  color:var(--text-1);
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+.steps{list-style:none;border-top:1px solid var(--border);padding-top:8px;display:flex;flex-direction:column;gap:3px}
+.step{
+  display:flex;
+  gap:8px;
+  align-items:baseline;
+  font-size:11px;
+  color:var(--text-2);
+  min-width:0;
+}
+/* glyph, not colour alone, marks the state */
+.step::before{content:". ";flex:none;display:inline-block;width:8px;color:var(--text-2)}
+.step-ok::before{content:"+";color:var(--green)}
+.step-running::before{content:">";color:var(--yellow)}
+.step-blocked::before{content:"x";color:var(--red)}
+.step-running{color:var(--text-1)}
+.step-blocked{color:var(--text-2)}
+.step-flow{flex:none;color:var(--text-2)}
+.step-label{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ---- findings feed ---- */
+.feed{border:1px solid var(--border);background:var(--panel);overflow-x:auto}
+.findings{list-style:none;max-height:24vh;overflow-y:auto;padding:10px 14px;display:flex;flex-direction:column;gap:6px}
+.findings:empty{padding:14px}
+.findings:empty::after{
+  content:"NO FINDINGS YET";
+  font-size:10px;
+  letter-spacing:.16em;
+  color:var(--text-2);
+}
+.finding{display:flex;gap:12px;align-items:baseline;min-width:0}
+.sev{flex:none;font-size:10px;letter-spacing:.1em;border:1px solid var(--border);color:var(--text-2);padding:0 5px}
+.f-P0 .sev{color:var(--red);border-color:var(--red)}
+.f-P1 .sev{color:var(--yellow);border-color:var(--yellow)}
+.f-P2 .sev{color:var(--text-2);border-color:var(--border)}
+.where{flex:none;min-width:120px;font-size:11px;color:var(--text-2)}
+.ftext{font-size:12px;color:var(--text-1);overflow-wrap:anywhere}
+
+/* ---- report: empty while the run is live, appended at the end ---- */
+.report:empty{display:none}
+.report{border:1px solid var(--border);background:var(--panel);padding:18px 20px;overflow-x:auto}
+.report h2{font-size:13px;letter-spacing:.16em;text-transform:uppercase;color:var(--text-2);font-weight:400;margin:22px 0 10px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.report h2:first-child{margin-top:0}
+.report h3{font-size:12px;letter-spacing:.08em;color:var(--text-1);font-weight:400;margin:16px 0 6px}
+.report p{margin:0 0 8px;max-width:78ch;color:var(--text-2)}
+.report ul,.report ol{margin:0 0 10px 18px;color:var(--text-2)}
+.report li{margin-bottom:3px}
+.report table{border-collapse:collapse;margin:0 0 12px;font-size:12px}
+.report th,.report td{border:1px solid var(--border);padding:4px 8px;text-align:left;vertical-align:top}
+.report th{color:var(--text-2);font-weight:400}
+.report pre{background:var(--surface);border:1px solid var(--border);padding:10px;overflow-x:auto;margin:0 0 12px;font-size:12px}
+.report code{color:var(--text-1)}
+a{color:var(--text-1);text-decoration:underline;text-underline-offset:2px}
+a:hover{color:var(--accent)}
+:focus-visible{outline:1px solid var(--accent);outline-offset:2px}
+
+/* ---- motion budget: a new shot fades in, a new finding slides in. That is all. ---- */
+@keyframes shot-in{from{opacity:0}to{opacity:1}}
+@keyframes finding-in{from{opacity:0;transform:translateY(-5px)}to{opacity:1;transform:none}}
+.shot.is-new{animation:shot-in 160ms var(--ease)}
+.finding.is-new{animation:finding-in 180ms var(--ease)}
+@media (prefers-reduced-motion:reduce){
+  .shot.is-new,.finding.is-new{animation:none}
+}
+
+@media (max-width:1100px){
+  .lanes{grid-template-columns:1fr}
+  .lane[data-lane="desktop"] .shot,.shot{aspect-ratio:16/10;max-height:46vh}
+  .sevs{margin-left:0}
+}
+</style>
+</head>
+<body>
+<h1 class="vh">flow-review</h1>
+
+<header class="bar">
+  <span class="mode">{{MODE}}</span>
+  <span class="stat"><span class="k">elapsed</span><span class="v">{{ELAPSED}}</span></span>
+  <span class="stat"><span class="k">flows</span><span class="v">{{FLOWS_DONE}}/{{FLOWS_TOTAL}}</span></span>
+  <span class="sevs">
+    <span class="count c-p0"><span class="lab">P0</span><span class="n" data-count>{{P0}}</span></span>
+    <span class="count c-p1"><span class="lab">P1</span><span class="n" data-count>{{P1}}</span></span>
+    <span class="count c-p2"><span class="lab">P2</span><span class="n" data-count>{{P2}}</span></span>
+  </span>
+</header>
+
+<main class="lanes">{{LANES}}</main>
+<!--LANE-->
+<section class="{{LANE_STATE_CLASS}}" data-lane="{{LANE_NAME}}" data-shot="{{LANE_SHOT}}">
+  <div class="lane-head">
+    <h2 class="lane-name">{{LANE_NAME}}</h2>
+    <span class="state">{{LANE_STATE}}</span>
+  </div>
+  {{LANE_SHOT_BLOCK}}
+  <p class="current">{{LANE_CURRENT}}</p>
+  <ul class="steps">{{LANE_STEPS}}</ul>
+</section>
+<!--/LANE-->
+<!--STEP--><li class="step step-{{STEP_STATE}}" title="{{STEP_STATE}}"><span class="step-flow">{{STEP_FLOW}}</span><span class="step-label">{{STEP_LABEL}}</span></li><!--/STEP-->
+
+<div class="feed"><ul class="findings">{{FINDINGS}}</ul></div>
+<!--FINDING--><li class="finding f-{{F_SEV}}"><span class="sev">{{F_SEV}}</span><span class="where">{{F_WHERE}}</span><span class="ftext">{{F_TEXT}}</span></li><!--/FINDING-->
+
+<div class="report">{{REPORT}}</div>
+
+<script>
+/* The page reloads whole every 3s, so entry animations must not replay on every
+   load. Per-tab state remembers what was already on screen; only genuinely new
+   things animate. No JS, no animation - the content is visible either way. */
+(function(){
+  var counts = document.querySelectorAll(".count");
+  for (var c = 0; c < counts.length; c++) {
+    var n = counts[c].querySelector(".n");
+    if (n && n.textContent.trim() === "0") counts[c].className += " is-zero";
+  }
+
+  var store;
+  try { store = window.sessionStorage; } catch (e) { return; }
+  if (!store) return;
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+
+  var lanes = document.querySelectorAll(".lane");
+  for (var i = 0; i < lanes.length; i++) {
+    var key = "fr.shot." + lanes[i].getAttribute("data-lane");
+    var shot = lanes[i].getAttribute("data-shot") || "";
+    var box = lanes[i].querySelector(".shot");
+    if (box && shot && store.getItem(key) !== shot) box.className += " is-new";
+    store.setItem(key, shot);
+  }
+
+  /* the feed is newest-first, so new rows are the leading ones, not the trailing */
+  var rows = document.querySelectorAll(".finding");
+  var seen = parseInt(store.getItem("fr.findings") || "0", 10);
+  if (seen > rows.length) seen = 0;
+  for (var j = 0; j < rows.length - seen; j++) rows[j].className += " is-new";
+  store.setItem("fr.findings", String(rows.length));
+})();
+</script>
+</body>
+</html>

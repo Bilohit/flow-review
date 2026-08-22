@@ -1,0 +1,11 @@
+{
+  "name": "flow-review",
+  "version": "1.0.0",
+  "description": "End-to-end flow, UX and new-user review across every surface your product has. Two-phase: the first run interviews you and writes a per-project setup, every run after is the tool.",
+  "author": {
+    "name": "Bilohit",
+    "url": "https://github.com/Bilohit"
+  },
+  "license": "MIT",
+  "homepage": "https://github.com/Bilohit/build-state"
+}

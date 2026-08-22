@@ -1,0 +1,14 @@
+{
+  "name": "build-state",
+  "owner": {
+    "name": "Bilohit",
+    "url": "https://github.com/Bilohit"
+  },
+  "plugins": [
+    {
+      "name": "flow-review",
+      "source": "./plugins/flow-review",
+      "description": "Drive your product end to end as a first-time user would, gather real evidence, and return ranked findings plus a design critique. Sets itself up against your codebase on first run."
+    }
+  ]
+}
