@@ -39,6 +39,10 @@ class Surface:
 @dataclass
 class Config:
     schema_version: int
+    # The flow-review plugin version that wrote this config -- the "version" string
+    # from the plugin's own plugin.json, read fresh at setup time, never cached.
+    # Provenance for debugging ("which generator produced this file"), not a gate:
+    # schema_version is what load() refuses on, this field only informs.
     generator_version: str
     surfaces: list[Surface] = field(default_factory=list)
     lens_sets: dict[str, list[str]] = field(default_factory=dict)

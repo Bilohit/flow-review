@@ -182,7 +182,10 @@ instead of inventing a root one on the user's behalf.
 
 Assemble the `Config` (schema_version, generator_version, surfaces with their launch commands,
 preconditions, and provenance, lens_sets, tester_agent, evidence_types, flows_hash) and write it
-with `fr.config.save`, which re-validates every surface's `kind` and every provenance value before
+with `fr.config.save`. `generator_version` is the flow-review plugin's own version: read the
+`"version"` string from this plugin's `plugin.json` at write time -- never hardcode it, never
+carry it forward from an older config. It is provenance for debugging, not a compatibility gate;
+`schema_version` is the gate. Then `save` re-validates every surface's `kind` and every provenance value before
 a single byte reaches disk.
 
 Print, in this order:
