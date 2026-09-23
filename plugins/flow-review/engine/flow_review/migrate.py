@@ -39,6 +39,7 @@ class MigrationSummary:
     dropped_keys: list[str] = field(default_factory=list)
     destructive_to_persistent: list[str] = field(default_factory=list)
     id_collisions_resolved: dict[str, str] = field(default_factory=dict)
+    backup_name: str = "config.v1.bak"
 
     def render(self) -> str:
         lines = [
@@ -49,7 +50,7 @@ class MigrationSummary:
             lines.append("  destructive -> persistent: " + ", ".join(self.destructive_to_persistent))
         if self.dropped_keys:
             lines.append("  dropped (no longer used): " + ", ".join(self.dropped_keys))
-        lines.append("  a backup of the old file was saved to config.v1.bak")
+        lines.append(f"  a backup of the old file was saved to {self.backup_name}")
         return "\n".join(lines)
 
 
@@ -119,6 +120,7 @@ def migrate_file(path: Path, quiet: bool = False) -> MigrationSummary | None:
     backup.write_bytes(original)
 
     cfg, summary = migrate(raw)
+    summary.backup_name = backup.name
     cfgmod.save(cfg, path)
     if not quiet:
         print(summary.render())

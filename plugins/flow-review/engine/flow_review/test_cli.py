@@ -88,3 +88,30 @@ def test_migrate_subcommand_exits_one_on_bad_json(tmp_path, capsys):
     path.write_text("{not json", encoding="utf-8")
     assert cli.main(["migrate", "--path", str(path)]) == 1
     assert capsys.readouterr().err.strip()
+
+
+def test_migrate_resolves_config_from_project_root_not_cwd(tmp_path, monkeypatch):
+    proj = tmp_path / "proj"
+    (proj / ".flow-review").mkdir(parents=True)
+    cfg = proj / ".flow-review" / "config.json"
+    cfg.write_text('{"schema_version": 1, "surfaces": []}', encoding="utf-8")
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    assert cli.main(["--project", str(proj), "migrate", "--quiet"]) == 0
+    assert (proj / ".flow-review" / "config.v1.bak").exists()
+
+
+def test_migrate_without_project_or_path_exits_one(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(cli, "find_project_root", lambda start: None)
+    assert cli.main(["migrate"]) == 1
+    assert "no .flow-review/ found" in capsys.readouterr().err
+
+
+def test_migrate_summary_names_the_real_backup_file(tmp_path, capsys):
+    from flow_review import migrate
+    path = tmp_path / "other.json"
+    path.write_text('{"schema_version": 1, "surfaces": []}', encoding="utf-8")
+    migrate.migrate_file(path)
+    assert "other.v1.bak" in capsys.readouterr().out

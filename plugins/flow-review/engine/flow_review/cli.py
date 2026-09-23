@@ -31,8 +31,15 @@ def _stub(verb: str):
 
 def _run_migrate(args: argparse.Namespace) -> int:
     from flow_review import migrate as migratemod
+    if args.path:
+        path = Path(args.path)
+    elif getattr(args, "project_root", None) is not None:
+        path = Path(args.project_root) / ".flow-review" / "config.json"
+    else:
+        print("no .flow-review/ found", file=sys.stderr)
+        return 1
     try:
-        migratemod.migrate_file(Path(args.path), quiet=args.quiet)
+        migratemod.migrate_file(path, quiet=args.quiet)
     except Exception as exc:  # noqa: BLE001 -- CLI boundary, report and exit, never traceback
         print(str(exc), file=sys.stderr)
         return 1
@@ -63,7 +70,7 @@ def build_parser() -> argparse.ArgumentParser:
         verb_parser = sub.add_parser(verb)
         verb_parser.set_defaults(func=_stub(verb))
     migrate_parser = sub.add_parser("migrate")
-    migrate_parser.add_argument("--path", default=".flow-review/config.json")
+    migrate_parser.add_argument("--path", default=None)
     migrate_parser.add_argument("--quiet", action="store_true")
     migrate_parser.set_defaults(func=_run_migrate)
     return parser
