@@ -72,8 +72,10 @@ def _run_setup_env(args: argparse.Namespace) -> int:
     from flow_review import envsetup as envsetupmod
     engine_path = _Path(args.engine_path) if args.engine_path else _Path(__file__).resolve().parent.parent
     try:
-        envsetupmod.setup_env(_Path("."), engine_path, extras=args.extras)
-        envsetupmod.write_gitignore(_Path(".flow-review"), commit_recordings=not args.no_commit_recordings)
+        # A fresh project has no .flow-review/ yet, so the walk-up finds nothing: fall back to cwd.
+        project_dir = args.project_root if args.project_root is not None else _Path.cwd()
+        envsetupmod.setup_env(project_dir, engine_path, extras=args.extras)
+        envsetupmod.write_gitignore(project_dir / ".flow-review", commit_recordings=not args.no_commit_recordings)
     except Exception as exc:  # noqa: BLE001 -- CLI boundary
         print(str(exc), file=sys.stderr)
         return 1
@@ -100,22 +102,26 @@ def build_parser() -> argparse.ArgumentParser:
         "--project", default=None,
         help="project root; defaults to walking up from cwd to the nearest .flow-review/",
     )
+    # Also accepted after the verb (`flow-review migrate --project DIR`). SUPPRESS keeps a
+    # subparser from overwriting a top-level --project with its own default.
+    project_after_verb = argparse.ArgumentParser(add_help=False)
+    project_after_verb.add_argument("--project", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     sub = parser.add_subparsers(dest="verb")
     for verb in _STUB_VERBS:
-        verb_parser = sub.add_parser(verb)
+        verb_parser = sub.add_parser(verb, parents=[project_after_verb])
         verb_parser.set_defaults(func=_stub(verb))
-    setup_env_parser = sub.add_parser("setup-env")
+    setup_env_parser = sub.add_parser("setup-env", parents=[project_after_verb])
     setup_env_parser.add_argument("--extras", default="web")
     setup_env_parser.add_argument("--engine-path", default=None)
     setup_env_parser.add_argument("--no-commit-recordings", action="store_true")
     setup_env_parser.set_defaults(func=_run_setup_env)
 
-    migrate_parser = sub.add_parser("migrate")
+    migrate_parser = sub.add_parser("migrate", parents=[project_after_verb])
     migrate_parser.add_argument("--path", default=None)
     migrate_parser.add_argument("--quiet", action="store_true")
     migrate_parser.set_defaults(func=_run_migrate)
 
-    event_parser = sub.add_parser("event")
+    event_parser = sub.add_parser("event", parents=[project_after_verb])
     event_parser.add_argument("--run", required=True, dest="run_dir")
     event_parser.add_argument("--type", required=True, dest="type_")
     event_parser.add_argument("--json", default=None)

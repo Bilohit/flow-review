@@ -145,3 +145,28 @@ def test_migrate_summary_names_the_real_backup_file(tmp_path, capsys):
     path.write_text('{"schema_version": 1, "surfaces": []}', encoding="utf-8")
     migrate.migrate_file(path)
     assert "other.v1.bak" in capsys.readouterr().out
+
+
+def test_project_option_is_accepted_after_the_verb(tmp_path):
+    # CP1: the documented form is `flow-review migrate --project <dir>`; argparse rejected it
+    # because --project existed only on the top-level parser.
+    (tmp_path / ".flow-review").mkdir()
+    cfg = tmp_path / ".flow-review" / "config.json"
+    cfg.write_text('{"schema_version": 1, "surfaces": []}', encoding="utf-8")
+    assert cli.main(["migrate", "--project", str(tmp_path), "--quiet"]) == 0
+    assert (tmp_path / ".flow-review" / "config.v1.bak").exists()
+
+
+def test_setup_env_targets_the_resolved_project_root_not_cwd(tmp_path, monkeypatch):
+    from flow_review import envsetup
+    proj = tmp_path / "proj"
+    proj.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    seen = {}
+    monkeypatch.setattr(envsetup, "setup_env", lambda project_dir, *a, **k: seen.setdefault("dir", Path(project_dir)))
+    monkeypatch.setattr(envsetup, "write_gitignore", lambda d, **k: seen.setdefault("gi", Path(d)))
+    assert cli.main(["setup-env", "--project", str(proj)]) == 0
+    assert seen["dir"].resolve() == proj.resolve()
+    assert seen["gi"].resolve() == (proj / ".flow-review").resolve()
