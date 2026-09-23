@@ -18,7 +18,7 @@ from pathlib import Path
 # A5 ledger) replaces exactly one function here with real behaviour; the parser wiring does not
 # change.
 _STUB_VERBS = (
-    "setup-env", "prove", "plan", "replay", "serve", "triage", "ledger",
+    "prove", "plan", "replay", "serve", "triage", "ledger",
     "budget", "model",
 )
 
@@ -67,6 +67,20 @@ def _run_event(args: argparse.Namespace) -> int:
     return 0
 
 
+def _run_setup_env(args: argparse.Namespace) -> int:
+    from pathlib import Path as _Path
+    from flow_review import envsetup as envsetupmod
+    engine_path = _Path(args.engine_path) if args.engine_path else _Path(__file__).resolve().parent.parent
+    try:
+        envsetupmod.setup_env(_Path("."), engine_path, extras=args.extras)
+        envsetupmod.write_gitignore(_Path(".flow-review"), commit_recordings=not args.no_commit_recordings)
+    except Exception as exc:  # noqa: BLE001 -- CLI boundary
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(f"flow-review: environment ready at .flow-review/.venv (extras={args.extras})")
+    return 0
+
+
 def find_project_root(start: Path) -> Path | None:
     """Walk up from `start` (inclusive) to the nearest ancestor holding a `.flow-review/` dir.
 
@@ -90,6 +104,12 @@ def build_parser() -> argparse.ArgumentParser:
     for verb in _STUB_VERBS:
         verb_parser = sub.add_parser(verb)
         verb_parser.set_defaults(func=_stub(verb))
+    setup_env_parser = sub.add_parser("setup-env")
+    setup_env_parser.add_argument("--extras", default="web")
+    setup_env_parser.add_argument("--engine-path", default=None)
+    setup_env_parser.add_argument("--no-commit-recordings", action="store_true")
+    setup_env_parser.set_defaults(func=_run_setup_env)
+
     migrate_parser = sub.add_parser("migrate")
     migrate_parser.add_argument("--path", default=None)
     migrate_parser.add_argument("--quiet", action="store_true")

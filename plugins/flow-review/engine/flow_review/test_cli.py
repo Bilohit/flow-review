@@ -18,7 +18,7 @@ def test_main_with_no_args_prints_usage_and_exits_nonzero(capsys):
 
 def test_main_dispatches_known_stub_subcommands():
     for verb in (
-        "setup-env", "prove", "plan", "replay", "serve", "triage", "ledger",
+        "prove", "plan", "replay", "serve", "triage", "ledger",
         "budget", "model",
     ):
         code = cli.main([verb])
