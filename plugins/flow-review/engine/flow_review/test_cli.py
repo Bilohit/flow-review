@@ -19,7 +19,7 @@ def test_main_with_no_args_prints_usage_and_exits_nonzero(capsys):
 def test_main_dispatches_known_stub_subcommands():
     for verb in (
         "setup-env", "prove", "plan", "event", "replay", "serve", "triage", "ledger",
-        "budget", "migrate", "model",
+        "budget", "model",
     ):
         code = cli.main([verb])
         assert code == 2, f"{verb} stub must report not-yet-implemented, not crash or succeed"
@@ -72,3 +72,19 @@ def test_project_option_resolves_project_root_on_args(tmp_path):
     args = parser.parse_args(["--project", str(tmp_path), "prove"])
     cli._resolve_project_root(args)
     assert args.project_root == tmp_path.resolve()
+
+
+def test_migrate_subcommand_is_idempotent_and_exits_zero(tmp_path, capsys):
+    path = tmp_path / "config.json"
+    path.write_text('{"schema_version": 1, "surfaces": []}', encoding="utf-8")
+    assert cli.main(["migrate", "--path", str(path), "--quiet"]) == 0
+    assert (tmp_path / "config.v1.bak").exists()
+    assert cli.main(["migrate", "--path", str(path)]) == 0
+    assert capsys.readouterr().out == ""
+
+
+def test_migrate_subcommand_exits_one_on_bad_json(tmp_path, capsys):
+    path = tmp_path / "config.json"
+    path.write_text("{not json", encoding="utf-8")
+    assert cli.main(["migrate", "--path", str(path)]) == 1
+    assert capsys.readouterr().err.strip()

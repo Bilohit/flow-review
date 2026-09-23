@@ -18,7 +18,7 @@ from pathlib import Path
 # change.
 _STUB_VERBS = (
     "setup-env", "prove", "plan", "event", "replay", "serve", "triage", "ledger",
-    "budget", "migrate", "model",
+    "budget", "model",
 )
 
 
@@ -27,6 +27,16 @@ def _stub(verb: str):
         print(f"{verb}: not yet implemented", file=sys.stderr)
         return 2
     return _run
+
+
+def _run_migrate(args: argparse.Namespace) -> int:
+    from flow_review import migrate as migratemod
+    try:
+        migratemod.migrate_file(Path(args.path), quiet=args.quiet)
+    except Exception as exc:  # noqa: BLE001 -- CLI boundary, report and exit, never traceback
+        print(str(exc), file=sys.stderr)
+        return 1
+    return 0
 
 
 def find_project_root(start: Path) -> Path | None:
@@ -52,6 +62,10 @@ def build_parser() -> argparse.ArgumentParser:
     for verb in _STUB_VERBS:
         verb_parser = sub.add_parser(verb)
         verb_parser.set_defaults(func=_stub(verb))
+    migrate_parser = sub.add_parser("migrate")
+    migrate_parser.add_argument("--path", default=".flow-review/config.json")
+    migrate_parser.add_argument("--quiet", action="store_true")
+    migrate_parser.set_defaults(func=_run_migrate)
     return parser
 
 
