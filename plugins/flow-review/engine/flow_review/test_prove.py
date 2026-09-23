@@ -219,7 +219,7 @@ def test_teardown_failure_is_folded_into_reason(tmp_path, monkeypatch):
         f"pathlib.Path({str(pidfile)!r}).write_text(str(os.getpid()))\n"
         "time.sleep(30)\n",
     )
-    monkeypatch.setattr(provemod, "_kill_tree", lambda process: True)
+    monkeypatch.setattr(provemod, "_kill_tree", lambda process: (True, set()))
     monkeypatch.setattr(provemod, "_TEARDOWN_WAIT_S", 0.2)
     try:
         proof = provemod.prove(_candidate(launch), tmp_path, exit_timeout_s=0.5)
@@ -276,3 +276,101 @@ def test_popen_failure_returns_not_proven_instead_of_raising(tmp_path):
     assert proof.exit_code is None
     assert proof.teardown_ok is True
     assert "failed to launch" in proof.reason
+
+
+def _api_candidate(launch: str = "") -> Candidate:
+    return Candidate(name="api", kind="api", driver="http", launch=launch, evidence="test:1 -> api")
+
+
+# --- M3: api reachability-only proving --------------------------------------------------
+
+
+def test_api_surface_with_passing_precondition_is_proven_without_launching_anything(tmp_path):
+    marker = tmp_path / "should_not_exist.txt"
+    precond_cmd = _script(tmp_path, "reachable.py", "import sys\nsys.exit(0)\n")
+    proof = provemod.prove(
+        _api_candidate(), tmp_path, preconditions=[{"name": "reachable", "cmd": precond_cmd}],
+    )
+    assert proof.outcome == provemod.RUNNING_READY
+    assert proof.precondition == "reachable"
+    assert provemod.outcome_to_provenance(proof.outcome) == provemod.PROVEN
+    assert not marker.exists()
+
+
+def test_api_surface_with_failing_precondition_is_not_proven(tmp_path):
+    precond_cmd = _script(tmp_path, "unreachable.py", "import sys\nsys.exit(1)\n")
+    proof = provemod.prove(
+        _api_candidate(), tmp_path, preconditions=[{"name": "reachable", "cmd": precond_cmd}],
+    )
+    assert proof.outcome == provemod.NOT_PROVEN
+    assert "api" in proof.reason.lower()
+
+
+def test_api_surface_with_no_preconditions_is_not_proven_never_launches(tmp_path):
+    proof = provemod.prove(_api_candidate(), tmp_path, preconditions=[])
+    assert proof.outcome == provemod.NOT_PROVEN
+    assert "reachability" in proof.reason.lower() or "precondition" in proof.reason.lower()
+
+
+def test_a_non_api_blank_launch_still_reports_no_launch_command(tmp_path):
+    proof = provemod.prove(_candidate("   "), tmp_path)
+    assert proof.outcome == provemod.NOT_PROVEN
+    assert "no launch command" in proof.reason
+
+
+# --- H4: preconditions govern proof over a clean exit ------------------------------------
+
+
+def test_a_clean_exit_before_any_precondition_passes_is_not_proven(tmp_path):
+    # The launched command exits 0 almost immediately -- a wrapper that daemonizes and quits,
+    # for example -- while the precondition that was supposed to confirm real readiness never
+    # once passes. A clean exit code must not be mistaken for the readiness it never observed.
+    launch = _script(tmp_path, "quits_clean.py", "import sys\nsys.exit(0)\n")
+    precond_cmd = _script(tmp_path, "never_ready.py", "import sys\nsys.exit(1)\n")
+    proof = provemod.prove(
+        _candidate(launch), tmp_path,
+        preconditions=[{"name": "ready", "cmd": precond_cmd}], ready_timeout_s=1,
+    )
+    assert proof.outcome == provemod.NOT_PROVEN
+    assert provemod.outcome_to_provenance(proof.outcome) == provemod.UNPROVEN
+    assert "exited cleanly" in proof.reason or "does not prove readiness" in proof.reason
+
+
+def test_a_clean_exit_with_no_preconditions_is_still_proven(tmp_path):
+    # Unaffected case: no preconditions were ever asked to prove anything, so the exit code is
+    # still the whole story, exactly as before H4.
+    launch = _script(tmp_path, "quits_clean2.py", "import sys\nsys.exit(0)\n")
+    proof = provemod.prove(_candidate(launch), tmp_path)
+    assert proof.outcome == provemod.EXITED_CLEAN
+
+
+# --- H3: honest teardown when the direct child already exited ----------------------------
+
+
+def test_a_grandchild_orphaned_by_an_already_exited_direct_child_is_still_reaped(tmp_path):
+    """The regression H3 fixes: the launched command (run via shell=True, so its direct OS
+    child is cmd.exe/sh) itself spawns a further child and then exits almost immediately,
+    orphaning that grandchild. The old _teardown trusted `process.poll() is not None` as proof
+    the whole tree was gone and returned early -- exactly wrong, since poll() only ever sees
+    the direct child. teardown_ok must reflect the grandchild's ACTUAL fate, and the grandchild
+    must actually be dead afterward."""
+    pidfile = tmp_path / "orphan.pid"
+    launch = _script(
+        tmp_path, "quits_after_spawning.py",
+        "import subprocess, sys, pathlib, time\n"
+        f"child = subprocess.Popen([{str(sys.executable)!r}, '-c', "
+        "'import pathlib,time; pathlib.Path(r\"" + str(pidfile).replace("\\", "\\\\") + "\").write_text(str(__import__(\"os\").getpid())); time.sleep(30)'])\n"
+        "time.sleep(0.3)\n"
+        "sys.exit(0)\n",
+    )
+    proof = provemod.prove(_candidate(launch), tmp_path, exit_timeout_s=5)
+    assert proof.outcome == provemod.EXITED_CLEAN
+    # Give the grandchild a moment to have written its own pidfile before asserting on it.
+    for _ in range(20):
+        if pidfile.exists():
+            break
+        time.sleep(0.1)
+    assert pidfile.exists(), "the grandchild should have had time to record its own pid"
+    orphan_pid = int(pidfile.read_text().strip())
+    assert not _process_alive(orphan_pid), "the orphaned grandchild must not survive prove()"
+    assert proof.teardown_ok is True

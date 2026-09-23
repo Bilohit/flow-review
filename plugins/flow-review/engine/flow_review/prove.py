@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from flow_review.audit import Candidate
+from flow_review.config import validate_preconditions
 
 # Provenance vocabulary fr.config validates against (VALID_PROVENANCE). Kept here at their
 # existing values so a Proof's outcome can be translated straight into a Surface's field
@@ -140,29 +141,82 @@ def _start_process(launch: str, root: Path, handle) -> subprocess.Popen:
     )
 
 
-def _kill_tree(process: subprocess.Popen) -> bool:
-    """Send the kill and report whether the kill signal itself succeeded.
+def _child_pids_of(pid: int) -> set[int]:
+    # wmic is removed on current Windows 11 builds; Get-CimInstance is its supported
+    # replacement and gives the same ParentProcessId lineage taskkill /T itself cannot
+    # re-derive once the parent's own process-table entry is gone (H3).
+    try:
+        result = subprocess.run(
+            [
+                "powershell", "-NoProfile", "-NonInteractive", "-Command",
+                f"(Get-CimInstance Win32_Process -Filter \"ParentProcessId={pid}\")"
+                ".ProcessId",
+            ],
+            capture_output=True, text=True, timeout=5,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return set()
+    return {int(line.strip()) for line in result.stdout.splitlines() if line.strip().isdigit()}
 
-    A successful signal is necessary but not sufficient -- _teardown still confirms the
-    outcome afterwards. On Windows that confirmation is poll(), because taskkill /T /F
-    already reports tree-wide success in its own return code. On POSIX, killpg's success
-    only means the signal was delivered, not that anything died yet; _teardown separately
-    probes the group's actual liveness, which poll() on the direct child cannot do.
+
+def _descendant_pids(root_pid: int) -> set[int]:
+    """Breadth-first walk of the Windows process table for every live descendant of root_pid.
+
+    taskkill /T only walks a tree it can still locate STARTING FROM root_pid's own process
+    entry -- once that entry is gone (the direct child, cmd.exe, already exited on its own),
+    /T finds nothing, even though whatever cmd.exe spawned is still running (H3). Each
+    descendant's own entry keeps recording its immediate parent's pid regardless of whether
+    that parent still exists, so this walk finds every survivor /T would have found had
+    root_pid still been alive, and still works when it is not.
+    """
+    seen: set[int] = set()
+    frontier = {root_pid}
+    while frontier:
+        next_frontier: set[int] = set()
+        for pid in frontier:
+            for child in _child_pids_of(pid):
+                if child not in seen:
+                    seen.add(child)
+                    next_frontier.add(child)
+        frontier = next_frontier
+    return seen
+
+
+def _windows_pid_alive(pid: int) -> bool:
+    try:
+        result = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}"], capture_output=True, text=True, timeout=5,
+        )
+    except (subprocess.TimeoutExpired, OSError):
+        return False
+    return str(pid) in result.stdout
+
+
+def _kill_tree(process: subprocess.Popen) -> tuple[bool, set[int]]:
+    """Send the kill and report (signal succeeded, descendants observed at kill time).
+
+    The descendants are handed back so _teardown can independently confirm each one is
+    actually gone -- on Windows, taskkill /T's own return code only speaks to the walk it could
+    still perform FROM process.pid; it says nothing about a descendant killed individually
+    below, and nothing at all once process.pid's own entry is already gone.
     """
     if _IS_WINDOWS:
-        # taskkill /T walks the process tree by PID lineage, which is what reaches the
-        # grandchild through cmd.exe. Popen.kill() only terminates cmd.exe itself and is
-        # the original bug: the grandchild survives, keeping the output file open.
-        result = subprocess.run(
+        descendants = _descendant_pids(process.pid)
+        tree_result = subprocess.run(
             ["taskkill", "/T", "/F", "/PID", str(process.pid)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        return result.returncode == 0
+        for pid in descendants:
+            subprocess.run(
+                ["taskkill", "/F", "/PID", str(pid)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+        return tree_result.returncode == 0, descendants
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
         pass  # already gone before we could signal it -- not a kill failure
-    return True
+    return True, set()
 
 
 def _posix_group_is_gone(pgid: int) -> bool:
@@ -176,27 +230,53 @@ def _posix_group_is_gone(pgid: int) -> bool:
     return False
 
 
-def _teardown(process: subprocess.Popen) -> bool:
+def _teardown(process: subprocess.Popen, known_descendants: set[int] = frozenset()) -> bool:
     """Kill whatever is left of the process tree and confirm it is actually gone.
 
-    prove() owns the full lifecycle and must never leave a process running on any exit
-    path. Killing is not enough to claim that on its own -- report whether the process was
-    confirmed dead, so a process that survived the kill is a visible finding. Confirming
-    only the direct child (what poll() sees) would miss a tree kill that partially failed
-    while the direct child happened to exit on its own -- the grandchild is the entire bug
-    this function exists to prevent, so its death is checked too, not assumed.
+    Never trusts `process.poll() is not None` as proof the whole tree is dead (H3) -- poll()
+    only ever observes the direct child (cmd.exe/sh under shell=True). A kill and an
+    independent liveness check always run, whether or not the direct child had already exited
+    on its own by the time this is called.
+
+    known_descendants (Windows only) is a set the caller may have accumulated by walking the
+    process table *while the tree was still alive*: on Windows a descendant's own Win32_Process
+    entry only exists as long as it is alive, and ParentProcessId lineage can only be walked
+    through entries that still exist. If an intermediate process (e.g. cmd.exe's own direct
+    child) has already exited by the time _kill_tree runs -- entirely possible when it exits
+    almost immediately after spawning a grandchild -- a fresh walk starting from process.pid
+    can no longer reach that grandchild at all, since the link through the vanished
+    intermediate is gone from the table. A pid seen earlier, while the link still existed,
+    remains a real process to hunt down and confirm even though the walk done at kill time no
+    longer finds it on its own.
     """
-    if process.poll() is not None:
-        return True
-    kill_ok = _kill_tree(process)
-    try:
-        process.wait(timeout=_TEARDOWN_WAIT_S)
-    except subprocess.TimeoutExpired:
-        pass
-    if not kill_ok or process.poll() is None:
+    kill_ok, descendants = _kill_tree(process)
+    if process.poll() is None:
+        try:
+            process.wait(timeout=_TEARDOWN_WAIT_S)
+        except subprocess.TimeoutExpired:
+            pass
+    if process.poll() is None:
+        # The direct child itself never went away -- whatever _kill_tree did (or, in a test,
+        # was mocked into a no-op) did not work. known_descendants is moot: a kill that could
+        # not even bring down the direct child cannot be trusted to have reached anything past
+        # it, so this stays a plain teardown failure exactly as it always has.
         return False
+    all_descendants = descendants | set(known_descendants)
     if _IS_WINDOWS:
-        return True
+        # Kill every descendant _kill_tree's own fresh walk could not find, because it was
+        # only ever reachable through a link that had already vanished from the table by the
+        # time _kill_tree ran (H3) -- known_descendants was collected earlier, while that link
+        # still existed.
+        for pid in all_descendants - descendants:
+            if _windows_pid_alive(pid):
+                subprocess.run(
+                    ["taskkill", "/F", "/PID", str(pid)],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                )
+        # kill_ok alone is not proof: taskkill /T can report failure purely because it had no
+        # live root left to walk from, while every descendant was still killed individually
+        # just above. The only trustworthy confirmation is asking the process table again.
+        return kill_ok or not any(_windows_pid_alive(pid) for pid in all_descendants)
     return _posix_group_is_gone(process.pid)
 
 
@@ -224,6 +304,28 @@ def prove(
     exit_timeout_s: float = 60,
 ) -> Proof:
     started = time.monotonic()
+
+    preconditions = list(preconditions)
+    validate_preconditions(preconditions)
+
+    if candidate.kind == "api" and not candidate.launch.strip():
+        # M3: an api surface proves reachability alone -- never "no launch command", and
+        # nothing is ever spawned to prove it (spec Section 6).
+        if not preconditions:
+            return Proof(
+                candidate, NOT_PROVEN, None, time.monotonic() - started, "", "", "", True,
+                "api surface has no launch command and no reachability precondition to prove it",
+            )
+        passed = _first_passing(preconditions, root)
+        if passed is not None:
+            return Proof(
+                candidate, RUNNING_READY, None, time.monotonic() - started, "", "", passed, True,
+                "api reachable via precondition; nothing was launched",
+            )
+        return Proof(
+            candidate, NOT_PROVEN, None, time.monotonic() - started, "", "", "", True,
+            "no reachability precondition passed for this api surface; nothing was launched",
+        )
 
     if not candidate.launch.strip():
         return Proof(
@@ -273,13 +375,30 @@ def prove(
     # so the shorter ready_timeout_s governs instead -- waiting the full exit deadline for a
     # dev server that will never exit is exactly the original bug.
     deadline = ready_timeout_s if preconditions else exit_timeout_s
+    # H3: accumulated while the tree is still alive, because a descendant's link back to
+    # process.pid can vanish from the Windows process table the instant an intermediate
+    # process (e.g. the launched command itself, running under cmd.exe) exits on its own --
+    # possibly before _teardown ever gets a chance to walk the tree fresh. A pid observed here
+    # remains a real process to hunt down at teardown even once that walk can no longer find it.
+    windows_descendants: set[int] = set()
 
     try:
         while True:
+            if _IS_WINDOWS:
+                windows_descendants |= _descendant_pids(process.pid)
             status = process.poll()
             if status is not None:
                 exit_code = status
-                outcome = EXITED_CLEAN if status == 0 else EXITED_FAILED
+                if preconditions and status == 0:
+                    # H4: preconditions exist to OBSERVE readiness -- a clean exit before any
+                    # of them ever passed proves nothing about what they were asked to confirm.
+                    outcome = NOT_PROVEN
+                    reason = (
+                        "process exited cleanly before any precondition passed; a clean exit "
+                        "does not prove readiness when preconditions were configured to prove it"
+                    )
+                else:
+                    outcome = EXITED_CLEAN if status == 0 else EXITED_FAILED
                 break
             elapsed = time.monotonic() - started
             if preconditions:
@@ -308,7 +427,7 @@ def prove(
                 break
             time.sleep(min(_POLL_INTERVAL_S, deadline - elapsed))
     finally:
-        teardown_ok = _teardown(process)
+        teardown_ok = _teardown(process, windows_descendants)
 
     if not teardown_ok:
         # A process that survived the kill is a finding, not a footnote -- fold it into the
