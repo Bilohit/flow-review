@@ -128,3 +128,120 @@ def test_a_dev_script_with_no_locatable_line_still_yields_a_surface(tmp_path):
     assert web, "a script json.loads can see must not vanish because the raw text hid it"
     assert web[0].launch == "npm run dev"
     assert web[0].evidence == "package.json (file present)"
+
+
+def test_web_candidate_driver_is_playwright_not_cdp(tmp_path):
+    (tmp_path / "package.json").write_text(json.dumps({"scripts": {"dev": "vite"}}), encoding="utf-8")
+    web = [c for c in audit.detect(tmp_path) if c.kind == "ui"]
+    assert web[0].driver == "playwright"
+
+
+def test_vite_devdependency_sets_the_known_default_port(tmp_path):
+    (tmp_path / "package.json").write_text(json.dumps({
+        "scripts": {"dev": "vite"}, "devDependencies": {"vite": "^5.0.0"},
+    }), encoding="utf-8")
+    web = [c for c in audit.detect(tmp_path) if c.kind == "ui"]
+    assert web[0].default_port == 5173
+
+
+def test_an_unrecognized_framework_has_no_default_port(tmp_path):
+    (tmp_path / "package.json").write_text(json.dumps({"scripts": {"dev": "custom-server"}}), encoding="utf-8")
+    web = [c for c in audit.detect(tmp_path) if c.kind == "ui"]
+    assert web[0].default_port is None
+
+
+def test_poetry_scripts_table_is_detected(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.poetry]\nname = "demo"\n\n[tool.poetry.scripts]\ndemo = "demo.cli:main"\n',
+        encoding="utf-8",
+    )
+    cli = [c for c in audit.detect(tmp_path) if c.kind == "cli"]
+    assert cli
+    assert cli[0].launch == "demo"
+    assert "pyproject.toml:" in cli[0].evidence
+
+
+def test_poetry_and_pep621_scripts_are_not_duplicated(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project.scripts]\ndemo = "demo.cli:main"\n\n'
+        '[tool.poetry.scripts]\ndemo = "demo.cli:main"\n',
+        encoding="utf-8",
+    )
+    cli = [c for c in audit.detect(tmp_path) if c.kind == "cli" and c.launch == "demo"]
+    assert len(cli) == 1
+
+
+def test_npm_workspace_member_is_detected_with_its_own_name(tmp_path):
+    (tmp_path / "package.json").write_text(json.dumps({"workspaces": ["packages/*"]}), encoding="utf-8")
+    member = tmp_path / "packages" / "web"
+    member.mkdir(parents=True)
+    (member / "package.json").write_text(json.dumps({"scripts": {"dev": "vite"}}), encoding="utf-8")
+    web = [c for c in audit.detect(tmp_path) if c.kind == "ui"]
+    assert web
+    assert web[0].name == "web"
+    assert web[0].evidence.startswith("packages")
+
+
+def test_pnpm_workspace_yaml_member_is_detected(tmp_path):
+    (tmp_path / "pnpm-workspace.yaml").write_text("packages:\n  - 'apps/*'\n", encoding="utf-8")
+    member = tmp_path / "apps" / "site"
+    member.mkdir(parents=True)
+    (member / "package.json").write_text(json.dumps({"scripts": {"dev": "next dev"}}), encoding="utf-8")
+    web = [c for c in audit.detect(tmp_path) if c.kind == "ui"]
+    assert any(c.name == "site" for c in web)
+
+
+def test_workspace_double_star_glob_finds_a_nested_member(tmp_path):
+    # A-23: workspace globs use Path.glob directly, so ** works exactly as Path.glob's own
+    # recursive-match syntax -- no special-casing needed for it in this module.
+    (tmp_path / "package.json").write_text(json.dumps({"workspaces": ["packages/**"]}), encoding="utf-8")
+    member = tmp_path / "packages" / "group" / "web"
+    member.mkdir(parents=True)
+    (member / "package.json").write_text(json.dumps({"scripts": {"dev": "vite"}}), encoding="utf-8")
+    web = [c for c in audit.detect(tmp_path) if c.kind == "ui"]
+    assert any(c.name == "web" for c in web)
+
+
+def test_workspace_brace_list_glob_is_unsupported_and_matches_nothing(tmp_path):
+    # A-23: brace lists ("{a,b}") are not Path.glob syntax and are not special-cased here --
+    # the pattern simply matches nothing extra, it never raises.
+    (tmp_path / "package.json").write_text(json.dumps({"workspaces": ["packages/{web,api}"]}), encoding="utf-8")
+    member = tmp_path / "packages" / "web"
+    member.mkdir(parents=True)
+    (member / "package.json").write_text(json.dumps({"scripts": {"dev": "vite"}}), encoding="utf-8")
+    web = [c for c in audit.detect(tmp_path) if c.kind == "ui"]
+    assert web == []
+
+
+def test_tauri_src_tauri_dir_is_pending_driver(tmp_path):
+    (tmp_path / "src-tauri").mkdir()
+    found = audit.detect(tmp_path)
+    tauri = [c for c in found if c.driver == "pending" and "tauri" in c.evidence.lower() or "src-tauri" in c.evidence]
+    assert tauri
+    assert tauri[0].launch == ""
+
+
+def test_expo_app_json_is_pending_driver(tmp_path):
+    (tmp_path / "app.json").write_text(json.dumps({"expo": {"name": "demo"}}), encoding="utf-8")
+    found = audit.detect(tmp_path)
+    assert any(c.driver == "pending" and "app.json" in c.evidence for c in found)
+
+
+def test_a_plain_app_json_with_no_expo_key_is_not_detected(tmp_path):
+    (tmp_path / "app.json").write_text(json.dumps({"name": "demo"}), encoding="utf-8")
+    found = audit.detect(tmp_path)
+    assert not any(c.driver == "pending" and "app.json" in c.evidence for c in found)
+
+
+def test_electron_dependency_is_pending_driver(tmp_path):
+    (tmp_path / "package.json").write_text(json.dumps({
+        "devDependencies": {"electron": "^30.0.0"},
+    }, indent=2), encoding="utf-8")
+    found = audit.detect(tmp_path)
+    electron = [c for c in found if c.driver == "pending" and "electron" not in c.name]
+    assert any(c.driver == "pending" for c in found)
+
+
+def test_pending_driver_is_valid_per_config():
+    from flow_review.config import VALID_DRIVERS
+    assert "pending" in VALID_DRIVERS

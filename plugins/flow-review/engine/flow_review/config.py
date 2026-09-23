@@ -19,7 +19,7 @@ from pathlib import Path
 SCHEMA_VERSION = 2
 VALID_KINDS = ("ui", "cli", "api", "library")
 VALID_PROVENANCE = ("audited", "proven", "user")
-VALID_DRIVERS = ("cdp", "playwright", "adb", "ios-sim", "shell", "http", "custom")
+VALID_DRIVERS = ("cdp", "playwright", "adb", "ios-sim", "shell", "http", "custom", "pending")
 VALID_STATE = ("disposable", "persistent")
 VALID_MODEL_PROFILE = ("lean", "default", "max")
 VALID_ROLES = ("explorer", "replay-repair", "lens", "cold-eyes", "triage", "verifier")
