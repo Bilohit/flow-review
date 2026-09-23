@@ -139,8 +139,8 @@ def test_no_reference_file_carries_a_byte_order_mark():
 def test_evidence_file_keeps_the_append_idiom_rules():
     text = (REFS / "evidence.md").read_text(encoding="utf-8")
     assert "events.jsonl" in text
-    assert ">>" in text
-    assert "BOM" in text
+    assert "flow-review event" in text
+    assert "printf" not in text
 
 
 def test_binding_rules_carry_all_four_parts():

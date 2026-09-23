@@ -18,11 +18,41 @@ def test_main_with_no_args_prints_usage_and_exits_nonzero(capsys):
 
 def test_main_dispatches_known_stub_subcommands():
     for verb in (
-        "setup-env", "prove", "plan", "event", "replay", "serve", "triage", "ledger",
+        "setup-env", "prove", "plan", "replay", "serve", "triage", "ledger",
         "budget", "model",
     ):
         code = cli.main([verb])
         assert code == 2, f"{verb} stub must report not-yet-implemented, not crash or succeed"
+
+
+def test_event_subcommand_appends_via_events_module(tmp_path):
+    code = cli.main(["event", "--run", str(tmp_path), "--type", "step", "surface=web", "state=ok"])
+    assert code == 0
+    text = (tmp_path / "events.jsonl").read_text(encoding="utf-8")
+    assert '"type": "step"' in text
+    assert '"surface": "web"' in text
+
+
+def test_event_subcommand_type_flag_wins_over_json_type(tmp_path):
+    code = cli.main([
+        "event", "--run", str(tmp_path), "--type", "finding",
+        "--json", '{"type": "step", "sev": "P1"}',
+    ])
+    assert code == 0
+    text = (tmp_path / "events.jsonl").read_text(encoding="utf-8")
+    assert '"type": "finding"' in text
+
+
+def test_event_subcommand_exits_two_on_bad_json(tmp_path, capsys):
+    code = cli.main(["event", "--run", str(tmp_path), "--type", "step", "--json", "{not json"])
+    assert code == 2
+    assert capsys.readouterr().err.strip()
+
+
+def test_event_subcommand_exits_two_on_field_without_equals(tmp_path, capsys):
+    code = cli.main(["event", "--run", str(tmp_path), "--type", "step", "noequals"])
+    assert code == 2
+    assert capsys.readouterr().err.strip()
 
 
 def test_main_rejects_an_unknown_subcommand():

@@ -9,6 +9,7 @@ test runner's own stdout. main() does it once, as the first statement, so every 
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from pathlib import Path
 # A5 ledger) replaces exactly one function here with real behaviour; the parser wiring does not
 # change.
 _STUB_VERBS = (
-    "setup-env", "prove", "plan", "event", "replay", "serve", "triage", "ledger",
+    "setup-env", "prove", "plan", "replay", "serve", "triage", "ledger",
     "budget", "model",
 )
 
@@ -43,6 +44,26 @@ def _run_migrate(args: argparse.Namespace) -> int:
     except Exception as exc:  # noqa: BLE001 -- CLI boundary, report and exit, never traceback
         print(str(exc), file=sys.stderr)
         return 1
+    return 0
+
+
+def _run_event(args: argparse.Namespace) -> int:
+    from flow_review import events as eventsmod
+    payload = {}
+    if args.json is not None:
+        try:
+            payload = json.loads(args.json)
+        except ValueError as exc:
+            print(f"--json is not valid JSON: {exc}", file=sys.stderr)
+            return 2
+    for field in args.fields:
+        if "=" not in field:
+            print(f"expected key=value, got {field!r}", file=sys.stderr)
+            return 2
+        key, _, value = field.partition("=")
+        payload[key] = value
+    payload["type"] = args.type_
+    eventsmod.append(Path(args.run_dir), payload)
     return 0
 
 
@@ -73,6 +94,14 @@ def build_parser() -> argparse.ArgumentParser:
     migrate_parser.add_argument("--path", default=None)
     migrate_parser.add_argument("--quiet", action="store_true")
     migrate_parser.set_defaults(func=_run_migrate)
+
+    event_parser = sub.add_parser("event")
+    event_parser.add_argument("--run", required=True, dest="run_dir")
+    event_parser.add_argument("--type", required=True, dest="type_")
+    event_parser.add_argument("--json", default=None)
+    event_parser.add_argument("fields", nargs="*")
+    event_parser.set_defaults(func=_run_event)
+
     return parser
 
 

@@ -33,17 +33,20 @@ emit the event together, every time.** Files alone leave the surface's panel bla
 ### The append idiom -- use exactly this
 
 ```bash
-TS=$(date +%Y-%m-%dT%H:%M:%S)
-printf '%s\n' "{\"ts\":\"$TS\",\"type\":\"step\",\"surface\":\"<surface-name>\",\"flow\":\"f1\",\"step\":\"open the target screen\",\"state\":\"ok\"}" >> "$RUN/events.jsonl"
+flow-review event --run "$RUN" --type step surface=<surface-name> flow=f1 step="open the target screen" state=ok
 ```
 
-- **Bash tool only.** Do NOT use PowerShell `Add-Content` / `Out-File` / `>` for this file -- they
-  write a BOM or ANSI bytes and the first line stops parsing as JSON.
-- `date +%Y-%m-%dT%H:%M:%S` -- **no timezone offset.** An offset-bearing `ts` breaks elapsed math.
-- One line. `>>` only, never `>`. Trailing newline mandatory.
-- **Never rewrite the file. Never read it back.** Multiple writers append concurrently; it is not
-  yours alone.
-- Escape `"` and newlines inside `text`. Keep `text` to one sentence.
+- The `flow-review event` CLI is the only way to write to `events.jsonl`. Never hand-build a
+  JSON line and never shell-append or `Add-Content` it directly -- the CLI owns the timestamp
+  (millisecond UTC, `Z` suffix), assigns every `finding` event its id, and redacts any
+  registered secret before the line touches disk.
+- Pass `--json '{"sev":"P1","text":"..."}'` for a payload with nested values, or plain
+  `key=value` arguments for the common flat case -- both may be combined; `--type` always wins
+  over a `type` key inside `--json`.
+- Escape `"` and newlines inside a `text` value the normal way for your shell; the CLI itself
+  never shells out to build the line.
+- **Never rewrite the file. Never read it back.** Multiple writers append concurrently; it is
+  not yours alone.
 
 ## 2. Evidence rules
 
