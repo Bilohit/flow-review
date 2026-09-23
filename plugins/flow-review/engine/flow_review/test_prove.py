@@ -239,17 +239,22 @@ def test_slow_precondition_does_not_blow_through_ready_deadline(tmp_path):
     # this test isolates the loop's capping behaviour rather than the baseline's -- the same
     # command runs in both places, so it only sleeps once a marker shows it has run before.
     marker = tmp_path / "precondition_seen.marker"
+    capped_marker = tmp_path / "capped_check_ran.marker"
     slow_precondition = _script(
         tmp_path, "slow_check.py",
         "import pathlib, sys, time\n"
         f"marker = pathlib.Path({str(marker)!r})\n"
         "if marker.exists():\n"
-        "    time.sleep(2)\n"
+        f"    pathlib.Path({str(capped_marker)!r}).write_text('ran')\n"
+        "    time.sleep(30)\n"
         "else:\n"
         "    marker.write_text('seen')\n"
         "sys.exit(1)\n",
     )
-    ready_timeout_s = 0.3
+    # Long enough that the observe loop is still inside its deadline after the baseline check,
+    # the launch and the first Windows descendant snapshot -- otherwise the loop sees a spent
+    # budget and never runs the check, and the test would pass without exercising the cap.
+    ready_timeout_s = 1.5
 
     check_started = time.monotonic()
     proof = provemod.prove(
@@ -260,10 +265,18 @@ def test_slow_precondition_does_not_blow_through_ready_deadline(tmp_path):
     elapsed = time.monotonic() - check_started
 
     assert proof.outcome == provemod.NOT_PROVEN
-    # Bounded against the 0.3s deadline (plus generous poll/teardown slack), never against
-    # the precondition's own 2s sleep or the 5s _PRECONDITION_TIMEOUT_S ceiling -- either of
-    # those overshooting would be exactly the bug this test catches.
-    assert elapsed < 1.5
+    assert capped_marker.exists(), "the capped in-loop check never ran; test proves nothing"
+    # Measured against the configured deadline plus a documented tolerance, never against the
+    # precondition's own 30s sleep or the _PRECONDITION_TIMEOUT_S ceiling -- reaching that
+    # ceiling is exactly the bug this test catches. The tolerance covers the work prove() does
+    # outside the capped check, which on Windows is dominated by PowerShell process walks: one
+    # throttled descendant snapshot (_DESCENDANT_SNAPSHOT_S) plus _kill_tree's fresh walk at
+    # teardown, each a few hundred ms idle and ~1s under a loaded full-suite run (a flat 1.5s
+    # bound failed once at 1.96s that way). The tolerance stays strictly below the ceiling, so
+    # an uncapped check still fails this assertion.
+    tolerance_s = 2.0
+    assert ready_timeout_s + tolerance_s < provemod._PRECONDITION_TIMEOUT_S
+    assert elapsed < ready_timeout_s + tolerance_s
 
 
 def test_popen_failure_returns_not_proven_instead_of_raising(tmp_path):
