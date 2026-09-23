@@ -8,12 +8,8 @@ know what a field added later means.
 from __future__ import annotations
 
 import json
-import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 SCHEMA_VERSION = 1
 VALID_KINDS = ("ui", "cli", "api", "library")

@@ -13,10 +13,6 @@ manufacture novelty.
 from __future__ import annotations
 
 import re
-import sys
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 _WS = re.compile(r"\s+")
 

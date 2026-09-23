@@ -4,7 +4,7 @@ import json
 
 import pytest
 
-from fr import config as cfgmod
+from flow_review import config as cfgmod
 
 
 def _surface_dict(**over):

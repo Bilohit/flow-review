@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from fr import audit
+from flow_review import audit
 
 
 def test_detects_a_web_dev_server_from_package_json(tmp_path):
@@ -95,7 +95,7 @@ def test_an_empty_repo_proposes_nothing_rather_than_guessing(tmp_path):
 
 def test_every_candidate_kind_is_valid(tmp_path):
     (tmp_path / "package.json").write_text(json.dumps({"scripts": {"dev": "vite"}}), encoding="utf-8")
-    from fr.config import VALID_KINDS
+    from flow_review.config import VALID_KINDS
     found = audit.detect(tmp_path)
     assert found, "the fixture should have produced at least one candidate"
     for candidate in found:

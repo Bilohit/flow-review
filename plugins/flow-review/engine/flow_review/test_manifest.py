@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from fr import manifest
+from flow_review import manifest
 
 
 def test_hash_ignores_line_ending_differences():

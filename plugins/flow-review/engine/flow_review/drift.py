@@ -9,14 +9,10 @@ which loses the gate entirely.
 """
 from __future__ import annotations
 
-import sys
 from pathlib import Path
 
-from fr import audit
-from fr.config import Config
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+from flow_review import audit
+from flow_review.config import Config
 
 # provenance keys/values are bare strings at the point of use otherwise -- a typo in one spot
 # and a check silently stops firing. Values are constrained to config.VALID_PROVENANCE.

@@ -16,9 +16,6 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-
 # No fixed surface list. Surfaces come from the run event's `surfaces` key when the main thread
 # announces them, and any surface that emits an event gets a column whether announced or not --
 # an unannounced surface with a blank panel is how a whole surface went invisible before.

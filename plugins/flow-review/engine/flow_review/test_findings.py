@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fr import findings
+from flow_review import findings
 
 
 def _f(sev="P1", location="web / settings / f01", claim="The save button is 8px from the edge.", ts="t1"):

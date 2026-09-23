@@ -21,12 +21,8 @@ from __future__ import annotations
 
 import json
 import re
-import sys
 from dataclasses import dataclass
 from pathlib import Path
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 EVIDENCE_FORMAT = "{path}:{line} -> {snippet}"
 # A whole-file finding (a file's mere existence) has no line to cite; forcing one onto it is

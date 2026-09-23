@@ -6,8 +6,8 @@ import sys
 import time
 from pathlib import Path
 
-from fr.audit import Candidate
-from fr import prove as provemod
+from flow_review.audit import Candidate
+from flow_review import prove as provemod
 
 
 def _candidate(launch: str) -> Candidate:

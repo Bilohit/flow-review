@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import json
 
-from fr import config as cfgmod
-from fr import drift
+from flow_review import config as cfgmod
+from flow_review import drift
 
 
 def _cfg(*surfaces):

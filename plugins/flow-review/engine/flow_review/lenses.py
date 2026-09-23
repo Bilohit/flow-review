@@ -13,11 +13,7 @@ Sprawl guard: a new lens set is added when a real user asks for one, never on a 
 """
 from __future__ import annotations
 
-import sys
 from dataclasses import dataclass
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 
 
 @dataclass(frozen=True)

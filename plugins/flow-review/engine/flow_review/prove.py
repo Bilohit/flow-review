@@ -23,16 +23,12 @@ from __future__ import annotations
 import os
 import signal
 import subprocess
-import sys
 import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
-from fr.audit import Candidate
-
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+from flow_review.audit import Candidate
 
 # Provenance vocabulary fr.config validates against (VALID_PROVENANCE). Kept here at their
 # existing values so a Proof's outcome can be translated straight into a Surface's field

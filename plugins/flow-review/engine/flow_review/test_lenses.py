@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from fr.config import VALID_KINDS
-from fr import lenses
+from flow_review.config import VALID_KINDS
+from flow_review import lenses
 
 
 def test_ui_keeps_the_six_named_lenses():
