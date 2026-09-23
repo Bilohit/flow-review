@@ -104,12 +104,12 @@ def apply_learnings(path: Path, recorded_hash: str, learnings: list[str]) -> str
     text = path.read_text(encoding="utf-8")
     body = "\n".join(f"- {line}" for line in learnings)
 
-    if is_human_edited(path, recorded_hash):
-        # The human owns this file. Their bytes survive; ours arrive as a clearly marked block
-        # they can accept, edit or delete.
-        new_text = _replace_annotation_block(text, body)
-    else:
-        new_text = f"{text.rstrip(chr(10))}\n\n{body}\n"
+    # Always the block path -- whether or not the file is human-edited. The old branch that
+    # bare-appended a bullet list when the file was untouched is what grew the file by one
+    # unbounded list every run (audit C5); replacing the same block every time is bounded no
+    # matter who touched the file between runs, and _replace_annotation_block already leaves
+    # every byte outside the block untouched either way.
+    new_text = _replace_annotation_block(text, body)
 
     path.write_text(new_text, encoding="utf-8")
     return manifest_hash(new_text)

@@ -24,15 +24,35 @@ def test_a_hand_edit_is_detected(tmp_path):
     assert manifest.is_human_edited(path, recorded) is True
 
 
-def test_learnings_rewrite_in_place_when_untouched(tmp_path):
+def test_learnings_always_use_the_annotation_block_even_when_the_file_is_untouched(tmp_path):
+    """The block mechanism is the ONLY path now -- an untouched file no longer gets a bare
+    bullet appended straight onto the end. That bare-append path was what grew unbounded across
+    runs (audit C5); every run's learnings now replace the same one block, whether or not a
+    human has edited the file since."""
     path = tmp_path / "flows.md"
     path.write_text("# flows\n", encoding="utf-8")
     recorded = manifest.manifest_hash(path.read_text(encoding="utf-8"))
     new_hash = manifest.apply_learnings(path, recorded, ["f01 resolved to /settings"])
     text = path.read_text(encoding="utf-8")
     assert "f01 resolved to /settings" in text
-    assert manifest.ANNOTATION_HEADER not in text
+    assert manifest.ANNOTATION_HEADER in text
+    assert manifest.ANNOTATION_FOOTER in text
     assert new_hash == manifest.manifest_hash(text)
+
+
+def test_a_second_run_on_an_untouched_file_replaces_the_block_rather_than_growing_it(tmp_path):
+    """The regression test for the unbounded-append bug itself: two runs in a row on a file
+    nobody hand-edited between them must leave exactly one block, not two bullet lists stacked
+    on top of each other growing forever."""
+    path = tmp_path / "flows.md"
+    path.write_text("# flows\n", encoding="utf-8")
+    recorded = manifest.manifest_hash(path.read_text(encoding="utf-8"))
+    first_hash = manifest.apply_learnings(path, recorded, ["one"])
+    manifest.apply_learnings(path, first_hash, ["two"])
+    text = path.read_text(encoding="utf-8")
+    assert text.count(manifest.ANNOTATION_HEADER) == 1
+    assert text.count(manifest.ANNOTATION_FOOTER) == 1
+    assert "two" in text and "one" not in text
 
 
 def test_learnings_never_overwrite_a_human_edit(tmp_path):
