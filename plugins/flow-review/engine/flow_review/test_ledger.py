@@ -165,3 +165,14 @@ def test_record_miss_counts_distinct_runs_not_calls():
     assert ledger.missed_twice(led, "export-csv") is False
     ledger.record_miss(led, "export-csv", "run-2")
     assert ledger.missed_twice(led, "export-csv") is True
+
+
+def test_same_run_duplicate_fingerprints_merge_keeping_most_severe_and_all_evidence():
+    led = ledger.reconcile(ledger.Ledger(), [
+        _finding(sev="P2", text="minor", evidence=["a"]),
+        _finding(sev="P1", text="major", evidence=["b"]),
+    ], {"checkout"}, "run-1")
+    (entry,) = led.findings.values()
+    assert entry.sev == "P1"
+    assert entry.text == "major"
+    assert entry.evidence == ["a", "b"]

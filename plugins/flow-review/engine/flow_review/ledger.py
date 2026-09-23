@@ -75,9 +75,18 @@ def reconcile(
     alias_decisions: dict[str, str] | None = None,
 ) -> Ledger:
     alias_decisions = alias_decisions or {}
-    current_fps = {
-        fingerprint(f["flow_id"], f["rule"], f["route"], f["locator"]): f for f in findings
-    }
+    current_fps: dict[str, dict] = {}
+    for f in findings:
+        fp = fingerprint(f["flow_id"], f["rule"], f["route"], f["locator"])
+        prev = current_fps.get(fp)
+        if prev is None:
+            current_fps[fp] = dict(f, evidence=list(f.get("evidence", [])))
+            continue
+        # Same-run duplicate: keep the most severe sev (P0 < P1 < P2) + its text; union evidence.
+        evidence = prev["evidence"] + [e for e in f.get("evidence", []) if e not in prev["evidence"]]
+        if f["sev"] < prev["sev"]:
+            prev = dict(f)
+        current_fps[fp] = dict(prev, evidence=evidence)
 
     # Rule 1-3: transition every EXISTING entry against this run's observations.
     for entry in ledger_.findings.values():
