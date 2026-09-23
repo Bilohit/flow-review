@@ -60,6 +60,16 @@ _TEARDOWN_WAIT_S = 5.0
 # raising out of prove(); a leftover temp file is a nuisance, not a defect worth crashing over.
 _UNLINK_RETRIES = 5
 _UNLINK_RETRY_DELAY_S = 0.1
+# ponytail: each snapshot shells out to PowerShell (a few hundred ms), so at _POLL_INTERVAL_S
+# that was a fresh process spawn every 100ms for the life of the launch -- real but needless
+# cost on every Windows proof, not just the rare H3 case it exists for. Throttled to once per
+# _DESCENDANT_SNAPSHOT_S (_kill_tree's own unconditional fresh walk at teardown time, unchanged
+# below, already covers the "right before teardown" case for free). Ceiling this accepts: a
+# grandchild born and orphaned entirely inside one _DESCENDANT_SNAPSHOT_S window (spawned after
+# the last snapshot, its parent already dead again before the next one) can still escape
+# detection. Upgrade path if that ever bites in practice: a Windows Job Object around the
+# launched process, which the OS itself keeps alive membership for regardless of polling.
+_DESCENDANT_SNAPSHOT_S = 1.0
 
 
 @dataclass
@@ -381,11 +391,15 @@ def prove(
     # possibly before _teardown ever gets a chance to walk the tree fresh. A pid observed here
     # remains a real process to hunt down at teardown even once that walk can no longer find it.
     windows_descendants: set[int] = set()
+    last_snapshot_s: float | None = None
 
     try:
         while True:
             if _IS_WINDOWS:
-                windows_descendants |= _descendant_pids(process.pid)
+                now = time.monotonic()
+                if last_snapshot_s is None or now - last_snapshot_s >= _DESCENDANT_SNAPSHOT_S:
+                    windows_descendants |= _descendant_pids(process.pid)
+                    last_snapshot_s = now
             status = process.poll()
             if status is not None:
                 exit_code = status
@@ -427,6 +441,14 @@ def prove(
                 break
             time.sleep(min(_POLL_INTERVAL_S, deadline - elapsed))
     finally:
+        # No extra snapshot is taken here right before teardown: _kill_tree already does its
+        # own fresh, unconditional _descendant_pids(process.pid) walk as its first step (see
+        # _kill_tree below), so a second one here would either duplicate that exact call (when
+        # the direct child is still alive -- pure redundant PowerShell cost) or find nothing at
+        # all (when it has already exited -- the H3 case, where the link back to process.pid is
+        # already gone from the table and no walk from process.pid can recover it, however
+        # recent). windows_descendants -- collected during the loop, throttled below -- is the
+        # only thing that can still name a descendant in that second case.
         teardown_ok = _teardown(process, windows_descendants)
 
     if not teardown_ok:

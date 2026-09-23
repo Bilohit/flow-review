@@ -374,3 +374,27 @@ def test_a_grandchild_orphaned_by_an_already_exited_direct_child_is_still_reaped
     orphan_pid = int(pidfile.read_text().strip())
     assert not _process_alive(orphan_pid), "the orphaned grandchild must not survive prove()"
     assert proof.teardown_ok is True
+
+
+def test_descendant_snapshot_is_throttled_over_a_multi_second_prove(tmp_path, monkeypatch):
+    # perf(prove): the Windows descendant walk shells out to PowerShell -- a few hundred ms --
+    # so calling it on every _POLL_INTERVAL_S (0.1s) poll for the life of a multi-second launch
+    # was needless cost. It should fire roughly once per _DESCENDANT_SNAPSHOT_S, plus one extra
+    # snapshot right before teardown, not once per poll. On POSIX, _descendant_pids is never
+    # called at all (the Windows-only branch), so this asserts the ceiling trivially there too.
+    import math
+
+    launch = _script(tmp_path, "wait_two_seconds.py", "import time\ntime.sleep(2)\n")
+    calls = {"n": 0}
+    real_descendant_pids = provemod._descendant_pids
+
+    def _counting_descendant_pids(pid):
+        calls["n"] += 1
+        return real_descendant_pids(pid)
+
+    monkeypatch.setattr(provemod, "_descendant_pids", _counting_descendant_pids)
+
+    proof = provemod.prove(_candidate(launch), tmp_path, exit_timeout_s=5)
+
+    assert proof.outcome == provemod.EXITED_CLEAN
+    assert calls["n"] <= math.ceil(proof.duration_s) + 2
