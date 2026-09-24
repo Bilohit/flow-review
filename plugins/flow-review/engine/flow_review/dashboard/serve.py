@@ -12,7 +12,7 @@ import mimetypes
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 from flow_review import triage
 from flow_review.dashboard.state import fold
@@ -68,6 +68,15 @@ class Handler(BaseHTTPRequestHandler):
             return
         if parsed.path == "/events":
             self._stream_events()
+            return
+        if parsed.path.startswith("/run/"):
+            run_root = Path(self.run_dir).resolve()
+            candidate = (run_root / unquote(parsed.path[len("/run/"):])).resolve()
+            ctype = mimetypes.guess_type(str(candidate))[0] or ""
+            if run_root in candidate.parents and candidate.is_file() and ctype.startswith("image/"):
+                self._send_file(candidate, ctype)
+            else:
+                self._send_404()
             return
         rel = parsed.path.lstrip("/")
         page_root = PAGE_DIR.resolve()

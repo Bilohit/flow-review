@@ -10,6 +10,7 @@ import threading
 from pathlib import Path
 
 import pytest
+from PIL import Image
 
 from flow_review import events
 from flow_review.dashboard.serve import make_server
@@ -50,6 +51,10 @@ def _seed_run(project_root: Path, run_dir: Path, lane_count: int) -> None:
             "type": "output", "surface_id": sid,
             "text": f"GET /api/cart 200\nPOST /api/checkout 200 ({sid})",
         })
+        shots = run_dir / "shots"
+        shots.mkdir(exist_ok=True)
+        Image.new("RGB", (640, 400), (200 - 30 * (i % 4), 210, 225)).save(shots / f"{sid}.png")
+        events.append(run_dir, {"type": "shot", "surface_id": sid, "shot": f"shots/{sid}.png"})
         sev = SEVS[i % len(SEVS)]
         events.append(run_dir, {
             "type": "finding", "surface_id": sid, "flow_id": "checkout",

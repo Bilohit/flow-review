@@ -21,6 +21,12 @@ function render() {
   if (state.run.finished) renderReport(state.report);
 }
 
+// Live mode serves run-folder files under /run/; the static report inlines them, so paths pass through.
+function _assetUrl(p) {
+  if (!p || document.getElementById('state-data')) return p || '';
+  return 'run/' + p.split('/').map(encodeURIComponent).join('/');
+}
+
 function _fmtElapsed(totalSeconds) {
   const s = totalSeconds || 0;
   const m = Math.floor(s / 60);
@@ -157,7 +163,7 @@ function renderLanes(lanes) {
     while (shotEl.firstChild) shotEl.removeChild(shotEl.firstChild);
     if (lane.shot) {
       const img = document.createElement('img');
-      img.src = lane.shot;
+      img.src = _assetUrl(lane.shot);
       img.alt = lane.surface_id + ' latest screen';
       shotEl.appendChild(img);
     } else if (lane.output != null) {
@@ -271,7 +277,7 @@ function renderEvidence(finding, container) {
     const labels = ['before', 'after'];
     finding.evidence.slice(0, 2).forEach((src, i) => {
       const img = document.createElement('img');
-      img.src = src;
+      img.src = _assetUrl(src);
       img.alt = `${finding.text || finding.rule} -- ${labels[i]}`;
       wrap.appendChild(img);
     });
@@ -279,7 +285,7 @@ function renderEvidence(finding, container) {
   } else if (finding.surface_id && isVisual(finding)) {
     const img = document.createElement('img');
     img.className = 'annotated-shot';
-    img.src = finding.evidence[0] || '';
+    img.src = _assetUrl(finding.evidence[0]);
     img.alt = finding.text || `${finding.surface_id} evidence`;
     container.appendChild(img);
   } else {

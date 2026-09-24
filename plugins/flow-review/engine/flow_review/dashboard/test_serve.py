@@ -157,6 +157,31 @@ def test_triage_post_returns_400_on_apply_exception(tmp_path, monkeypatch):
         server.server_close()
 
 
+def _get(port, path):
+    try:
+        with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as r:
+            return r.status, r.headers.get("Content-Type")
+    except urllib.error.HTTPError as exc:
+        return exc.code, None
+
+
+def test_run_route_serves_images_from_the_run_folder_only(tmp_path):
+    from PIL import Image
+    server, port = _start(tmp_path)
+    run_dir = server.RequestHandlerClass.run_dir
+    try:
+        (run_dir / "shots").mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (8, 8)).save(run_dir / "shots" / "a.png")
+        (run_dir / "events.jsonl").write_text("", encoding="utf-8")
+        assert _get(port, "/run/shots/a.png") == (200, "image/png")
+        assert _get(port, "/run/events.jsonl")[0] == 404            # not an image
+        assert _get(port, "/run/../findings.json")[0] == 404        # traversal
+        assert _get(port, "/run/%2e%2e/%2e%2e/secret.png")[0] == 404
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_triage_post_from_a_foreign_origin_is_403(tmp_path):
     server, port = _start(tmp_path)
     try:

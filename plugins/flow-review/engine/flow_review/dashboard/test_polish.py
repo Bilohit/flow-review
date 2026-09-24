@@ -67,3 +67,10 @@ def test_header_dots_name_their_surface_and_status(page):
         assert title.startswith("surface-") and ": " in title, title
         assert d.get_attribute("aria-label") == title
         assert d.get_attribute("role") == "img"
+
+
+@pytest.mark.web
+def test_lane_thumbnail_loads(page):
+    img = page.locator('[data-role="lanes"] .lane .shot img').first
+    img.wait_for()
+    assert page.evaluate("(el) => el.complete && el.naturalWidth > 0", img.element_handle())
