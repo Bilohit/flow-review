@@ -19,11 +19,13 @@ contract, not a summary of it.
 
 **Your only interface to a web surface is the `flow-review drive` CLI** (A-24): `start` (run once
 by the orchestrator before you are dispatched, per `SKILL.md` section 3, never by you), `goto`,
-`click`, `fill`, `press`, `look`, `flow-begin`, `flow-end`, `stop` (run once by the orchestrator
-at run end, never by you). **You do not have, and must never reach for, a browser-automation
-library, an MCP browser tool, or any other means of touching a browser.** Your `tools` frontmatter is
-`Read, Bash, Glob, Grep` -- `Bash` is how you invoke `flow-review drive ...`, and there is no
-browser tool in that list for a reason.
+`click`, `fill`, `press`, `look`, `fault`, `flow-begin`, `flow-end`, `stop` (run once by the
+orchestrator at run end, never by you). For unhappy paths, inject with
+`flow-review drive fault --kind offline|5xx|slow --pattern GLOB --delay-ms N` and undo with
+`flow-review drive fault --clear`. **You do not have, and must never reach for, a
+browser-automation library, an MCP browser tool, or any other means of touching a browser.** Your
+`tools` frontmatter is `Read, Bash, Glob, Grep` -- `Bash` is how you invoke `flow-review drive
+...`, and there is no browser tool in that list for a reason.
 
 **Consumes:** the surface's config entry (kind, driver, launch, preconditions, `state`, `reset`,
 `creds`) only to know which surface `--surface ID` names; `flow-review drive`'s compact JSON

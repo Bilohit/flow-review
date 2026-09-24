@@ -10,7 +10,8 @@ Test the stated goal, and everything around it -- **all of the following are on 
 except in quick mode, which tests only the stated goal's happy path and none of what follows:
 
 - **Unhappy paths.** Bad input, a server error or the network going offline partway through, a
-  double submit.
+  double submit -- inject with `flow-review drive fault --kind offline|5xx|slow --pattern GLOB
+  --delay-ms N`, then `flow-review drive fault --clear` to restore normal behaviour.
 - **Interruptions.** Back, refresh, reopen, rotate (mobile), backgrounding and returning.
 - **Alternate routes and adjacent features.** Other ways to reach the same outcome, and features
   the goal sits next to that a real user would notice along the way.

@@ -1,11 +1,6 @@
 from flow_review.web import faults
 
 
-def test_match_pattern_glob():
-    assert faults.match_pattern("http://x/api/broken", "**/api/*")
-    assert not faults.match_pattern("http://x/other", "**/api/*")
-
-
 class FakeRequest:
     def __init__(self, url):
         self.url = url

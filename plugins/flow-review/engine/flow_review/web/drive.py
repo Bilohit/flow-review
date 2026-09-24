@@ -16,7 +16,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from flow_review import envsetup, events
-from flow_review.web import actionlog, measure
+from flow_review.web import actionlog, faults, measure
 
 MAX_BODY = 64 * 1024  # an action POST is a few hundred bytes to a few KiB (a fill value)
 
@@ -95,6 +95,32 @@ class DriveSession:
             })
             result["shot"] = str(path)
         return result
+
+    def fault(self, kind: str, pattern: str | None = None, delay_ms: int | None = None) -> dict:
+        page = self.driver.page
+        if kind == "offline":
+            faults.inject_offline(page)
+        elif kind == "5xx":
+            faults.inject_5xx(page, pattern, status=503)
+        elif kind == "slow":
+            faults.inject_slow(page, pattern, delay_ms)
+        else:
+            raise ValueError(f"unknown fault kind {kind!r}")
+        spec = {"kind": kind, "pattern": pattern, "delay_ms": delay_ms}
+        events.append(self.run_dir, {
+            "type": "fault", "surface_id": self.surface_id, "flow_id": self.flow_id,
+            "fault": spec,
+        })
+        return {"ok": True, "fault": spec}
+
+    def clear_faults(self) -> dict:
+        faults.clear_faults(self.driver.page)
+        spec = {"kind": "clear"}
+        events.append(self.run_dir, {
+            "type": "fault", "surface_id": self.surface_id, "flow_id": self.flow_id,
+            "fault": spec,
+        })
+        return {"ok": True, "fault": spec}
 
     def _act(self, action, op, *, locator=None, value=None, secret=False, url_hint=None,
              from_env=None):
@@ -218,6 +244,11 @@ class _ActionHandler(BaseHTTPRequestHandler):
             return session.press(args["key"])
         if verb == "look":
             return session.look(shot=args.get("shot", False))
+        if verb == "fault":
+            if args.get("clear"):
+                return session.clear_faults()
+            return session.fault(args["kind"], pattern=args.get("pattern"),
+                                  delay_ms=args.get("delay_ms"))
         if verb == "flow-begin":
             return session.flow_begin(args["flow"])
         if verb == "flow-end":
@@ -432,6 +463,22 @@ def cmd_look(args: argparse.Namespace) -> dict:
     return _client_call(args, "look", {"shot": args.shot})
 
 
+def cmd_fault(args: argparse.Namespace) -> dict:
+    if args.clear:
+        if args.kind or args.pattern or args.delay_ms is not None:
+            raise ValueError("--clear cannot be combined with --kind/--pattern/--delay-ms")
+        return _client_call(args, "fault", {"clear": True})
+    if not args.kind:
+        raise ValueError("--kind is required unless --clear is given")
+    if args.kind in ("5xx", "slow") and not args.pattern:
+        raise ValueError(f"--pattern is required for --kind {args.kind}")
+    if args.kind == "slow" and args.delay_ms is None:
+        raise ValueError("--delay-ms is required for --kind slow")
+    return _client_call(args, "fault", {
+        "kind": args.kind, "pattern": args.pattern, "delay_ms": args.delay_ms,
+    })
+
+
 def cmd_flow_begin(args: argparse.Namespace) -> dict:
     return _client_call(args, "flow-begin", {"flow": args.flow})
 
@@ -500,6 +547,14 @@ def build_drive_parser() -> argparse.ArgumentParser:
     _common(p)
     p.add_argument("--shot", action="store_true")
     p.set_defaults(func=cmd_look)
+
+    p = sub.add_parser("fault")
+    _common(p)
+    p.add_argument("--kind", choices=("offline", "5xx", "slow"))
+    p.add_argument("--pattern")
+    p.add_argument("--delay-ms", type=int, dest="delay_ms")
+    p.add_argument("--clear", action="store_true")
+    p.set_defaults(func=cmd_fault)
 
     p = sub.add_parser("flow-begin")
     _common(p)

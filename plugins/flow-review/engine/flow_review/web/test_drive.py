@@ -486,3 +486,109 @@ def test_server_rejects_oversized_body(tmp_path):
         conn.close()
     finally:
         drive._post(state["port"], "stop", {})
+
+
+# --- R5: `drive fault` (B6, A-28) --------------------------------------------------------
+
+
+def _fault_events(run_dir):
+    lines = (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    return [json.loads(line) for line in lines if json.loads(line).get("type") == "fault"]
+
+
+@pytest.mark.web
+def test_fault_offline_blocks_goto(tmp_path, webapp_server):
+    from flow_review.web.driver import WebDriver
+    base_url, _ = webapp_server
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    driver = WebDriver(headless=True)
+    driver.launch(base_url)
+    session = DriveSession(driver, "webapp", run_dir, tmp_path / "project", record_enabled=False)
+    try:
+        result = session.fault("offline", pattern=None, delay_ms=None)
+        assert result == {"ok": True, "fault": {"kind": "offline", "pattern": None,
+                                                  "delay_ms": None}}
+        with pytest.raises(Exception):
+            session.goto("/")
+        fault_events = _fault_events(run_dir)
+        assert fault_events and fault_events[0]["fault"]["kind"] == "offline"
+    finally:
+        driver.close()
+
+
+@pytest.mark.web
+def test_fault_5xx_matching_request_returns_503(tmp_path, webapp_server):
+    from flow_review.web.driver import WebDriver
+    base_url, _ = webapp_server
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    driver = WebDriver(headless=True)
+    driver.launch(base_url)
+    session = DriveSession(driver, "webapp", run_dir, tmp_path / "project", record_enabled=False)
+    try:
+        session.goto("/")
+        session.fault("5xx", pattern="**/api/fail", delay_ms=None)
+        session.click({"testid": "load-button"})
+        assert any(n["status"] == 503 for n in driver.network_log())
+    finally:
+        driver.close()
+
+
+@pytest.mark.web
+def test_fault_slow_delays_matching_request(tmp_path, webapp_server):
+    from flow_review.web.driver import WebDriver
+    base_url, _ = webapp_server
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    driver = WebDriver(headless=True)
+    driver.launch(base_url)
+    session = DriveSession(driver, "webapp", run_dir, tmp_path / "project", record_enabled=False)
+    try:
+        session.goto("/")
+        session.fault("slow", pattern="**/api/fail", delay_ms=1500)
+        start = time.monotonic()
+        session.click({"testid": "load-button"})
+        elapsed = time.monotonic() - start
+        assert elapsed >= 1.5
+    finally:
+        driver.close()
+
+
+@pytest.mark.web
+def test_fault_clear_restores_normal_behaviour(tmp_path, webapp_server):
+    from flow_review.web.driver import WebDriver
+    base_url, _ = webapp_server
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    driver = WebDriver(headless=True)
+    driver.launch(base_url)
+    session = DriveSession(driver, "webapp", run_dir, tmp_path / "project", record_enabled=False)
+    try:
+        session.fault("offline", pattern=None, delay_ms=None)
+        result = session.clear_faults()
+        assert result == {"ok": True, "fault": {"kind": "clear"}}
+        session.goto("/")  # no longer aborted
+        fault_events = _fault_events(run_dir)
+        assert fault_events[-1]["fault"]["kind"] == "clear"
+    finally:
+        driver.close()
+
+
+def test_fault_bad_args_rejected_with_json_error_style():
+    def _ns(**overrides):
+        base = {"surface": "webapp", "run_dir": "run", "kind": None, "pattern": None,
+                "delay_ms": None, "clear": False}
+        base.update(overrides)
+        return argparse.Namespace(**base)
+
+    with pytest.raises(ValueError, match="--kind"):
+        drive.cmd_fault(_ns())
+    with pytest.raises(ValueError, match="--pattern"):
+        drive.cmd_fault(_ns(kind="5xx"))
+    with pytest.raises(ValueError, match="--pattern"):
+        drive.cmd_fault(_ns(kind="slow", delay_ms=1500))
+    with pytest.raises(ValueError, match="--delay-ms"):
+        drive.cmd_fault(_ns(kind="slow", pattern="**/api/*"))
+    with pytest.raises(ValueError, match="--clear"):
+        drive.cmd_fault(_ns(kind="offline", clear=True))
