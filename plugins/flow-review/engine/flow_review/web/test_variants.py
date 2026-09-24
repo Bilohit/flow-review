@@ -35,6 +35,17 @@ def test_plan_variants_goal_and_auto_and_full_all_expand():
         assert len(variants.plan_variants(surface, mode)) == 7
 
 
+def test_run_all_quick_mode_runs_nothing_and_never_launches_a_driver():
+    surface = _FakeSurface({"viewport": [{"width": 375, "height": 812}]})
+
+    def boom(**kw):
+        raise AssertionError("driver must not be launched when the plan is empty")
+
+    results = variants.run_all(boom, "http://x", {"flow_id": "f", "steps": []}, surface,
+                                storage_state_dir=None, mode="quick")
+    assert results == []
+
+
 import pytest
 
 pytest.importorskip("playwright")

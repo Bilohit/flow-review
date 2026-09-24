@@ -119,6 +119,42 @@ def replay_one(driver, log: dict, measure: MeasureHook | None = None,
                          divergence=None, findings=findings)
 
 
+def _run_variants(surface, base_url: str, log: dict, mode: str,
+                  storage_state_dir: Path | None) -> list[dict]:
+    """B7/A-28: runs the device/persona variant set (viewport, light/dark, keyboard-only,
+    reduced motion, new/returning storage state) over `log` and returns one canonical finding
+    per variant whose replay diverged or regressed. `mode == "quick"` plans none (A-12), so no
+    driver is ever launched in that case. Imported lazily -- `variants` imports `replay_one`
+    from this module, so a top-level import here would be circular."""
+    from flow_review.web import variants as variants_mod
+
+    def driver_factory(**kwargs):
+        return WebDriver(headless=True, **kwargs)
+
+    out: list[dict] = []
+    for variant, result in variants_mod.run_all(driver_factory, base_url, log, surface,
+                                                 storage_state_dir, mode=mode):
+        if result["status"] == "clean":
+            continue
+        route = ""
+        if result["divergence"] is not None:
+            route = _url_path(result["divergence"].get("url"))
+        elif result["findings"]:
+            route = result["findings"][0].get("route", "")
+        # No `context` field exists on the canonical finding payload, so the variant's params
+        # go into `evidence` (see task-R6-report.md).
+        out.append({
+            "surface_id": surface.id, "flow_id": log.get("flow_id", ""),
+            "rule": f"variant.{variant['kind']}", "route": route, "locator": "",
+            "sev": "P1",
+            "text": f"variant {variant['kind']} {result['status']}",
+            "evidence": [f"params={json.dumps(variant['params'], sort_keys=True)}",
+                         f"status={result['status']}"],
+            "disposition": "engine",
+        })
+    return out
+
+
 def _load_tokens(surface, project_root: Path) -> dict[str, str] | None:
     tokens_file = surface.options.get("tokens_file")
     if not tokens_file:
@@ -169,7 +205,7 @@ def _playwright_surfaces(cfg, surface_id: str | None):
 
 
 def replay(cfg, project_root: Path, surface_id: str | None = None,
-           flow_id: str | None = None) -> int:
+           flow_id: str | None = None, variants: bool = False, mode: str = "goal") -> int:
     surfaces = _playwright_surfaces(cfg, surface_id)
     if surface_id is not None and not surfaces:
         print(f"no playwright surface named {surface_id!r} in config", file=sys.stderr)
@@ -216,6 +252,13 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
                     # a diverged flow never reached its later steps: its unseen findings are
                     # unknown, not fixed (CP2 I6)
                     flows_run.add(log["flow_id"])
+                    if variants:
+                        storage_state_dir = (
+                            project_root / ".flow-review" / "variants" / surface.id
+                        )
+                        all_findings.extend(_run_variants(
+                            surface, surface.options["base_url"], log, mode, storage_state_dir,
+                        ))
                 if result["status"] == "divergence":
                     d = result["divergence"]
                     divergences.append({
@@ -264,7 +307,8 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
     return 0
 
 
-def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path) -> int:
+def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path,
+               variants: bool = False, mode: str = "goal") -> int:
     log = actionlog.load(log_path)
     surfaces = [
         s for s in _playwright_surfaces(cfg, None) if s.id == log["surface_id"]
@@ -292,13 +336,24 @@ def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path) -> int:
     finally:
         driver.close()
 
+    variant_findings: list[dict] = []
+    # Running the variant set on a base flow that never got past its own divergence would just
+    # reproduce the same failure N more times, so it only runs after a base flow that completed.
+    if variants and result["status"] != "divergence":
+        storage_state_dir = run_dir / "variants" / surfaces[0].id
+        variant_findings = _run_variants(surfaces[0], surfaces[0].options["base_url"], log,
+                                          mode, storage_state_dir)
+        for finding in variant_findings:
+            events.append(run_dir, {"type": "finding", **finding})
+
+    out = dict(result)
+    out["variant_findings"] = variant_findings
     result_path = log_path.with_name(log_path.name + ".result.json")
-    result_path.write_text(json.dumps(dict(result), ensure_ascii=False, indent=2),
-                           encoding="utf-8")
+    result_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
 
     if result["status"] == "divergence":
         return 2
-    if result["findings"]:
+    if result["findings"] or variant_findings:
         return 1
     return 0
 

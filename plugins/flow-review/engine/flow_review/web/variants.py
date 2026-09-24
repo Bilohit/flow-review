@@ -126,9 +126,9 @@ def _replay_keyboard_only(driver: Any, log: dict) -> ReplayResult:
 
 
 def run_all(driver_factory: Callable[..., Any], base_url: str, log: dict, surface: Any,
-            storage_state_dir: Path) -> list[tuple[Variant, ReplayResult]]:
+            storage_state_dir: Path, mode: str = "full") -> list[tuple[Variant, ReplayResult]]:
     results = []
-    for variant in plan_variants(surface, "full"):
+    for variant in plan_variants(surface, mode):
         storage_state_path = (
             storage_state_dir / "storage_state.json"
             if variant["kind"] == "storage-state" else None

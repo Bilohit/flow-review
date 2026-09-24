@@ -328,6 +328,197 @@ def test_diverged_flow_does_not_mark_unseen_findings_fixed(tmp_path, monkeypatch
     assert states == {"open"}
 
 
+# ---------- --variants wiring (fake driver, no browser) ----------
+
+def test__run_variants_files_p1_engine_finding_for_diverged_variant():
+    surface = _surface("http://x")
+    log = {"flow_id": "f", "steps": []}
+    variant = {"kind": "viewport", "params": {"width": 375, "height": 812}}
+    diverged = replay_mod.ReplayResult(
+        flow_id="f", status="divergence", steps_run=1,
+        divergence={"step_index": 0, "locator": None, "reason": "locator_not_found",
+                    "url": "/x"},
+        findings=[],
+    )
+
+    class _FakeVariantsMod:
+        @staticmethod
+        def run_all(*a, **kw):
+            return [(variant, diverged)]
+
+    import sys
+    monkey_mod = sys.modules.get("flow_review.web.variants")
+    orig_run_all = monkey_mod.run_all
+    monkey_mod.run_all = _FakeVariantsMod.run_all
+    try:
+        out = replay_mod._run_variants(surface, "http://x", log, "goal", None)
+    finally:
+        monkey_mod.run_all = orig_run_all
+
+    assert len(out) == 1
+    finding = out[0]
+    assert finding["surface_id"] == "webapp" and finding["flow_id"] == "f"
+    assert finding["rule"] == "variant.viewport"
+    assert finding["sev"] == "P1"
+    assert finding["disposition"] == "engine"
+    assert finding["route"] == "/x"
+    assert any("375" in item for item in finding["evidence"])
+
+
+def test__run_variants_skips_clean_variants():
+    surface = _surface("http://x")
+    log = {"flow_id": "f", "steps": []}
+    variant = {"kind": "reduced-motion", "params": {}}
+    clean = replay_mod.ReplayResult(flow_id="f", status="clean", steps_run=1,
+                                    divergence=None, findings=[])
+
+    import sys
+    monkey_mod = sys.modules.get("flow_review.web.variants")
+    orig_run_all = monkey_mod.run_all
+    monkey_mod.run_all = lambda *a, **kw: [(variant, clean)]
+    try:
+        out = replay_mod._run_variants(surface, "http://x", log, "goal", None)
+    finally:
+        monkey_mod.run_all = orig_run_all
+
+    assert out == []
+
+
+def test_replay_log_variants_quick_mode_runs_none(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    run_dir = tmp_path / "runs" / "run1"
+    run_dir.mkdir(parents=True)
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    log_path = actionlog.save(log, run_dir, project_root, record_enabled=False)
+
+    drv = _FakeDriver(click_target="/")
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+
+    code = replay_mod.replay_log(cfg, project_root, log_path, run_dir,
+                                 variants=True, mode="quick")
+    assert code == 0
+    assert not (run_dir / "events.jsonl").exists()
+
+
+def test_replay_log_variants_off_leaves_events_untouched(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    run_dir = tmp_path / "runs" / "run1"
+    run_dir.mkdir(parents=True)
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    log_path = actionlog.save(log, run_dir, project_root, record_enabled=False)
+
+    drv = _FakeDriver(click_target="/")
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+
+    code = replay_mod.replay_log(cfg, project_root, log_path, run_dir)
+    assert code == 0
+    assert not (run_dir / "events.jsonl").exists()
+
+
+def test_replay_log_variants_files_finding_and_exits_one(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    run_dir = tmp_path / "runs" / "run1"
+    run_dir.mkdir(parents=True)
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    log_path = actionlog.save(log, run_dir, project_root, record_enabled=False)
+
+    drv = _FakeDriver(click_target="/")
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+
+    variant = {"kind": "viewport", "params": {"width": 375, "height": 812}}
+    diverged = replay_mod.ReplayResult(
+        flow_id="f", status="divergence", steps_run=1,
+        divergence={"step_index": 0, "locator": None, "reason": "locator_not_found",
+                    "url": "/x"},
+        findings=[],
+    )
+    monkeypatch.setattr("flow_review.web.variants.run_all", lambda *a, **kw: [(variant, diverged)])
+
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+    code = replay_mod.replay_log(cfg, project_root, log_path, run_dir,
+                                 variants=True, mode="goal")
+    assert code == 1
+
+    events_path = run_dir / "events.jsonl"
+    lines = [json.loads(line) for line in events_path.read_text().splitlines()]
+    findings = [e for e in lines if e["type"] == "finding"]
+    assert len(findings) == 1
+    assert findings[0]["rule"] == "variant.viewport"
+    assert findings[0]["sev"] == "P1"
+    assert findings[0]["disposition"] == "engine"
+
+
+def test_replay_variants_files_finding_and_flows_into_ledger(tmp_path, monkeypatch):
+    from flow_review import ledger
+    project_root = tmp_path / "project"
+    recordings = project_root / ".flow-review" / "recordings" / "webapp"
+    recordings.mkdir(parents=True)
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    (recordings / "f.json").write_text(json.dumps(log), encoding="utf-8")
+
+    drv = _FakeDriver(click_target="/")
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+
+    variant = {"kind": "color-scheme", "params": {"scheme": "dark"}}
+    regressed = replay_mod.ReplayResult(flow_id="f", status="regression", steps_run=1,
+                                        divergence=None, findings=[])
+    monkeypatch.setattr("flow_review.web.variants.run_all",
+                        lambda *a, **kw: [(variant, regressed)])
+
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+    code = replay_mod.replay(cfg, project_root, variants=True, mode="goal")
+    assert code == 1
+
+    ledger_ = ledger.load(project_root / ".flow-review" / "findings.json")
+    assert any(e.rule == "variant.color-scheme" and e.sev == "P1"
+               for e in ledger_.findings.values())
+
+
+def test_replay_variants_off_by_default_does_not_touch_ledger_variants(tmp_path, monkeypatch):
+    from flow_review import ledger
+    project_root = tmp_path / "project"
+    recordings = project_root / ".flow-review" / "recordings" / "webapp"
+    recordings.mkdir(parents=True)
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    (recordings / "f.json").write_text(json.dumps(log), encoding="utf-8")
+
+    drv = _FakeDriver(click_target="/")
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+    code = replay_mod.replay(cfg, project_root)
+    assert code == 0
+    ledger_ = ledger.load(project_root / ".flow-review" / "findings.json")
+    assert not any(e.rule.startswith("variant.") for e in ledger_.findings.values())
+
+
 def test_replay_one_opens_a_step_window_per_step():
     log = actionlog.new_log("webapp", "f")
     actionlog.record_step(log, "goto", url="/")

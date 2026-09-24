@@ -122,6 +122,60 @@ def test_replay_no_recordings_exits_zero(tmp_path):
     assert cli.main(["replay", "--project", str(tmp_path)]) == 0
 
 
+def test_replay_variants_default_mode_is_goal_and_off_by_default(tmp_path, monkeypatch):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
+    captured = {}
+
+    def fake_replay(cfg, project_root, surface_id, flow_id, variants=False, mode="goal"):
+        captured["variants"] = variants
+        captured["mode"] = mode
+        return 0
+
+    monkeypatch.setattr("flow_review.web.replay.replay", fake_replay)
+    code = cli.main(["replay", "--project", str(tmp_path)])
+    assert code == 0
+    assert captured == {"variants": False, "mode": "goal"}
+
+
+def test_replay_variants_and_mode_flags_thread_through_log_path(tmp_path, monkeypatch):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
+    captured = {}
+
+    def fake_replay_log(cfg, project_root, log, run_dir, variants=False, mode="goal"):
+        captured["variants"] = variants
+        captured["mode"] = mode
+        return 0
+
+    monkeypatch.setattr("flow_review.web.replay.replay_log", fake_replay_log)
+    code = cli.main([
+        "replay", "--project", str(tmp_path), "--log", "x.json", "--run", str(tmp_path),
+        "--variants", "--mode", "full",
+    ])
+    assert code == 0
+    assert captured == {"variants": True, "mode": "full"}
+
+
+def test_replay_variants_flag_threads_through_surface_flow_path(tmp_path, monkeypatch):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
+    captured = {}
+
+    def fake_replay(cfg, project_root, surface_id, flow_id, variants=False, mode="goal"):
+        captured["variants"] = variants
+        captured["mode"] = mode
+        return 0
+
+    monkeypatch.setattr("flow_review.web.replay.replay", fake_replay)
+    code = cli.main(["replay", "--project", str(tmp_path), "--variants"])
+    assert code == 0
+    assert captured == {"variants": True, "mode": "goal"}
+
+
 def test_plan_dispatches_and_prints_json(tmp_path, capsys):
     (tmp_path / ".flow-review").mkdir()
     (tmp_path / ".flow-review" / "config.json").write_text(

@@ -17,8 +17,9 @@ except in quick mode, which tests only the stated goal's happy path and none of 
   the goal sits next to that a real user would notice along the way.
 - **Device/persona variants.** Widths, light/dark, keyboard-only, screen reader, new vs returning
   user (via stored session state). Where a variant is a pure replay of an already-recorded flow
-  under different conditions, it is run by the engine (`flow_review.web.variants`, B7) rather than
-  re-explored -- check whether an action log already exists for the base flow first.
+  under different conditions, it is run by the engine (`flow-review replay --variants --mode MODE`,
+  B7/R6) rather than re-explored -- check whether an action log already exists for the base flow
+  first.
 
 ## 2. No goal was given (auto mode)
 

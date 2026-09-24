@@ -67,8 +67,10 @@ def _run_replay(args: argparse.Namespace) -> int:
         if args.run_dir is None:
             print("--log requires --run DIR", file=sys.stderr)
             return 3
-        return replay_mod.replay_log(cfg, Path(project_root), args.log, args.run_dir)
-    return replay_mod.replay(cfg, Path(project_root), args.surface, args.flow)
+        return replay_mod.replay_log(cfg, Path(project_root), args.log, args.run_dir,
+                                      variants=args.variants, mode=args.mode)
+    return replay_mod.replay(cfg, Path(project_root), args.surface, args.flow,
+                              variants=args.variants, mode=args.mode)
 
 
 def _run_budget_check(args: argparse.Namespace) -> int:
@@ -147,6 +149,11 @@ def build_parser() -> argparse.ArgumentParser:
     replay_parser.add_argument("--flow", default=None)
     replay_parser.add_argument("--log", type=Path, default=None)
     replay_parser.add_argument("--run", dest="run_dir", type=Path, default=None)
+    replay_parser.add_argument("--variants", action="store_true",
+                                help="also run the device/persona variant set (B7/A-28)")
+    replay_parser.add_argument("--mode", default="goal",
+                                choices=["goal", "auto", "full", "quick"],
+                                help="variant mode; quick runs no variants (A-12)")
     replay_parser.set_defaults(func=_run_replay)
 
     budget_parser = sub.add_parser("budget", parents=[project_after_verb])

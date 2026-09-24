@@ -92,6 +92,11 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
    - **Replay repair.** Where a recorded action log exists and `flow-review replay` reports a
      divergence, `fr-replay-repair` runs once at Haiku, escalating to Sonnet only on a real
      escalation report.
+   - **Variant replay.** Once a flow finishes (goal/auto/full mode; never `quick`, A-12), replay
+     its action log through the device/persona variant set: `flow-review replay --log LOG_PATH
+     --run DIR --variants --mode MODE` (`LOG_PATH` is the `log_path` `drive flow-end` returned,
+     `MODE` the run's own mode) -- pure engine replay, no LLM, filing a `variant.<kind>` finding
+     per variant that diverges or regresses.
    - **Judgment.** For every screen a `ui`/`api`/`cli` surface produced evidence for (skipped
      entirely in `quick` mode), `fr-lens` runs once per screen against every lens that surface
      kind defines -- never once per lens. `references/lenses/ui.md` is the rubric (API and CLI
