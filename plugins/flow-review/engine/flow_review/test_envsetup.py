@@ -149,6 +149,27 @@ def test_secret_names_is_the_union_of_every_surface_creds_env_name():
     assert envsetup.secret_names(cfg) == {"A_USER", "A_PW", "B_PW"}
 
 
+def test_resolve_env_resolves_a_name_listed_in_secret_names(tmp_path, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "s3cret")
+    value = envsetup.resolve_env("ADMIN_PASSWORD", tmp_path, secret_names={"ADMIN_PASSWORD"})
+    assert value == "s3cret"
+
+
+def test_resolve_env_refuses_an_arbitrary_environ_name_outside_secret_names(tmp_path, monkeypatch):
+    # A-26 / CP3 finding 1: resolve_env used to read ANY os.environ name, so a `from_env` fill
+    # on a CSRF-forged drive request could exfiltrate an unrelated secret (AWS keys, etc).
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "leak-me")
+    value = envsetup.resolve_env(
+        "AWS_SECRET_ACCESS_KEY", tmp_path, secret_names={"ADMIN_PASSWORD"},
+    )
+    assert value is None
+
+
+def test_resolve_env_refuses_when_no_secret_names_given(tmp_path, monkeypatch):
+    monkeypatch.setenv("ADMIN_PASSWORD", "s3cret")
+    assert envsetup.resolve_env("ADMIN_PASSWORD", tmp_path) is None
+
+
 def test_load_dotenv_defaults_to_os_environ_when_none_given(tmp_path, monkeypatch):
     path = tmp_path / ".env"
     path.write_text("SOME_VAR=abc\n", encoding="utf-8")

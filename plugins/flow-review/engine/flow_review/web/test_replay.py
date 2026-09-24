@@ -245,6 +245,7 @@ def test_replay_log_mode_writes_result_json_and_never_touches_ledger(tmp_path, w
 
 def test_replay_one_resolves_from_env_fill_and_registers_secret(monkeypatch):
     from flow_review import events
+    monkeypatch.setattr(replay_mod.envsetup, "project_secret_names", lambda root: {"RP_PW"})
     monkeypatch.setenv("RP_PW", "Rp9secretvalue")
     log = actionlog.new_log("webapp", "login")
     actionlog.record_step(log, "fill", locator={"css": "#pw", "secret": True}, from_env="RP_PW")

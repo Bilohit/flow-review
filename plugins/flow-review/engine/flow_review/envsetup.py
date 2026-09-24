@@ -136,8 +136,16 @@ def load_dotenv(path: Path, environ: dict | None = None, secret_names=()) -> dic
 
 def resolve_env(name: str, project_root: Path | None, secret_names=()) -> str | None:
     """os.environ first, then <project_root>/.flow-review/.env (A-26). The resolved value is
-    registered as a secret -- it is only ever asked for to type into a credential field."""
+    registered as a secret -- it is only ever asked for to type into a credential field.
+
+    A-26 / CP3 finding 1: only names the surface's `creds` actually points at may be resolved.
+    Anything else -- an arbitrary os.environ name a CSRF-forged drive request asked for -- is
+    treated exactly like a missing one, so callers hit the existing missing-env error path.
+    """
     from flow_review import events
+
+    if name not in secret_names:
+        return None
 
     value = os.environ.get(name)
     if value is None and project_root is not None:

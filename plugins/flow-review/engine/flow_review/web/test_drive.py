@@ -106,6 +106,10 @@ def test_fill_password_redacts_even_with_text(tmp_path):
 
 
 def test_fill_from_env_reads_environ_and_redacts(tmp_path, monkeypatch):
+    # A-26: only names the surface's `creds` points at may be resolved -- stand in for that
+    # config with a monkeypatch rather than a full config.json, since fill() asks
+    # envsetup.project_secret_names() for the allowed set.
+    monkeypatch.setattr(drive.envsetup, "project_secret_names", lambda root: {"ADMIN_PASSWORD"})
     monkeypatch.setenv("ADMIN_PASSWORD", "s3cret")
     run_dir, project_root = _dirs(tmp_path)
     driver = FakeDriver()
@@ -385,6 +389,7 @@ def test_drive_e2e_sign_in_finds_low_contrast(tmp_path, webapp_server, monkeypat
 
 
 def test_fill_from_env_falls_back_to_dotenv_and_records_name_only(tmp_path, monkeypatch):
+    monkeypatch.setattr(drive.envsetup, "project_secret_names", lambda root: {"CP2_PW"})
     monkeypatch.delenv("CP2_PW", raising=False)
     run_dir, project_root = _dirs(tmp_path)
     (project_root / ".flow-review").mkdir(parents=True)
