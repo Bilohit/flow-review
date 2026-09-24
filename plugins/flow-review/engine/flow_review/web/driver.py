@@ -74,6 +74,13 @@ class WebDriver:
             self._playwright.stop()
 
     def goto(self, path: str) -> None:
+        # A path like "@evil.example/" or "//evil.example" makes base_url + path resolve
+        # off-origin (userinfo/protocol-relative syntax); only a plain root-relative path is
+        # ever a legitimate destination on this surface.
+        if not path.startswith("/") or path.startswith("//"):
+            raise ValueError(
+                f"goto path must start with '/' and not '//': {path!r}"
+            )
         self.page.goto(self.base_url + path)
 
     def resolve(self, locator: dict):

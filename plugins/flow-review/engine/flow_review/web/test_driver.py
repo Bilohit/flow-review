@@ -59,6 +59,38 @@ def test_console_errors_tagged_with_step_window(webapp_server):
     assert tagged["outside again"] is None
 
 
+class _RecordingPage:
+    def __init__(self):
+        self.navigated = None
+
+    def goto(self, url):
+        self.navigated = url
+
+
+def test_goto_accepts_a_leading_slash_path():
+    d = WebDriver()
+    d.base_url = "http://localhost:3000"
+    d.page = _RecordingPage()
+    d.goto("/dashboard")
+    assert d.page.navigated == "http://localhost:3000/dashboard"
+
+
+@pytest.mark.parametrize("path", [
+    "@evil.example/",       # base_url + this resolves off-origin via userinfo syntax
+    "//evil.example",       # protocol-relative: off-origin
+    "http://evil.example",  # absolute URL: off-origin
+    "evil",                 # no leading slash at all
+    "",                     # empty path
+])
+def test_goto_rejects_paths_that_are_not_a_plain_root_relative_path(path):
+    d = WebDriver()
+    d.base_url = "http://localhost:3000"
+    d.page = _RecordingPage()
+    with pytest.raises(ValueError):
+        d.goto(path)
+    assert d.page.navigated is None
+
+
 def test_click_settle_is_capped_when_the_network_never_idles():
     from playwright.sync_api import TimeoutError as PWTimeout
     from flow_review.web import driver as drv
