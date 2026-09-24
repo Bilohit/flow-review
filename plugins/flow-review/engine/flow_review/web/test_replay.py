@@ -330,58 +330,86 @@ def test_diverged_flow_does_not_mark_unseen_findings_fixed(tmp_path, monkeypatch
 
 # ---------- --variants wiring (fake driver, no browser) ----------
 
-def test__run_variants_files_p1_engine_finding_for_diverged_variant():
+def test__run_variants_files_p1_summary_for_a_bare_divergence(monkeypatch):
+    # No underlying finding to carry its own sev (LocatorNotFound never reaches measure/
+    # checkpoint code), so this is the one case that still gets a synthetic P1 `variant.<kind>`.
     surface = _surface("http://x")
     log = {"flow_id": "f", "steps": []}
     variant = {"kind": "viewport", "params": {"width": 375, "height": 812}}
     diverged = replay_mod.ReplayResult(
-        flow_id="f", status="divergence", steps_run=1,
+        flow_id="f@viewport:375x812", status="divergence", steps_run=1,
         divergence={"step_index": 0, "locator": None, "reason": "locator_not_found",
                     "url": "/x"},
         findings=[],
     )
+    monkeypatch.setattr("flow_review.web.variants.run_all",
+                        lambda *a, **kw: [(variant, diverged)])
+    findings, flow_ids = replay_mod._run_variants(surface, "http://x", log, "goal", None)
 
-    class _FakeVariantsMod:
-        @staticmethod
-        def run_all(*a, **kw):
-            return [(variant, diverged)]
-
-    import sys
-    monkey_mod = sys.modules.get("flow_review.web.variants")
-    orig_run_all = monkey_mod.run_all
-    monkey_mod.run_all = _FakeVariantsMod.run_all
-    try:
-        out = replay_mod._run_variants(surface, "http://x", log, "goal", None)
-    finally:
-        monkey_mod.run_all = orig_run_all
-
-    assert len(out) == 1
-    finding = out[0]
-    assert finding["surface_id"] == "webapp" and finding["flow_id"] == "f"
+    assert len(findings) == 1
+    finding = findings[0]
+    assert finding["surface_id"] == "webapp" and finding["flow_id"] == "f@viewport:375x812"
     assert finding["rule"] == "variant.viewport"
     assert finding["sev"] == "P1"
     assert finding["disposition"] == "engine"
     assert finding["route"] == "/x"
     assert any("375" in item for item in finding["evidence"])
+    assert flow_ids == ["f@viewport:375x812"]
 
 
-def test__run_variants_skips_clean_variants():
+def test__run_variants_passes_through_measured_findings_with_their_own_severity(monkeypatch):
+    # CRITICAL fix: a contrast/overlap finding measured under a variant keeps its own rule id
+    # and sev, it is never collapsed into a generic P1 `variant.<kind>` summary.
+    surface = _surface("http://x")
+    log = {"flow_id": "f", "steps": []}
+    variant = {"kind": "color-scheme", "params": {"scheme": "dark"}}
+    measured = {"surface_id": "webapp", "flow_id": "f@color-scheme:dark", "rule": "contrast.aa",
+                "route": "/", "locator": "", "sev": "P2", "text": "low contrast", "evidence": [],
+                "disposition": "engine"}
+    clean_with_finding = replay_mod.ReplayResult(
+        flow_id="f@color-scheme:dark", status="clean", steps_run=1, divergence=None,
+        findings=[measured],
+    )
+    monkeypatch.setattr("flow_review.web.variants.run_all",
+                        lambda *a, **kw: [(variant, clean_with_finding)])
+    findings, flow_ids = replay_mod._run_variants(surface, "http://x", log, "goal", None)
+
+    assert findings == [measured]
+    assert findings[0]["sev"] == "P2"
+    assert findings[0]["rule"] == "contrast.aa"
+    assert flow_ids == ["f@color-scheme:dark"]
+
+
+def test__run_variants_skips_clean_variants_but_still_reports_their_flow_id(monkeypatch):
+    # IMPORTANT fix: a clean variant files nothing, but its tagged flow id must still be
+    # reported so the caller can add it to `flows_run` -- otherwise a previously-filed variant
+    # finding can never be marked fixed once the underlying bug is fixed.
     surface = _surface("http://x")
     log = {"flow_id": "f", "steps": []}
     variant = {"kind": "reduced-motion", "params": {}}
-    clean = replay_mod.ReplayResult(flow_id="f", status="clean", steps_run=1,
+    clean = replay_mod.ReplayResult(flow_id="f@reduced-motion", status="clean", steps_run=1,
                                     divergence=None, findings=[])
+    monkeypatch.setattr("flow_review.web.variants.run_all", lambda *a, **kw: [(variant, clean)])
+    findings, flow_ids = replay_mod._run_variants(surface, "http://x", log, "goal", None)
 
-    import sys
-    monkey_mod = sys.modules.get("flow_review.web.variants")
-    orig_run_all = monkey_mod.run_all
-    monkey_mod.run_all = lambda *a, **kw: [(variant, clean)]
-    try:
-        out = replay_mod._run_variants(surface, "http://x", log, "goal", None)
-    finally:
-        monkey_mod.run_all = orig_run_all
+    assert findings == []
+    assert flow_ids == ["f@reduced-motion"]
 
-    assert out == []
+
+def test__run_variants_threads_the_measure_hook_into_run_all(monkeypatch):
+    surface = _surface("http://x")
+    log = {"flow_id": "f", "steps": []}
+    captured = {}
+
+    def fake_run_all(driver_factory, base_url, log_, surface_, storage_state_dir, mode, measure):
+        captured["measure"] = measure
+        return []
+
+    monkeypatch.setattr("flow_review.web.variants.run_all", fake_run_all)
+    sentinel = object()
+    replay_mod._run_variants(surface, "http://x", log, "goal", None, measure=sentinel)
+
+    assert captured["measure"] is sentinel
 
 
 def test_replay_log_variants_quick_mode_runs_none(tmp_path, monkeypatch):
@@ -517,6 +545,89 @@ def test_replay_variants_off_by_default_does_not_touch_ledger_variants(tmp_path,
     assert code == 0
     ledger_ = ledger.load(project_root / ".flow-review" / "findings.json")
     assert not any(e.rule.startswith("variant.") for e in ledger_.findings.values())
+
+
+def test_replay_variant_finding_marked_fixed_once_its_variant_flow_replays_clean(
+    tmp_path, monkeypatch,
+):
+    # IMPORTANT fix: the variant's tagged flow id must be added to `flows_run` so
+    # ledger.reconcile can mark a stale variant finding fixed once it stops reproducing.
+    from flow_review import ledger
+    project_root = tmp_path / "project"
+    recordings = project_root / ".flow-review" / "recordings" / "webapp"
+    recordings.mkdir(parents=True)
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    (recordings / "f.json").write_text(json.dumps(log), encoding="utf-8")
+
+    drv = _FakeDriver(click_target="/")
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+
+    variant = {"kind": "viewport", "params": {"width": 375, "height": 812}}
+    diverged = replay_mod.ReplayResult(
+        flow_id="f@viewport:375x812", status="divergence", steps_run=1,
+        divergence={"step_index": 0, "locator": None, "reason": "locator_not_found",
+                    "url": "/x"},
+        findings=[],
+    )
+    monkeypatch.setattr("flow_review.web.variants.run_all",
+                        lambda *a, **kw: [(variant, diverged)])
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+    code = replay_mod.replay(cfg, project_root, variants=True, mode="goal")
+    assert code == 1
+
+    ledger_path = project_root / ".flow-review" / "findings.json"
+    entry = next(e for e in ledger.load(ledger_path).findings.values()
+                 if e.rule == "variant.viewport")
+    assert entry.state == "open"
+
+    # Second run: the same variant now replays clean.
+    clean = replay_mod.ReplayResult(flow_id="f@viewport:375x812", status="clean", steps_run=1,
+                                    divergence=None, findings=[])
+    monkeypatch.setattr("flow_review.web.variants.run_all", lambda *a, **kw: [(variant, clean)])
+    code2 = replay_mod.replay(cfg, project_root, variants=True, mode="goal")
+    assert code2 == 0
+
+    entry2 = ledger.load(ledger_path).findings[entry.id]
+    assert entry2.state == "fixed"
+
+
+def test_replay_any_divergence_exits_two_even_with_findings_in_the_same_run(
+    tmp_path, monkeypatch,
+):
+    # MINOR fix: documented precedence is "any divergence -> exit 2", even when another flow in
+    # the same run produced findings that would otherwise win exit 1.
+    project_root = tmp_path / "project"
+    recordings = project_root / ".flow-review" / "recordings" / "webapp"
+    recordings.mkdir(parents=True)
+
+    checkpoint_log = actionlog.new_log("webapp", "checkpoint-mismatch")
+    actionlog.record_step(checkpoint_log, "goto", url="/")
+    actionlog.record_step(checkpoint_log, "click", locator={"testid": "signin-button"}, url="/")
+    actionlog.record_step(checkpoint_log, "assert_url", url="/settings",
+                          checkpoint="post-login")
+    (recordings / "checkpoint-mismatch.json").write_text(json.dumps(checkpoint_log),
+                                                          encoding="utf-8")
+
+    ghost_log = actionlog.new_log("webapp", "ghost")
+    actionlog.record_step(ghost_log, "goto", url="/")
+    actionlog.record_step(ghost_log, "click", locator={"testid": "does-not-exist"}, url="/")
+    (recordings / "ghost.json").write_text(json.dumps(ghost_log), encoding="utf-8")
+
+    drv = _FakeDriver(fail_locators={"does-not-exist"}, click_target="/dashboard")
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+    code = replay_mod.replay(cfg, project_root)
+    assert code == 2
 
 
 def test_replay_one_opens_a_step_window_per_step():

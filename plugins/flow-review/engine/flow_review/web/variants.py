@@ -29,6 +29,23 @@ class Variant(TypedDict):
     params: dict
 
 
+def _variant_flow_id(flow_id: str, variant: Variant) -> str:
+    """Tags a finding's flow id with the variant it was measured under, so sibling variants
+    (light vs dark, two widths, new vs returning) and the base flow's own findings never
+    collide on `ledger.fingerprint`'s `flow_id|rule|route|locator` key."""
+    kind = variant["kind"]
+    params = variant["params"]
+    if kind == "viewport":
+        tag = f"{params['width']}x{params['height']}"
+    elif kind == "color-scheme":
+        tag = params["scheme"]
+    elif kind == "storage-state":
+        tag = params["state"]
+    else:
+        tag = None
+    return f"{flow_id}@{kind}:{tag}" if tag else f"{flow_id}@{kind}"
+
+
 def plan_variants(surface: Any, mode: str) -> list[Variant]:
     if mode == "quick":
         return []
@@ -49,8 +66,10 @@ def plan_variants(surface: Any, mode: str) -> list[Variant]:
 
 
 def run_variant(driver_factory: Callable[..., Any], base_url: str, log: dict,
-                 variant: Variant, storage_state_path: Path | None = None) -> ReplayResult:
+                 variant: Variant, storage_state_path: Path | None = None,
+                 measure: Callable[..., list[dict]] | None = None) -> ReplayResult:
     kind = variant["kind"]
+    tagged_log = dict(log, flow_id=_variant_flow_id(log.get("flow_id", ""), variant))
     kwargs: dict = {}
     if kind == "viewport":
         kwargs["viewport"] = {
@@ -71,8 +90,8 @@ def run_variant(driver_factory: Callable[..., Any], base_url: str, log: dict,
     try:
         if kind == "keyboard-only":
             driver.goto("/")
-            return _replay_keyboard_only(driver, log)
-        return replay_one(driver, log)
+            return _replay_keyboard_only(driver, tagged_log)
+        return replay_one(driver, tagged_log, measure=measure)
     finally:
         if (kind == "storage-state" and variant["params"]["state"] == "new"
                 and storage_state_path is not None):
@@ -126,7 +145,8 @@ def _replay_keyboard_only(driver: Any, log: dict) -> ReplayResult:
 
 
 def run_all(driver_factory: Callable[..., Any], base_url: str, log: dict, surface: Any,
-            storage_state_dir: Path, mode: str = "full") -> list[tuple[Variant, ReplayResult]]:
+            storage_state_dir: Path, mode: str = "full",
+            measure: Callable[..., list[dict]] | None = None) -> list[tuple[Variant, ReplayResult]]:
     results = []
     for variant in plan_variants(surface, mode):
         storage_state_path = (
@@ -134,6 +154,6 @@ def run_all(driver_factory: Callable[..., Any], base_url: str, log: dict, surfac
             if variant["kind"] == "storage-state" else None
         )
         result = run_variant(driver_factory, base_url, log, variant,
-                              storage_state_path=storage_state_path)
+                              storage_state_path=storage_state_path, measure=measure)
         results.append((variant, result))
     return results

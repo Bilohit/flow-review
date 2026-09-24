@@ -120,31 +120,43 @@ def replay_one(driver, log: dict, measure: MeasureHook | None = None,
 
 
 def _run_variants(surface, base_url: str, log: dict, mode: str,
-                  storage_state_dir: Path | None) -> list[dict]:
+                  storage_state_dir: Path | None,
+                  measure: MeasureHook | None = None) -> tuple[list[dict], list[str]]:
     """B7/A-28: runs the device/persona variant set (viewport, light/dark, keyboard-only,
-    reduced motion, new/returning storage state) over `log` and returns one canonical finding
-    per variant whose replay diverged or regressed. `mode == "quick"` plans none (A-12), so no
-    driver is ever launched in that case. Imported lazily -- `variants` imports `replay_one`
-    from this module, so a top-level import here would be circular."""
+    reduced motion, new/returning storage state) over `log`, measuring each one with the same
+    `measure` hook the base replay uses so a variant-only contrast/overlap bug is filed under
+    its own canonical rule id and severity (never collapsed into a generic P1). A variant whose
+    replay diverges or fails with no finding of its own (a bare LocatorNotFound, for instance)
+    still gets a synthetic P1 `variant.<kind>` finding so the failure is visible at all.
+
+    `mode == "quick"` plans none (A-12), so no driver is ever launched in that case. Imported
+    lazily -- `variants` imports `replay_one` from this module, so a top-level import here
+    would be circular.
+
+    Returns `(findings, flow_ids)`: `flow_ids` is every variant's tagged flow id that actually
+    ran (clean or not), for the caller to fold into `flows_run` -- otherwise a variant finding
+    from an earlier run can never be marked fixed once the underlying bug is fixed, because
+    `ledger.reconcile` only retires an entry whose flow id is in `flows_run` this run."""
     from flow_review.web import variants as variants_mod
 
     def driver_factory(**kwargs):
         return WebDriver(headless=True, **kwargs)
 
-    out: list[dict] = []
+    findings: list[dict] = []
+    flow_ids: list[str] = []
     for variant, result in variants_mod.run_all(driver_factory, base_url, log, surface,
-                                                 storage_state_dir, mode=mode):
+                                                 storage_state_dir, mode=mode, measure=measure):
+        flow_ids.append(result["flow_id"])
+        if result["findings"]:
+            findings.extend(result["findings"])
+            continue
         if result["status"] == "clean":
             continue
-        route = ""
-        if result["divergence"] is not None:
-            route = _url_path(result["divergence"].get("url"))
-        elif result["findings"]:
-            route = result["findings"][0].get("route", "")
+        route = _url_path(result["divergence"]["url"]) if result["divergence"] else ""
         # No `context` field exists on the canonical finding payload, so the variant's params
         # go into `evidence` (see task-R6-report.md).
-        out.append({
-            "surface_id": surface.id, "flow_id": log.get("flow_id", ""),
+        findings.append({
+            "surface_id": surface.id, "flow_id": result["flow_id"],
             "rule": f"variant.{variant['kind']}", "route": route, "locator": "",
             "sev": "P1",
             "text": f"variant {variant['kind']} {result['status']}",
@@ -152,7 +164,7 @@ def _run_variants(surface, base_url: str, log: dict, mode: str,
                          f"status={result['status']}"],
             "disposition": "engine",
         })
-    return out
+    return findings, flow_ids
 
 
 def _load_tokens(surface, project_root: Path) -> dict[str, str] | None:
@@ -256,9 +268,12 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
                         storage_state_dir = (
                             project_root / ".flow-review" / "variants" / surface.id
                         )
-                        all_findings.extend(_run_variants(
+                        variant_findings, variant_flow_ids = _run_variants(
                             surface, surface.options["base_url"], log, mode, storage_state_dir,
-                        ))
+                            measure=hook,
+                        )
+                        all_findings.extend(variant_findings)
+                        flows_run.update(variant_flow_ids)
                 if result["status"] == "divergence":
                     d = result["divergence"]
                     divergences.append({
@@ -300,10 +315,12 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
         e.state == "open" and e.sev in ("P0", "P1") and e.first_run == run_id
         for e in ledger_.findings.values()
     )
-    if has_regression or has_new_open_critical:
-        return 1
+    # Documented precedence is "any divergence -> exit 2", even when another flow in the same
+    # run also produced findings that would otherwise win exit 1.
     if divergences:
         return 2
+    if has_regression or has_new_open_critical:
+        return 1
     return 0
 
 
@@ -341,8 +358,10 @@ def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path,
     # reproduce the same failure N more times, so it only runs after a base flow that completed.
     if variants and result["status"] != "divergence":
         storage_state_dir = run_dir / "variants" / surfaces[0].id
-        variant_findings = _run_variants(surfaces[0], surfaces[0].options["base_url"], log,
-                                          mode, storage_state_dir)
+        variant_findings, _variant_flow_ids = _run_variants(
+            surfaces[0], surfaces[0].options["base_url"], log, mode, storage_state_dir,
+            measure=hook,
+        )
         for finding in variant_findings:
             events.append(run_dir, {"type": "finding", **finding})
 

@@ -1,9 +1,43 @@
+from types import SimpleNamespace
+
 from flow_review.web import variants
 
 
 class _FakeSurface:
     def __init__(self, options):
         self.options = options
+
+
+class _FakeVariantDriver:
+    """Just enough of WebDriver for run_variant/replay_one without a real browser."""
+
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+        self.page = SimpleNamespace(url="http://x/")
+
+    def launch(self, base_url):
+        self.page.url = base_url
+
+    def goto(self, path):
+        self.page.url = "http://x" + path
+
+    def click(self, locator):
+        pass
+
+    def fill(self, locator, value):
+        pass
+
+    def begin_step(self, index):
+        pass
+
+    def end_step(self):
+        pass
+
+    def close(self):
+        pass
+
+    def storage_state(self):
+        return "{}"
 
 
 def test_plan_variants_quick_mode_returns_none():
@@ -33,6 +67,51 @@ def test_plan_variants_goal_and_auto_and_full_all_expand():
     surface = _FakeSurface({"viewport": [{"width": 1280, "height": 800}]})
     for mode in ("goal", "auto", "full"):
         assert len(variants.plan_variants(surface, mode)) == 7
+
+
+def test_variant_flow_id_tags_the_base_flow_id_per_kind():
+    assert variants._variant_flow_id("sign-in", {"kind": "viewport",
+                                                  "params": {"width": 390, "height": 844}}
+                                      ) == "sign-in@viewport:390x844"
+    assert variants._variant_flow_id("sign-in", {"kind": "color-scheme",
+                                                  "params": {"scheme": "dark"}}
+                                      ) == "sign-in@color-scheme:dark"
+    assert variants._variant_flow_id("sign-in", {"kind": "storage-state",
+                                                  "params": {"state": "new"}}
+                                      ) == "sign-in@storage-state:new"
+    assert variants._variant_flow_id("sign-in", {"kind": "keyboard-only", "params": {}}
+                                      ) == "sign-in@keyboard-only"
+    assert variants._variant_flow_id("sign-in", {"kind": "reduced-motion", "params": {}}
+                                      ) == "sign-in@reduced-motion"
+
+
+def test_variant_flow_id_differs_for_light_and_dark():
+    light = variants._variant_flow_id("sign-in", {"kind": "color-scheme",
+                                                   "params": {"scheme": "light"}})
+    dark = variants._variant_flow_id("sign-in", {"kind": "color-scheme",
+                                                  "params": {"scheme": "dark"}})
+    assert light != dark
+
+
+def test_run_variant_threads_measure_hook_and_tags_the_finding_flow_id():
+    log = {"surface_id": "webapp", "flow_id": "sign-in", "steps": [{"action": "goto", "url": "/"}]}
+    variant = {"kind": "color-scheme", "params": {"scheme": "dark"}}
+    calls = []
+
+    def hook(driver, surface_id, flow_id, route, step_index):
+        calls.append((surface_id, flow_id, route))
+        return [{"surface_id": surface_id, "flow_id": flow_id, "rule": "contrast.aa",
+                  "route": route, "locator": "", "sev": "P2", "text": "low contrast",
+                  "evidence": [], "disposition": "engine"}]
+
+    result = variants.run_variant(lambda **kw: _FakeVariantDriver(**kw), "http://x", log,
+                                   variant, measure=hook)
+
+    assert result["flow_id"] == "sign-in@color-scheme:dark"
+    assert calls and calls[0][1] == "sign-in@color-scheme:dark"
+    assert result["findings"][0]["rule"] == "contrast.aa"
+    assert result["findings"][0]["sev"] == "P2"
+    assert result["findings"][0]["flow_id"] == "sign-in@color-scheme:dark"
 
 
 def test_run_all_quick_mode_runs_nothing_and_never_launches_a_driver():
