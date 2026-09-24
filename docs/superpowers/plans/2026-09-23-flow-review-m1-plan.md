@@ -12205,6 +12205,14 @@ Rules for every R-task:
 - [ ] Live dashboard: `flow-review serve` prints a localhost URL, `GET /` returns 200, and the SSE stream (`/events`) emits the run's events. Static: `flow-review serve --static report.html` writes a single self-contained file (no external `http` references except links).
 - [ ] Any failure: stop, run superpowers:systematic-debugging, fix it in a new task, and re-run R10-R12.
 
+### Task R13: dashboard state fixes found by R12 (added during execution)
+**Executor:** sonnet + controller · **Depends:** R12
+- [x] drive emits each finding once per flow (fingerprint dedup); fold reads the `run` event, counts `flow-end` step events, and counts a repeat finding once by ledger fingerprint; SKILL.md emits `run` start/done events; fr-explorer emits the `goal` event. Re-ran R12: mode, finished, flows 1/1, goal card, badge 18 = ledger.
+
+### Task R14: install gap found by R12 (added during execution)
+**Executor:** controller · **Depends:** R12
+- [x] README Install lists the engine `pip install ... git+https ...` line and `python -m playwright install chromium`; SKILL.md checks `flow-review --help` first and prints the install lines if missing (A-34).
+
 Publishing (merge/PR, push, README install check) and the local install follow after R12 via superpowers:finishing-a-development-branch, with the user's OK before any push. They are not plan tasks.
 
 ## Later milestones (direction only)
@@ -12256,5 +12264,6 @@ Answered by the user on 2026-09-23 in the planning session. Never re-ask these.
 | A-31 | Shipped dead code (audit #1, #4, #6, #7, #9-#15) | Orchestrator call, applied directly from the audit with no user question: every item has zero production callers, as verified by a repo-wide grep over .py/.md/.js. It includes removing the `prove` CLI stub (setup.md calls `fr.prove.prove`). Tasks R2, R3, R8. |
 | A-32 | Visual baseline policy | Orchestrator default (flag at review): the baseline is the end-of-flow screenshot of a *recorded* flow, saved on its first replay; a later diff files a P2 `visual.changed` finding with crops; `replay --update-baselines` accepts changes. Ephemeral logs never write baselines (A-3). |
 | A-33 | M1 release verification | R10 full suite, R11 clean-venv `engine[web]` install + `--help`, R12 a real headless `claude -p "/flow-review quick sign in" --plugin-dir` run on the fixture app, including live `serve` and `--static`. Required by the user's session brief on 2026-09-24. |
+| A-34 | Engine install path (found by R12) | `/plugin install` alone puts no `flow-review` CLI on PATH, and `setup-env` needs the CLI to run and never installs a browser. Install = the two plugin commands + the A-27 `pip install "flow-review[web] @ git+https://..."` line + `python -m playwright install chromium`; SKILL.md preflights `flow-review --help`. Orchestrator call; matches the user's own Phase 5 install steps (2026-09-24). |
 
 Orchestrator conventions (not user decisions; flag at review if wrong): engine package at `plugins/flow-review/engine/flow_review`; agents at `plugins/flow-review/agents/`; `requires-python >=3.10`; tests colocated.
