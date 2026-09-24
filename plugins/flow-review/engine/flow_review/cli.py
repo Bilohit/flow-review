@@ -19,7 +19,7 @@ from pathlib import Path
 # change.
 _STUB_VERBS = (
     "prove", "plan", "serve", "triage", "ledger",
-    "budget", "model",
+    "model",
 )
 
 
@@ -88,6 +88,23 @@ def _run_replay(args: argparse.Namespace) -> int:
     return replay_mod.replay(cfg, Path(project_root), args.surface, args.flow)
 
 
+def _run_budget_check(args: argparse.Namespace) -> int:
+    from flow_review import budget as budgetmod
+    from flow_review import config as configmod
+    project_root = args.project_root
+    if project_root is None:
+        print("no .flow-review/ found; run /flow-review setup first, or pass --project",
+              file=sys.stderr)
+        return 3
+    try:
+        cfg = configmod.load(Path(project_root) / ".flow-review" / "config.json")
+    except Exception as exc:  # noqa: BLE001 -- CLI boundary: config error -> exit 3
+        print(str(exc), file=sys.stderr)
+        return 3
+    cap = cfg.budget.get("cap_tokens")
+    return budgetmod.check(Path(project_root), args.run_dir, args.next_role, cap)
+
+
 def _run_setup_env(args: argparse.Namespace) -> int:
     from pathlib import Path as _Path
     from flow_review import envsetup as envsetupmod
@@ -151,6 +168,14 @@ def build_parser() -> argparse.ArgumentParser:
     replay_parser.add_argument("--log", type=Path, default=None)
     replay_parser.add_argument("--run", dest="run_dir", type=Path, default=None)
     replay_parser.set_defaults(func=_run_replay)
+
+    budget_parser = sub.add_parser("budget", parents=[project_after_verb])
+    budget_sub = budget_parser.add_subparsers(dest="budget_cmd", required=True)
+    budget_check_parser = budget_sub.add_parser("check", parents=[project_after_verb])
+    budget_check_parser.add_argument("--run", required=True, dest="run_dir", type=Path)
+    budget_check_parser.add_argument("--next", required=True, dest="next_role")
+    budget_check_parser.add_argument("--surface", required=True)
+    budget_check_parser.set_defaults(func=_run_budget_check)
 
     event_parser = sub.add_parser("event", parents=[project_after_verb])
     event_parser.add_argument("--run", required=True, dest="run_dir")

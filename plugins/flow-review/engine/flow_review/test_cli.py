@@ -19,10 +19,43 @@ def test_main_with_no_args_prints_usage_and_exits_nonzero(capsys):
 def test_main_dispatches_known_stub_subcommands():
     for verb in (
         "prove", "plan", "serve", "triage", "ledger",
-        "budget", "model",
+        "model",
     ):
         code = cli.main([verb])
         assert code == 2, f"{verb} stub must report not-yet-implemented, not crash or succeed"
+
+
+def test_budget_check_exits_nonzero_when_cap_would_be_exceeded(tmp_path):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": [], '
+        '"budget": {"cap_tokens": 10000}}', encoding="utf-8")
+    run_dir = tmp_path / "run1"
+    run_dir.mkdir()
+    from flow_review import budget
+    budget.record_usage(run_dir, "webapp", "lens", 9000)
+    code = cli.main([
+        "budget", "--project", str(tmp_path), "check",
+        "--run", str(run_dir), "--next", "verifier", "--surface", "webapp",
+    ])
+    assert code == 1
+
+
+def test_budget_check_exits_zero_when_under_cap(tmp_path):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
+    run_dir = tmp_path / "run1"
+    run_dir.mkdir()
+    code = cli.main([
+        "budget", "--project", str(tmp_path), "check",
+        "--run", str(run_dir), "--next", "verifier", "--surface", "webapp",
+    ])
+    assert code == 0
+
+
+def test_budget_alone_without_subcommand_exits_two():
+    assert cli.main(["budget"]) == 2
 
 
 def test_replay_without_project_exits_three(tmp_path, monkeypatch):
