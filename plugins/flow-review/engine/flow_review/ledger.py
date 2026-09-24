@@ -16,6 +16,8 @@ import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from flow_review import events
+
 STATES = ("open", "fixed", "regressed", "refuted", "false-positive", "wont-fix", "accepted")
 _REAPPEARING_STAYS = {"open", "regressed", "accepted", "refuted", "false-positive", "wont-fix"}
 _FIXABLE = {"open", "regressed"}
@@ -67,6 +69,7 @@ def save(ledger_: Ledger, path: Path) -> None:
         "findings": {k: asdict(v) for k, v in ledger_.findings.items()},
         "discoverability_misses": ledger_.discoverability_misses,
     }
+    raw = events.redact(raw)  # secrets never reach the ledger
     Path(path).write_text(json.dumps(raw, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
 

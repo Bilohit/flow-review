@@ -176,3 +176,16 @@ def test_same_run_duplicate_fingerprints_merge_keeping_most_severe_and_all_evide
     assert entry.sev == "P1"
     assert entry.text == "major"
     assert entry.evidence == ["a", "b"]
+
+
+def test_save_redacts_registered_secrets(tmp_path):
+    from flow_review import events
+    events.register_secret("hunter2secret")
+    try:
+        f = _finding(route="/cart?token=hunter2secret")
+        led = ledger.reconcile(ledger.Ledger(), [f], flows_run={"checkout"}, run_id="run-1")
+        path = tmp_path / "findings.json"
+        ledger.save(led, path)
+        assert "hunter2secret" not in path.read_text(encoding="utf-8")
+    finally:
+        events.clear_secrets()
