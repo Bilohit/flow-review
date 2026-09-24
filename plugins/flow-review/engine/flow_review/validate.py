@@ -1,25 +1,23 @@
-"""The validation state machine (v2 design §7).
+"""The verifier's refute/stand gate (v2 design §7).
 
-Every finding that reaches the ledger has already been through exactly one of three routes:
+Which of the three routes a fresh finding takes -- filed straight (engine/objective, or a P2
+judgment), or replayed then verified (a P0/P1 judgment) -- is the orchestrator's decision, made
+per `references/validation.md`; nothing in this module implements or re-derives that routing.
 
-1. An engine check or an objective failure (crash, hang, data loss, wrong content, a failed
-   round trip) is filed on one reproduction. No judgment, no vote, no replay.
-2. A judgment finding at P2 is filed directly as an opinion.
-3. A judgment finding at P0/P1 is replayed once (free, ephemeral -- `<run_dir>/repro/`, never
-   reused, never fed to `flow-review replay`, A-3), then handed to `fr-verifier`, who may refute
-   it ONLY by attaching new measured or replayed evidence -- enforced mechanically by requiring an
-   `evidence = {"kind": "measurement"|"replay", "ref": "<path under run_dir>"}` object whose `ref`
-   must exist on disk, not merely a persuasive `reason` string. A refuted finding is never
-   deleted: `flow_review.triage.apply(ledger_path, finding_id, "refuted", reason=verifier_reason)`
-   is how the verdict actually lands in the ledger (C6) -- this module only decides routing, not
-   I/O.
+This module implements only what happens once a P0/P1 judgment finding has already been replayed
+and handed to `fr-verifier`: `resolve_after_verifier` turns the verifier's "stands"/"refuted" call
+into a `Verdict`, reached via `flow-review validate resolve`. A refute is accepted ONLY when it
+attaches new measured or replayed evidence -- enforced mechanically by requiring an
+`evidence = {"kind": "measurement"|"replay", "ref": "<path under run_dir>"}` object whose `ref`
+must exist on disk, not merely a persuasive `reason` string. A refuted finding is never deleted:
+`flow_review.triage.apply(ledger_path, finding_id, "refuted", reason=verifier_reason)` is how the
+verdict actually lands in the ledger (C6) -- this module only validates and returns the verdict,
+not I/O.
 
-Findings here are plain dicts shaped `{surface_id, flow_id, rule, route, locator, sev, text,
-evidence, disposition}` -- the same shape `fr-lens` files and `ledger.fingerprint(flow_id, rule,
-route, locator)` hashes on -- so nothing here needs its own parallel finding type. `disposition`
-is one of "engine", "objective" or "judgment" (Canonical Interfaces); this module has no code that
-routes on it -- the only wired path is `resolve_after_verifier`, reached via `flow-review validate
-resolve` once a P0/P1 judgment finding has already been replayed and handed to the verifier.
+Findings are plain dicts shaped `{surface_id, flow_id, rule, route, locator, sev, text, evidence,
+disposition}` -- the same shape `fr-lens` files and `ledger.fingerprint(flow_id, rule, route,
+locator)` hashes on. `disposition` is one of "engine", "objective" or "judgment" (Canonical
+Interfaces); this module has no code that routes on it.
 """
 from __future__ import annotations
 

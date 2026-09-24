@@ -1,4 +1,4 @@
-"""Triage transitions and fix briefs (v2 design §8; Canonical Interfaces "Triage").
+"""Triage transitions (v2 design §8; Canonical Interfaces "Triage").
 
 `apply()` is the one function both `flow-review triage ID STATE [--reason]` and the dashboard's
 `POST /triage` call -- there is exactly one triage code path, never two that could drift apart.

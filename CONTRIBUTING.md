@@ -25,7 +25,7 @@ python -m pytest test_readme.py -q
 
 - `plugins/flow-review/engine/flow_review/` -- the tool's engine: `config.py` (the per-project
   schema), `audit.py` (proposes candidate surfaces), `prove.py` (actually runs and classifies a
-  launch command), `lenses.py` (the critique lens sets, kept as data), `ledger.py` (findings, fingerprint, suppressions), `drift.py` (structural drift), `manifest.py` (the human-owned flow manifest), `validate.py` (the P0/P1 replay-then-verify state machine), `triage.py` (transitions and fix briefs), `budget.py` (token estimate and cap), `plan.py` (the GO-gate plan).
+  launch command), `ledger.py` (findings, fingerprint, suppressions), `drift.py` (structural drift), `manifest.py` (the human-owned flow manifest), `validate.py` (the P0/P1 replay-then-verify state machine), `triage.py` (triage transitions), `budget.py` (token estimate and cap), `plan.py` (the GO-gate plan). The critique lens sets are data, not code -- kept as markdown in `plugins/flow-review/skills/flow-review/references/lenses/ui.md`.
 - `plugins/flow-review/skills/flow-review/references/` -- the reference docs the skill reads at run
   time: drivers (`surfaces.md`), evidence and reporting rules (`evidence.md`), the stuck protocol
   (`stuck.md`). Keep these in sync with the modules they document -- a reference that drifts from
@@ -41,9 +41,9 @@ python -m pytest test_readme.py -q
 - Every non-trivial module keeps a sibling test (`test_*.py` next to it). Read the module's own
   docstring before changing it -- several of these modules exist specifically because an earlier,
   simpler version was proven wrong by a real failure, and the docstring names which one.
-- A lens set is data (`engine/flow_review/lenses.py`), never code -- add or change one there, never by special-
-  casing a surface kind somewhere else. A new lens set is added when a real user asks for one, never
-  on a hunch.
+- A lens set is data (`plugins/flow-review/skills/flow-review/references/lenses/ui.md`), never code
+  -- add or change one there, never by special-casing a surface kind somewhere else. A new lens set
+  is added when a real user asks for one, never on a hunch.
 - The flow manifest (`.flow-review/flows.md` in a consuming project, `templates/flows.md` here) is a
   human's document. Nothing in this repository may overwrite it unconditionally -- `engine/flow_review/manifest.py`
   is the mechanism that protects a hand edit.
