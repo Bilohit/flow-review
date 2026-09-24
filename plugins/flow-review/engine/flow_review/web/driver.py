@@ -23,9 +23,14 @@ class LocatorNotFound(Exception):
 
 
 class WebDriver:
-    def __init__(self, headless: bool = True, viewport: dict | None = None):
+    def __init__(self, headless: bool = True, viewport: dict | None = None,
+                 color_scheme: str | None = None, reduced_motion: str | None = None,
+                 storage_state: str | None = None):
         self.headless = headless
         self.viewport = viewport
+        self.color_scheme = color_scheme
+        self.reduced_motion = reduced_motion
+        self.storage_state_path = storage_state
         self._playwright = None
         self.browser = None
         self.page = None
@@ -39,9 +44,20 @@ class WebDriver:
         self.base_url = base_url.rstrip("/")
         self._playwright = sync_playwright().start()
         self.browser = self._playwright.chromium.launch(headless=self.headless)
-        self.page = self.browser.new_page(viewport=self.viewport)
+        page_kwargs: dict = {"viewport": self.viewport}
+        if self.color_scheme is not None:
+            page_kwargs["color_scheme"] = self.color_scheme
+        if self.reduced_motion is not None:
+            page_kwargs["reduced_motion"] = self.reduced_motion
+        if self.storage_state_path is not None:
+            page_kwargs["storage_state"] = self.storage_state_path
+        self.page = self.browser.new_page(**page_kwargs)
         self.page.on("console", self._on_console)
         self.page.on("response", self._on_response)
+
+    def storage_state(self) -> str:
+        import json
+        return json.dumps(self.page.context.storage_state())
 
     def close(self) -> None:
         if self.browser is not None:
