@@ -174,6 +174,51 @@ def test_report_only_includes_findings_seen_this_run(tmp_path, monkeypatch):
     assert {"f_this", "f_other", "f_live"} <= all_ids
 
 
+def test_run_event_flows_total_arrives_as_string_from_cli_and_still_counts(tmp_path, monkeypatch):
+    # RC2: `flow-review event --run DIR --type run mode=quick flows_total=1` writes flows_total
+    # as a string (cli.py's `event` verb never coerces k=v values) -- fold must still surface it
+    # as a usable int, and a later `type run state=done` event must mark the run finished.
+    _patch_common(monkeypatch)
+    run_dir = tmp_path / "run"
+    _write_events(run_dir, [
+        {"ts": "2026-09-23T10:00:00.000Z", "id": "e1", "type": "run", "mode": "quick",
+         "flows_total": "1"},
+        {"ts": "2026-09-23T10:00:05.000Z", "id": "e2", "type": "run", "state": "done"},
+    ])
+    body = fold(tmp_path, run_dir, _FakeCfg())
+    assert body["run"]["mode"] == "quick"
+    assert body["run"]["flows_total"] == 1
+    assert body["run"]["finished"] is True
+
+
+def test_run_event_junk_flows_total_is_ignored_not_crashed_on(tmp_path, monkeypatch):
+    _patch_common(monkeypatch)
+    run_dir = tmp_path / "run"
+    _write_events(run_dir, [
+        {"ts": "2026-09-23T10:00:00.000Z", "id": "e1", "type": "run", "mode": "quick",
+         "flows_total": "not-a-number"},
+    ])
+    body = fold(tmp_path, run_dir, _FakeCfg())
+    assert body["run"]["flows_total"] == 0
+
+
+def test_flow_end_step_event_counts_toward_done_flows(tmp_path, monkeypatch):
+    # RC3: drive's flow_end emits {"type": "step", "step": "flow-end", "status": ok|blocked},
+    # never a `type: status` event -- fold must read this exact shape to count the flow done.
+    _patch_common(monkeypatch)
+    run_dir = tmp_path / "run"
+    _write_events(run_dir, [
+        {"ts": "2026-09-23T10:00:00.000Z", "id": "e1", "type": "run", "mode": "quick",
+         "flows_total": 1},
+        {"ts": "2026-09-23T10:00:01.000Z", "id": "e2", "type": "step",
+         "surface_id": "webapp", "flow_id": "w01", "step": "flow-begin"},
+        {"ts": "2026-09-23T10:00:02.000Z", "id": "e3", "type": "step",
+         "surface_id": "webapp", "flow_id": "w01", "step": "flow-end", "status": "ok"},
+    ])
+    body = fold(tmp_path, run_dir, _FakeCfg())
+    assert body["run"]["flows_done"] == 1
+
+
 def test_ledger_findings_pass_through_with_canonical_field_names(tmp_path, monkeypatch):
     entry = _Entry(id="f_a1b2", sev="P1", rule="contrast", surface_id="web-app",
                     flow_id="checkout", text="Submit button fails WCAG AA", state="open")

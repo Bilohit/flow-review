@@ -63,7 +63,9 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
    questions reach the user for the rest of the run: no question, no interview after the GO. Recovery decisions (`references/stuck.md`)
    are never a question.
 3. **Serve.** Immediately after GO, launch `flow-review serve --run <RUN_DIR>` and print the URL
-   it returns.
+   it returns. Then record the run's lifecycle for the dashboard, since nothing else emits it:
+   `flow-review event --run DIR --type run mode=<mode> flows_total=<N planned flows>` (`N` is the
+   number of flows the plan/GO scope settled on across every surface).
 4. **Drive sessions.** For every runnable web surface the plan touches, start its drive session
    before any explorer is dispatched against it: `flow-review drive start --surface ID --run DIR
    [--record]` (the `--record` flag mirrors whatever the GO gate resolved for that surface, A-1/
@@ -126,7 +128,9 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
    section 8 for the append-only mechanism this reuses). A run that learned nothing calls it with
    no `--learning`; the printed hash only moves when there was something to record.
 7. **Report.** After `flow-review ledger reconcile --run DIR`, run
-   `flow-review budget fold --run DIR` to fold this run's usage into `usage_history.json`. Then the report: section 4 below. Stop every drive session (step 4) once the report is assembled.
+   `flow-review budget fold --run DIR` to fold this run's usage into `usage_history.json`. Then the report: section 4 below. Once the report is assembled, record the run as finished --
+   `flow-review event --run DIR --type run state=done` (the dashboard's `finished` flag reads this)
+   -- and stop every drive session (step 4).
 
 ## 4. Agent tiering
 

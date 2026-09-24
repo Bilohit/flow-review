@@ -82,7 +82,14 @@ def fold(project_root: Path, run_dir: Path, cfg) -> dict:
 
         if kind == "run":
             run["mode"] = ev.get("mode", run["mode"])
-            run["flows_total"] = ev.get("flows_total", run["flows_total"])
+            if "flows_total" in ev:
+                # RC2: `flow-review event ... flows_total=N` (the k=v CLI form) always writes a
+                # string -- cli.py's event verb never coerces. Coerce here so max() below never
+                # crashes on an int/str comparison; junk leaves the previous value untouched.
+                try:
+                    run["flows_total"] = int(ev["flows_total"])
+                except (TypeError, ValueError):
+                    pass
             for surf in ev.get("surfaces", []) or []:
                 if isinstance(surf, dict):
                     lane(surf.get("id"), surf.get("kind", "web"))
@@ -142,6 +149,12 @@ def fold(project_root: Path, run_dir: Path, cfg) -> dict:
             ln.output = ev.get("text") or ln.output
         elif kind == "step":
             ln.flow_id = ev.get("flow_id", ln.flow_id)
+            if ev.get("step") == "flow-end":
+                # RC3: drive's flow_end emits {"type": "step", "step": "flow-end",
+                # "status": ok|blocked}, never a `type: status` event -- count it here too.
+                flow = ev.get("flow_id")
+                if flow:
+                    done_flows.add(flow)
             entry = {"step": ev.get("step"), "state": ev.get("state")}
             ln.history.append(entry)
             ln.history[:] = ln.history[-HISTORY_WINDOW:]
