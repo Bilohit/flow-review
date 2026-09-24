@@ -27,6 +27,39 @@ def _start(tmp_path):
     return server, port
 
 
+def test_serve_prints_the_url_with_flush(tmp_path, monkeypatch):
+    # CP3 finding 5: with stdout piped (background launch, per SKILL.md step 3), the URL must
+    # appear immediately -- print() without flush=True can sit in a buffer indefinitely.
+    from unittest.mock import call
+
+    import flow_review.dashboard.serve as serve_mod
+
+    project_root = tmp_path / "proj"
+    (project_root / ".flow-review").mkdir(parents=True)
+    (project_root / ".flow-review" / "findings.json").write_text("{}", encoding="utf-8")
+    run_dir = project_root / ".flow-review" / "runs" / "r1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "events.jsonl").write_text("", encoding="utf-8")
+
+    calls = []
+    monkeypatch.setattr("builtins.print", lambda *a, **k: calls.append(call(*a, **k)))
+
+    class _StopImmediately:
+        def serve_forever(self):
+            raise KeyboardInterrupt
+
+    fake_server = _StopImmediately()
+    fake_server.server_address = ("127.0.0.1", 5555)
+    fake_server.shutdown = lambda: None
+    fake_server.server_close = lambda: None
+    monkeypatch.setattr(serve_mod, "make_server", lambda *a, **k: fake_server)
+
+    serve_mod.serve(project_root, run_dir, _FakeCfg())
+
+    assert len(calls) == 1
+    assert calls[0].kwargs.get("flush") is True
+
+
 def test_state_endpoint_returns_json_with_required_keys(tmp_path):
     server, port = _start(tmp_path)
     try:
