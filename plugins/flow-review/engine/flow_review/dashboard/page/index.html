@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>flow-review</title>
+  <link rel="preload" href="fonts/SchibstedGrotesk-Regular-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="tokens.css">
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="stat" data-role="progress"></div>
+    <div class="stat" data-role="elapsed"></div>
+    <div class="meter" data-role="budget"></div>
+    <button class="badge" data-role="badge" aria-label="findings" title=""></button>
+    <div class="sparkline" data-role="sparkline" hidden></div>
+    <div class="dots" data-role="surface-dots" hidden></div>
+    <button class="icon-btn" data-role="theme-toggle" aria-label="toggle theme" title="toggle theme">
+      <svg class="icon-sun"><use href="icons/sprite.svg#sun"></use></svg>
+      <svg class="icon-moon"><use href="icons/sprite.svg#moon"></use></svg>
+    </button>
+  </header>
+  <div class="findings-list" data-role="findings-list" hidden></div>
+  <main class="lanes" data-role="lanes"></main>
+  <section class="report" data-role="report" hidden></section>
+  <aside class="drawer" data-role="drawer" hidden></aside>
+  <script src="app.js"></script>
+</body>
+</html>
