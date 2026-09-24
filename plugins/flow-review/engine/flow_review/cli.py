@@ -192,7 +192,16 @@ def build_parser() -> argparse.ArgumentParser:
     event_parser.add_argument("fields", nargs="*")
     event_parser.set_defaults(func=_run_event)
 
+    drive_parser = sub.add_parser("drive")
+    drive_parser.add_argument("drive_args", nargs=argparse.REMAINDER)
+    drive_parser.set_defaults(func=_run_drive)
+
     return parser
+
+
+def _run_drive(args: argparse.Namespace) -> int:
+    from flow_review.web import drive
+    return drive.main(args.drive_args, project_root=args.project_root)
 
 
 def _run_plan(args: argparse.Namespace) -> int:

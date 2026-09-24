@@ -74,3 +74,24 @@ def test_click_settle_is_capped_when_the_network_never_idles():
     d.page = _Page()
     d._settle()  # must not raise
     assert calls == [("networkidle", drv.SETTLE_MS)]
+
+
+@pytest.mark.web
+def test_is_password_detects_password_input_and_false_for_others(webapp_server):
+    base_url, _ = webapp_server
+    d = WebDriver(headless=True)
+    d.launch(base_url)
+    d.goto("/")
+    assert d.is_password({"testid": "pw-input"}) is True
+    assert d.is_password({"testid": "load-button"}) is False
+    d.close()
+
+
+@pytest.mark.web
+def test_is_password_false_for_unresolvable_locator(webapp_server):
+    base_url, _ = webapp_server
+    d = WebDriver(headless=True)
+    d.launch(base_url)
+    d.goto("/")
+    assert d.is_password({"testid": "does-not-exist"}) is False
+    d.close()

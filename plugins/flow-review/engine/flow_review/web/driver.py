@@ -103,6 +103,13 @@ class WebDriver:
                 aria = aria.replace(value, REDACTED)
         return {"aria": aria}
 
+    def is_password(self, locator: dict) -> bool:
+        try:
+            loc = self.resolve(locator)
+        except LocatorNotFound:
+            return False
+        return bool(loc.evaluate("el => el.tagName === 'INPUT' && el.type === 'password'"))
+
     def console_errors(self) -> list[dict]:
         return list(self._console_errors)
 

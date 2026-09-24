@@ -247,3 +247,21 @@ def test_setup_env_targets_the_resolved_project_root_not_cwd(tmp_path, monkeypat
     assert cli.main(["setup-env", "--project", str(proj)]) == 0
     assert seen["dir"].resolve() == proj.resolve()
     assert seen["gi"].resolve() == (proj / ".flow-review").resolve()
+
+
+def test_drive_verb_delegates_to_web_drive_main(monkeypatch, tmp_path):
+    from flow_review import cli
+
+    captured = {}
+
+    def _fake_main(argv, project_root=None):
+        captured["argv"] = argv
+        captured["project_root"] = project_root
+        return 0
+
+    monkeypatch.setattr("flow_review.web.drive.main", _fake_main)
+    rc = cli.main(["--project", str(tmp_path), "drive", "goto", "--surface", "webapp",
+                    "--run", str(tmp_path), "/"])
+    assert rc == 0
+    assert captured["argv"] == ["goto", "--surface", "webapp", "--run", str(tmp_path), "/"]
+    assert captured["project_root"] == tmp_path.resolve()
