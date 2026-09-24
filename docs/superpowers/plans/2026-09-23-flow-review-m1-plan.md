@@ -12132,78 +12132,78 @@ Rules for every R-task:
 ### Task R1: docs↔CLI flag-parity test (first, before any doc edit)
 **Executor:** sonnet · **Depends:** none
 **Files:** create `plugins/flow-review/skills/flow-review/test_cli_parity.py`.
-- [ ] **Step 1:** Write a test that collects every backtick span and fenced code line in `SKILL.md`, `references/**/*.md`, `agents/*.md`, `README.md` and `docs/*.md` that starts with `flow-review ` (greedy regex, not a markdown parser). For each one, resolve the verb (plus `drive`/`ledger`/`budget`/`validate`/`manifest` sub-verbs) against `flow_review.cli.build_parser()`, and assert that every `--flag` token in the span is an option of that subparser. The test fails when a verb or flag is missing, and names file:line.
-- [ ] **Step 2:** Run it. If it finds real drift, fix the doc (never the parser, unless the doc is right and the CLI lost a flag). Expected result: PASS against the current tree.
-- [ ] **Step 3:** Prove it bites. Temporarily change one doc flag to `--nope`, see it FAIL with file:line, then revert.
+- [x] **Step 1:** Write a test that collects every backtick span and fenced code line in `SKILL.md`, `references/**/*.md`, `agents/*.md`, `README.md` and `docs/*.md` that starts with `flow-review ` (greedy regex, not a markdown parser). For each one, resolve the verb (plus `drive`/`ledger`/`budget`/`validate`/`manifest` sub-verbs) against `flow_review.cli.build_parser()`, and assert that every `--flag` token in the span is an option of that subparser. The test fails when a verb or flag is missing, and names file:line.
+- [x] **Step 2:** Run it. If it finds real drift, fix the doc (never the parser, unless the doc is right and the CLI lost a flag). Expected result: PASS against the current tree.
+- [x] **Step 3:** Prove it bites. Temporarily change one doc flag to `--nope`, see it FAIL with file:line, then revert.
 
 ### Task R2: delete the legacy renderer (audit #1)
 **Executor:** haiku · **Depends:** R1
-- [ ] Delete `dashboard/render.py`, `dashboard/template.html` and `dashboard/test_render.py`. Remove any import or fixture of them from `dashboard/conftest.py` and `cli.py` (grep `render` first; `render` inside `page/app.js` is unrelated). Drop `template.html` from `pyproject.toml` package-data. Suite green.
+- [x] Delete `dashboard/render.py`, `dashboard/template.html` and `dashboard/test_render.py`. Remove any import or fixture of them from `dashboard/conftest.py` and `cli.py` (grep `render` first; `render` inside `page/app.js` is unrelated). Drop `template.html` from `pyproject.toml` package-data. Suite green.
 
 ### Task R3: dead-code sweep (audit #4, #6, #7, #9, #10, #11, #14, #15)
 **Executor:** sonnet · **Depends:** R1
-- [ ] Delete `lenses.py` + `test_lenses.py`. Fix README.md:125 and docs/concepts.md:29 so they point at `references/lenses/ui.md`.
-- [ ] `validate.py`: delete `route`, `resolve_after_replay`, `Disposition`, `Verdict.FILED` and `Verdict.OPINION` along with their tests. Fix docs/concepts.md:82 to describe only `validate resolve`.
-- [ ] `triage.py`: delete `build_fix_brief` + `FixBrief` and their tests, and the module-docstring line that names them.
-- [ ] `web/measure.py`: delete `check_contrast` and its test (keep `check_contrast_pair`).
-- [ ] `audit.py`: delete `default_port`, `WORKSPACE_FRAMEWORK_PORTS` and `_default_port`.
-- [ ] `cli.py`: remove the `_STUB_VERBS`/`prove` stub and `plan --json`. Drop `--json` from every doc span that R1 now tracks. Update CP1 step 3's verb list in any test that asserts it.
-- [ ] `envsetup.py`: drop `SetupResult.commands_run`/`used_uv` if nothing reads them after this task, or else leave them.
-- [ ] Suite green; R1 still green.
+- [x] Delete `lenses.py` + `test_lenses.py`. Fix README.md:125 and docs/concepts.md:29 so they point at `references/lenses/ui.md`.
+- [x] `validate.py`: delete `route`, `resolve_after_replay`, `Disposition`, `Verdict.FILED` and `Verdict.OPINION` along with their tests. Fix docs/concepts.md:82 to describe only `validate resolve`.
+- [x] `triage.py`: delete `build_fix_brief` + `FixBrief` and their tests, and the module-docstring line that names them.
+- [x] `web/measure.py`: delete `check_contrast` and its test (keep `check_contrast_pair`).
+- [x] `audit.py`: delete `default_port`, `WORKSPACE_FRAMEWORK_PORTS` and `_default_port`.
+- [x] `cli.py`: remove the `_STUB_VERBS`/`prove` stub and `plan --json`. Drop `--json` from every doc span that R1 now tracks. Update CP1 step 3's verb list in any test that asserts it.
+- [x] `envsetup.py`: drop `SetupResult.commands_run`/`used_uv` if nothing reads them after this task, or else leave them.
+- [x] Suite green; R1 still green.
 
 ### Task R4: M1-only skill content (audit #3, #5, #8)
 **Executor:** sonnet · **Depends:** R1
-- [ ] `git rm` `references/lenses/api.md` and `references/lenses/cli.md` (A-29). Point `SKILL.md:96`, `agents/fr-lens.md:14`, `agents/fr-triage.md:38` and the README lens section at `lenses/ui.md` only, with one line: "API and CLI lenses return with M4." Update the REQUIRED lists in `test_references.py` and `test_skill.py`.
-- [ ] Remove the adb/shell/http driver notes from `references/testing.md:90-110`, and the adb/ios-sim/shell/http/custom driver blocks from `references/surfaces.md:44-116`, leaving one line for each: "pending-driver until M2/M3/M4 (A-14)".
-- [ ] The verifier rule "refuted needs a real evidence ref" is stated in full only in `references/validation.md`. `SKILL.md:100-107` and `agents/fr-verifier.md:19-29` replace their copies with a one-line pointer.
-- [ ] Suite green.
+- [x] `git rm` `references/lenses/api.md` and `references/lenses/cli.md` (A-29). Point `SKILL.md:96`, `agents/fr-lens.md:14`, `agents/fr-triage.md:38` and the README lens section at `lenses/ui.md` only, with one line: "API and CLI lenses return with M4." Update the REQUIRED lists in `test_references.py` and `test_skill.py`.
+- [x] Remove the adb/shell/http driver notes from `references/testing.md:90-110`, and the adb/ios-sim/shell/http/custom driver blocks from `references/surfaces.md:44-116`, leaving one line for each: "pending-driver until M2/M3/M4 (A-14)".
+- [x] The verifier rule "refuted needs a real evidence ref" is stated in full only in `references/validation.md`. `SKILL.md:100-107` and `agents/fr-verifier.md:19-29` replace their copies with a one-line pointer.
+- [x] Suite green.
 
 ### Task R5: `drive fault` (wire B6, A-28)
 **Executor:** sonnet · **Depends:** R1
-- [ ] Test first (web): after `drive fault --kind offline`, a `goto` sees a network failure. After `--kind 5xx --pattern "*/api/*"`, the matching request returns 503. After `--kind slow --pattern ... --delay-ms 1500`, it is delayed. `drive fault --clear` restores normal behaviour. Each call returns JSON `{ok: true, fault: ...}` and appends an event of type `fault`.
-- [ ] Add `DriveSession.fault(kind, pattern, delay_ms)` / `clear_faults()`, the `_dispatch` verb and the `fault` subparser in `drive.py`, calling `web/faults.py`. Inline `faults.match_pattern` into `fnmatch.fnmatch` (audit #7 note).
-- [ ] Docs: the unhappy-paths bullet in `references/goals.md` and `agents/fr-explorer.md` names `flow-review drive fault`. R1 green.
+- [x] Test first (web): after `drive fault --kind offline`, a `goto` sees a network failure. After `--kind 5xx --pattern "*/api/*"`, the matching request returns 503. After `--kind slow --pattern ... --delay-ms 1500`, it is delayed. `drive fault --clear` restores normal behaviour. Each call returns JSON `{ok: true, fault: ...}` and appends an event of type `fault`.
+- [x] Add `DriveSession.fault(kind, pattern, delay_ms)` / `clear_faults()`, the `_dispatch` verb and the `fault` subparser in `drive.py`, calling `web/faults.py`. Inline `faults.match_pattern` into `fnmatch.fnmatch` (audit #7 note).
+- [x] Docs: the unhappy-paths bullet in `references/goals.md` and `agents/fr-explorer.md` names `flow-review drive fault`. R1 green.
 
 ### Task R6: `replay --variants` (wire B7, A-28)
 **Executor:** sonnet · **Depends:** R1
-- [ ] Test first: `flow-review replay --log L --run R --variants --mode goal` runs `variants.plan_variants(surface, mode)` over the log through `variants.run_all`. It writes one result per variant and files a finding per failing variant, with `rule` = `variant.<kind>` and the variant params in the finding's context. `--mode quick` runs none. The exit code follows the replay convention (0 clean, 1 findings, 2 divergence).
-- [ ] Wire `--variants` and `--mode` (default `goal`) into the replay subparser and `_run_replay`. Recorded-flow replay (`--surface/--flow`) accepts `--variants` too.
-- [ ] Docs: `references/goals.md:19` names the real command, and `SKILL.md`'s run procedure calls it once per finished flow in goal/auto/full mode (never quick). R1 green.
+- [x] Test first: `flow-review replay --log L --run R --variants --mode goal` runs `variants.plan_variants(surface, mode)` over the log through `variants.run_all`. It writes one result per variant and files a finding per failing variant, with `rule` = `variant.<kind>` and the variant params in the finding's context. `--mode quick` runs none. The exit code follows the replay convention (0 clean, 1 findings, 2 divergence).
+- [x] Wire `--variants` and `--mode` (default `goal`) into the replay subparser and `_run_replay`. Recorded-flow replay (`--surface/--flow`) accepts `--variants` too.
+- [x] Docs: `references/goals.md:19` names the real command, and `SKILL.md`'s run procedure calls it once per finished flow in goal/auto/full mode (never quick). R1 green.
 
 ### Task R7: visual baselines in replay (wire B5, A-28, A-32)
 **Executor:** sonnet · **Depends:** R6
-- [ ] Test first (web, using the fixture): the first replay of a recorded flow saves an end-of-flow screenshot as `.flow-review/recordings/<surface>/<flow>.baseline.png` and files nothing. The second replay with an unchanged app files nothing. After a planted CSS change, the second replay files a P2 `visual.changed` finding whose evidence is the `visual.crop_regions` crops in the run dir. `--update-baselines` overwrites the baseline and files nothing.
-- [ ] Ephemeral `--log` replays never write baselines (A-3: nothing persists without recording).
-- [ ] Docs: one line in `SKILL.md` and README under replay. R1 green.
+- [x] Test first (web, using the fixture): the first replay of a recorded flow saves an end-of-flow screenshot as `.flow-review/recordings/<surface>/<flow>.baseline.png` and files nothing. The second replay with an unchanged app files nothing. After a planted CSS change, the second replay files a P2 `visual.changed` finding whose evidence is the `visual.crop_regions` crops in the run dir. `--update-baselines` overwrites the baseline and files nothing.
+- [x] Ephemeral `--log` replays never write baselines (A-3: nothing persists without recording).
+- [x] Docs: one line in `SKILL.md` and README under replay. R1 green.
 
 ### Task R8: small shrinks (audit #12, #13) and the doc bug
 **Executor:** haiku · **Depends:** R1
-- [ ] Put one `slug()` in `config.py` and use it from `drift.py`, `migrate.py` and `web/actionlog.py`, keeping actionlog's current behaviour if it differs (read all three first; if they differ, keep them separate and note why).
-- [ ] `page/app.js`: `_findingRow(f, onClick)` is reused by `toggleFindingsList`.
-- [ ] CONTRIBUTING.md: the dashboard path becomes `plugins/flow-review/engine/flow_review/dashboard/`.
-- [ ] Suite green.
+- [x] Put one `slug()` in `config.py` and use it from `drift.py`, `migrate.py` and `web/actionlog.py`, keeping actionlog's current behaviour if it differs (read all three first; if they differ, keep them separate and note why).
+- [x] `page/app.js`: `_findingRow(f, onClick)` is reused by `toggleFindingsList`.
+- [x] CONTRIBUTING.md: the dashboard path becomes `plugins/flow-review/engine/flow_review/dashboard/`.
+- [x] Suite green.
 
 ### Task R9: cut the prose-presence tests (A-30)
 **Executor:** sonnet · **Depends:** R1-R8
-- [ ] Delete the positive `assert "<phrase>" in text` tests in `test_skill.py`, `test_references.py` and `test_readme.py` that R1 or a structural test does not already cover.
-- [ ] Keep: frontmatter, BOM/emoji, the lens registry↔rubric check, the reference-file-exists check, the stdout-at-import checks, the SVG/banner checks and every negative guard ("never/no longer claims ..."). Also keep the install-command tests in test_readme.py, since they guard A-27.
-- [ ] Record the removed test names in the commit body. Suite green.
+- [x] Delete the positive `assert "<phrase>" in text` tests in `test_skill.py`, `test_references.py` and `test_readme.py` that R1 or a structural test does not already cover.
+- [x] Keep: frontmatter, BOM/emoji, the lens registry↔rubric check, the reference-file-exists check, the stdout-at-import checks, the SVG/banner checks and every negative guard ("never/no longer claims ..."). Also keep the install-command tests in test_readme.py, since they guard A-27.
+- [x] Record the removed test names in the commit body. Suite green.
 
 ### Task R10: full suite
 **Executor:** opus (controller) · **Depends:** R1-R9
-- [ ] `python -m playwright install chromium`, then `python -m pytest -q -m "web or not web"`. Expected: 0 failed, 0 errors. Quote the summary line.
+- [x] `python -m playwright install chromium`, then `python -m pytest -q -m "web or not web"`. Expected: 0 failed, 0 errors. Quote the summary line.
 
 ### Task R11: clean-venv install
 **Executor:** opus (controller) · **Depends:** R10
-- [ ] In the scratchpad: `uv venv <tmp>/frv` (or `python -m venv` if uv is absent), then `<tmp>/frv` pip-installs `"plugins/flow-review/engine[web]"`. From a directory outside the repo, `<tmp>/frv/Scripts/flow-review --help` must exit 0 and list `drive replay serve plan ...`, with no `prove` stub. Also run `flow-review serve --static out.html` against a scratch run dir from that venv, to prove the page assets shipped in the wheel.
+- [x] In the scratchpad: `uv venv <tmp>/frv` (or `python -m venv` if uv is absent), then `<tmp>/frv` pip-installs `"plugins/flow-review/engine[web]"`. From a directory outside the repo, `<tmp>/frv/Scripts/flow-review --help` must exit 0 and list `drive replay serve plan ...`, with no `prove` stub. Also run `flow-review serve --static out.html` against a scratch run dir from that venv, to prove the page assets shipped in the wheel.
 
 ### Task R12: real end-to-end run on the sample app
 **Executor:** opus (controller) · **Depends:** R11
-- [ ] Copy `plugins/flow-review/engine/fixtures/webapp` into a scratch project. Start it the way its README says.
-- [ ] Run the real skill headless: from the scratch project, `claude -p "/flow-review quick sign in" --plugin-dir <repo>/plugins/flow-review` with a permission mode that lets it run `flow-review` and the file tools, and a budget cap in the config. First-run setup (audit-and-prove) happens inside that run or in a preceding `claude -p "/flow-review --reconfigure"`.
-- [ ] Expected: `.flow-review/config.json` is v2 with a proven web surface; a run folder with `events.jsonl`; ledger entries for the planted measurable bugs (`contrast.aa`, `token.color`, `rect.overlap`, `http.5xx`); no fixture password anywhere in the run folder or ledger (grep).
-- [ ] Live dashboard: `flow-review serve` prints a localhost URL, `GET /` returns 200, and the SSE stream (`/events`) emits the run's events. Static: `flow-review serve --static report.html` writes a single self-contained file (no external `http` references except links).
-- [ ] Any failure: stop, run superpowers:systematic-debugging, fix it in a new task, and re-run R10-R12.
+- [x] Copy `plugins/flow-review/engine/fixtures/webapp` into a scratch project. Start it the way its README says.
+- [x] Run the real skill headless: from the scratch project, `claude -p "/flow-review quick sign in" --plugin-dir <repo>/plugins/flow-review` with a permission mode that lets it run `flow-review` and the file tools, and a budget cap in the config. First-run setup (audit-and-prove) happens inside that run or in a preceding `claude -p "/flow-review --reconfigure"`.
+- [x] Expected: `.flow-review/config.json` is v2 with a proven web surface; a run folder with `events.jsonl`; ledger entries for the planted measurable bugs (`contrast.aa`, `token.color`, `rect.overlap`, `http.5xx`) (run 1/2 filed contrast.aa, token.color, rect.overlap, rect.target-size; `http.5xx` sits behind "Load data", which a quick sign-in happy path never clicks -- covered by the drive/replay web tests instead); no fixture password anywhere in the run folder or ledger (grep).
+- [x] Live dashboard: `flow-review serve` prints a localhost URL, `GET /` returns 200, and the SSE stream (`/events`) emits the run's events. Static: `flow-review serve --static report.html` writes a single self-contained file (no external `http` references except links).
+- [x] Any failure: stop, run superpowers:systematic-debugging, fix it in a new task, and re-run R10-R12.
 
 ### Task R13: dashboard state fixes found by R12 (added during execution)
 **Executor:** sonnet + controller · **Depends:** R12
