@@ -592,3 +592,97 @@ def test_fault_bad_args_rejected_with_json_error_style():
         drive.cmd_fault(_ns(kind="slow", pattern="**/api/*"))
     with pytest.raises(ValueError, match="--clear"):
         drive.cmd_fault(_ns(kind="offline", clear=True))
+
+
+def _findings(run_dir, rule=None):
+    lines = (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    out = [json.loads(line) for line in lines if json.loads(line).get("type") == "finding"]
+    return [f for f in out if rule is None or f.get("rule") == rule]
+
+
+@pytest.mark.web
+def test_fault_5xx_active_pattern_suppresses_its_own_http_5xx_finding(
+    tmp_path, webapp_server, monkeypatch,
+):
+    monkeypatch.setattr(drive.measure, "check_page", _REAL_CHECK_PAGE)
+    from flow_review.web.driver import WebDriver
+    base_url, _ = webapp_server
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    driver = WebDriver(headless=True)
+    driver.launch(base_url)
+    session = DriveSession(driver, "webapp", run_dir, tmp_path / "project", record_enabled=False)
+    try:
+        session.goto("/")
+        session.fault("5xx", pattern="**/api/fail", delay_ms=None)
+        session.click({"testid": "load-button"})
+        assert any(n["status"] == 503 for n in driver.network_log())
+        assert _findings(run_dir, "http.5xx") == []
+    finally:
+        driver.close()
+
+
+@pytest.mark.web
+def test_fault_5xx_non_matching_url_genuine_5xx_still_filed(
+    tmp_path, webapp_server, monkeypatch,
+):
+    monkeypatch.setattr(drive.measure, "check_page", _REAL_CHECK_PAGE)
+    from flow_review.web.driver import WebDriver
+    base_url, _ = webapp_server
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    driver = WebDriver(headless=True)
+    driver.launch(base_url)
+    session = DriveSession(driver, "webapp", run_dir, tmp_path / "project", record_enabled=False)
+    try:
+        session.goto("/")
+        # An active 5xx fault for a URL that never matches /api/fail: the real backend's own
+        # 500 (fixture always returns 500 for /api/fail, unrelated to any fault) must still be
+        # reported -- only self-injected 5xx are suppressed.
+        session.fault("5xx", pattern="**/api/broken", delay_ms=None)
+        session.click({"testid": "load-button"})
+        assert any(n["status"] == 500 for n in driver.network_log())
+        assert any(f["rule"] == "http.5xx" for f in _findings(run_dir))
+    finally:
+        driver.close()
+
+
+@pytest.mark.web
+def test_fault_offline_suppresses_self_inflicted_console_error(
+    tmp_path, webapp_server, monkeypatch,
+):
+    monkeypatch.setattr(drive.measure, "check_page", _REAL_CHECK_PAGE)
+    from flow_review.web.driver import WebDriver
+    base_url, _ = webapp_server
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    driver = WebDriver(headless=True)
+    driver.launch(base_url)
+    session = DriveSession(driver, "webapp", run_dir, tmp_path / "project", record_enabled=False)
+    try:
+        session.goto("/")
+        session.fault("offline", pattern=None, delay_ms=None)
+        try:
+            session.click({"testid": "load-button"})
+        except Exception:
+            pass  # the click itself may fail while offline; only the finding suppression matters
+        assert _findings(run_dir, "console.error") == []
+        assert _findings(run_dir, "http.5xx") == []
+    finally:
+        driver.close()
+
+
+def test_is_self_inflicted_matches_active_5xx_pattern_via_evidence_url(tmp_path):
+    run_dir, project_root = _dirs(tmp_path)
+    session = DriveSession(FakeDriver(), "webapp", run_dir, project_root, record_enabled=False)
+    session._active_5xx_patterns = ["**/api/broken"]
+    finding = {
+        "rule": "http.5xx",
+        "evidence": [json.dumps({"method": "GET", "url": "http://x/api/broken", "status": 503})],
+    }
+    assert session._is_self_inflicted(finding) is True
+    other = {
+        "rule": "http.5xx",
+        "evidence": [json.dumps({"method": "GET", "url": "http://x/api/fail", "status": 500})],
+    }
+    assert session._is_self_inflicted(other) is False

@@ -3,6 +3,7 @@ through the engine (A-24). The engine records, redacts and measures every action
 from __future__ import annotations
 
 import argparse
+import fnmatch
 import json
 import os
 import subprocess
@@ -33,6 +34,8 @@ class DriveSession:
         self.log = None
         self.flow_id = None
         self.step_index = 0
+        self._offline_active = False
+        self._active_5xx_patterns: list[str] = []
 
     def flow_begin(self, flow_id: str) -> dict:
         self.flow_id = flow_id
@@ -100,8 +103,10 @@ class DriveSession:
         page = self.driver.page
         if kind == "offline":
             faults.inject_offline(page)
+            self._offline_active = True
         elif kind == "5xx":
             faults.inject_5xx(page, pattern, status=503)
+            self._active_5xx_patterns.append(pattern)
         elif kind == "slow":
             faults.inject_slow(page, pattern, delay_ms)
         else:
@@ -115,6 +120,8 @@ class DriveSession:
 
     def clear_faults(self) -> dict:
         faults.clear_faults(self.driver.page)
+        self._offline_active = False
+        self._active_5xx_patterns = []
         spec = {"kind": "clear"}
         events.append(self.run_dir, {
             "type": "fault", "surface_id": self.surface_id, "flow_id": self.flow_id,
@@ -157,12 +164,41 @@ class DriveSession:
         )
         new_ids = []
         for finding in findings:
+            if self._is_self_inflicted(finding):
+                continue
             event = events.append(self.run_dir, {
                 "type": "finding", "surface_id": self.surface_id, "flow_id": self.flow_id,
                 **finding,
             })
             new_ids.append(event["id"])
         return new_ids
+
+    def _is_self_inflicted(self, finding: dict) -> bool:
+        # A fault we injected ourselves must not surface as a product finding (it would be a
+        # false P0 against the app for an error the tool made up): the point of `drive fault` is
+        # to see how the app handles the failure, not to report the failure we caused.
+        rule = finding.get("rule")
+        if self._offline_active and rule in ("http.5xx", "console.error"):
+            return True  # every request fails while offline is active; that's fault, not app bug
+        if rule == "http.5xx" and self._active_5xx_patterns:
+            url = self._finding_url(finding)
+            if url is not None:
+                return any(fnmatch.fnmatch(url, pattern)
+                           for pattern in self._active_5xx_patterns)
+        return False
+
+    def _finding_url(self, finding: dict) -> str | None:
+        # http.5xx findings carry no direct "url" field (measure.check_http_status's payload has
+        # rule/route/locator/sev/text/evidence/disposition only); the url is inside evidence[0],
+        # which check_http_status builds as json.dumps(network-log entry).
+        evidence = finding.get("evidence") or []
+        if not evidence:
+            return None
+        try:
+            entry = json.loads(evidence[0])
+        except (TypeError, ValueError):
+            return None
+        return entry.get("url") if isinstance(entry, dict) else None
 
     def _current_url(self) -> str | None:
         page = getattr(self.driver, "page", None)
