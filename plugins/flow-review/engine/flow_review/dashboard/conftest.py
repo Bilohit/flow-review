@@ -63,6 +63,10 @@ def _seed_run(project_root: Path, run_dir: Path, lane_count: int) -> None:
             "sev": sev, "text": f"{sid}: low contrast on the pay button",
             "evidence": [], "disposition": "engine",
         })
+    events.append(run_dir, {
+        "type": "goal", "flow_id": "checkout", "text": "reach checkout",
+        "reached": True, "actions": 3, "shortest": 2, "from_docs": True,
+    })
     events.append(run_dir, {"type": "status", "state": "done"})
     events.append(run_dir, {"type": "run", "mode": "goal", "state": "done", "surfaces": []})
 
