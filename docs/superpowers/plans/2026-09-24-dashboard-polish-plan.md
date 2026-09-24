@@ -421,3 +421,9 @@ git commit -m "feat(dashboard): serve run-folder images under /run/ so lane thum
 - Watch the test fail first.
 
 **Verify:** the dashboard suite command from Global Constraints is all green. Commit: `fix(dashboard): static report inlines thumbnails and resolves icons offline`.
+
+## Decisions log
+
+| # | Topic | Decision |
+|---|---|---|
+| P-1 | Dashboard look for M1 | Approved by the user on 2026-09-24 from polish-shots (light/dark x 1/4/8 lanes + static). The direction is locked for M1. |
