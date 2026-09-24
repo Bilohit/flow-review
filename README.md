@@ -123,13 +123,11 @@ Once every candidate is resolved, flow-review writes `.flow-review/config.json` 
 ## Lenses
 
 A lens is a critique question plus the evidence it may answer from (`references/lenses/ui.md`). Lens sets are
-data, keyed by surface kind, and never universal.
+data, keyed by surface kind, and never universal. API and CLI lenses return with M4.
 
 | Kind | Lenses |
 |---|---|
 | `ui` | identity (fast), first-time-user (fast), accessibility, hierarchy, craft, copy |
-| `cli` | discoverability (fast), error-message quality (fast), exit-code semantics, help usability |
-| `api` | contract consistency (fast), error shapes (fast), status codes, pagination, doc drift |
 | `library` | none -- QA only, and the report says so |
 
 A library called only from code has no human-facing edge, so its lens set is empty -- but the

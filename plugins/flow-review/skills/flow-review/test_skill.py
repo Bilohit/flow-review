@@ -35,7 +35,7 @@ def test_skill_names_every_reference_it_relies_on():
     text = _text()
     for name in (
         "setup.md", "goals.md", "testing.md", "evidence.md", "stuck.md", "validation.md",
-        "lenses/ui.md", "lenses/cli.md", "lenses/api.md",
+        "lenses/ui.md",
     ):
         assert name in text, f"SKILL.md never points at {name}"
 

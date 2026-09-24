@@ -124,8 +124,9 @@ direction and the drift gate breaks in one of two ways:
 
 ## 6. Surface setup: state, reset, and credentials
 
-Lens sets are no longer chosen at setup -- `references/lenses/{ui,api,cli}.md` fixes the lens set
-by surface `kind`. Setup instead records the surface's `state` (disposable or persistent), optional
+Lens sets are no longer chosen at setup -- `references/lenses/ui.md` fixes the lens set by surface
+`kind` (API and CLI lenses return with M4). Setup instead records the surface's `state`
+(disposable or persistent), optional
 `reset` command, and credential env-var names (`creds`) -- see section 8 below for the flows
 manifest and `docs/concepts.md`'s Surface entry for the full v2 field list.
 

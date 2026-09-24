@@ -35,8 +35,8 @@ call; a `P2` finding's severity stands as the lens proposed it.
 
 Read `references/stuck.md` in full. You classify a stuck report as `PRODUCT-stuck`,
 `HARNESS-stuck`, or `UNKNOWN`. Severity for a `PRODUCT-stuck` classification is set by the
-product-stuck floor table in `references/lenses/{ui,api,cli}.md` section 4 -- you apply that
-table, you do not set severity by independent judgment.
+product-stuck floor table in `references/lenses/ui.md` section 4 (API and CLI lenses return with
+M4) -- you apply that table, you do not set severity by independent judgment.
 
 ## Fuzzy dedup (A-6)
 

@@ -44,73 +44,20 @@ file if tracing is enabled.
 
 ## Driver: adb
 
-Drives an Android surface -- an emulator or a physical device -- over the Android Debug Bridge.
-
-**Launch.** The config's package name (and activity, if not the default launcher activity), via
-`adb shell am start`. An emulator surface first boots the AVD named in config; a physical device
-surface is expected already connected and unlocked.
-
-**Proven attached when.** `adb devices` lists the configured serial as `device` (not `offline` or
-`unauthorized`), and, for an emulator, `adb shell getprop sys.boot_completed` reads `1`.
-
-**Evidence it can produce.** View-tree dump bounds (or a semantic accessibility-tree tool, where
-the project has one wired in), `screencap` screenshots, `logcat` excerpts, `dumpsys` output.
-
-BINDING -- Dump the view tree before any tap or typed input.
-Applies even when the coordinates look obvious from a screenshot or from where a label visibly sits.
-A guessed tap once produced a report of a serious regression that did not exist; a pass using real inspected bounds hit every control on the first try.
-why: testing.md, interaction discipline
+pending-driver until M2/M3/M4 (A-14).
 
 ## Driver: ios-sim
 
-Drives an iOS Simulator surface.
-
-**Launch.** `xcrun simctl boot <device>` for the simulator named in config, then
-`xcrun simctl launch <device> <bundle-id>` for the app under test.
-
-**Proven attached when.** `xcrun simctl list devices` shows the target device as `Booted` and the
-app's process is running on it.
-
-**Evidence it can produce.** The simulator's accessibility tree, `simctl io <device> screenshot`,
-and device logs via `simctl spawn <device> log stream`.
+pending-driver until M2/M3/M4 (A-14).
 
 ## Driver: shell
 
-Drives a CLI surface: one command, its stdout/stderr and exit code observed directly, with no
-persistent process or protocol in between.
-
-**Launch.** The config's command line, run as a subprocess with the config's working directory
-and environment.
-
-**Proven attached when.** The process starts and its first expected output -- a prompt, a banner,
-a fixed opening line -- appears within the config's timeout.
-
-**Evidence it can produce.** Captured stdout and stderr (kept separate), exit code, wall-clock
-duration, and any files the command wrote.
+pending-driver until M2/M3/M4 (A-14).
 
 ## Driver: http
 
-Drives an HTTP API surface.
-
-**Launch.** Nothing to launch if the service is already reachable at the config's base URL;
-otherwise the config's `launch` command starts it first, and setup records how long it takes to
-become reachable.
-
-**Proven attached when.** A request to the config's health-check path returns a success status
-within the config's timeout.
-
-**Evidence it can produce.** Response status, headers, and body (compared structurally, never by
-raw string match), latency, and server-side logs where the project makes them reachable.
+pending-driver until M2/M3/M4 (A-14).
 
 ## Driver: custom
 
-For a surface with no built-in driver -- a game engine, an embedded device, a proprietary
-protocol, anything the drivers above do not cover.
-
-**Launch, attach-proof, and evidence capture** are all defined in the project's own config, as
-commands or scripts it supplies. Setup records what "attached" means for this surface the first
-time it is configured, since no default answer applies here the way it does for the named drivers.
-
-**Evidence it can produce** is whatever the project's own tooling can produce. Hold it to the same
-measure-first discipline as every other driver (`evidence.md`): a custom surface earns no
-exception just because its evidence format is bespoke.
+pending-driver until M2/M3/M4 (A-14).

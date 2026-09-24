@@ -94,19 +94,16 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
      escalation report.
    - **Judgment.** For every screen a `ui`/`api`/`cli` surface produced evidence for (skipped
      entirely in `quick` mode), `fr-lens` runs once per screen against every lens that surface
-     kind defines -- never once per lens. `references/lenses/ui.md`, `references/lenses/api.md` and `references/lenses/cli.md` are the rubrics;
-     suppressions from `flow-review ledger suppressions --rule RULE` (JSON) are injected first.
+     kind defines -- never once per lens. `references/lenses/ui.md` is the rubric (API and CLI
+     lenses return with M4); suppressions from `flow-review ledger suppressions --rule RULE`
+     (JSON) are injected first.
    - **Validation.** Every judgment finding routes through `references/validation.md` (C5): an
      engine check or objective failure is filed on one reproduction; a `P2` judgment finding is
      filed directly as an opinion; a `P0`/`P1` judgment finding gets an ephemeral replay, then
-     `fr-verifier` at Opus, which may refute it only with measured or replayed evidence -- enforced
-     by `flow-review validate resolve --run DIR --verdict stands|refuted --reason R --kind
-     measurement|replay --ref PATH` (PATH relative to the run folder), which requires a real
-     evidence file inside the run folder, not a reason string alone. It prints the final verdict,
-     `stands` or `refuted`, and always exits 0: a refutation without a valid evidence file prints
-     `stands`, exactly as if the verifier had returned `stands` directly. A
-     successful refutation stays in the ledger with the reason and the evidence ref, never
-     deleted.
+     `fr-verifier` at Opus, resolved via `flow-review validate resolve --run DIR --verdict
+     stands|refuted --reason R --kind measurement|replay --ref PATH`. Refute only with a real
+     evidence ref -- the rule and its enforcement are in `references/validation.md`. A successful
+     refutation stays in the ledger with the reason and the evidence ref, never deleted.
    - **Triage.** `fr-triage` at Haiku classifies stuck episodes, resolves fuzzy-dedup ties
      (`flow-review ledger alias-candidates --flow F --rule R --route P` lists candidates; a chosen
      alias is passed as `--alias FINGERPRINT=ID` to reconcile, A-6). After the run's findings are

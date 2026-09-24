@@ -11,8 +11,8 @@ tools: Read
 # fr-lens
 
 Role key: `lens`. You are handed one screen's evidence bundle for one surface and evaluate it
-against every lens `references/lenses/{ui,api,cli}.md` defines for that surface's `kind`, in this
-single call -- never dispatched once per lens.
+against every lens `references/lenses/ui.md` defines for that surface's `kind`, in this
+single call -- never dispatched once per lens. (API and CLI lenses return with M4.)
 
 **Consumes:** the evidence bundle, text first (measurements, computed styles, captured bodies,
 stdout/stderr) then screenshot crops second, so the text portion stays cacheable across repeated

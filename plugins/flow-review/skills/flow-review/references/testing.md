@@ -89,24 +89,11 @@ the extra gotchas that only show up once you are actually driving one.
 
 ### adb (android)
 
-- Pin the target serial on every call once more than one Android device can be attached at once;
-  an unpinned command can silently hit the wrong one.
-- A view-tree dump can fail to reach an idle state on a screen driven by a continuous animation
-  loop (an idle-state error, or a stale previous-screen snapshot returned instead). There, and only
-  there, fall back to screenshot-measured coordinates with a before/after screenshot per action --
-  never a guessed coordinate anywhere else.
-- A dump tool can throw internally on some Android builds and still write a valid result file.
-  Check the file itself, not the tool's own stderr, before concluding the read failed.
-- A synthetic swipe cannot complete a hold-then-drag gesture (an "activate after long press"
-  interaction) or a latch-class swipe-to-reveal control; both need a real touch session to arm.
-  Mark that leg unverified/harness-blocked rather than filing it as a broken interaction.
+pending-driver until M2/M3/M4 (A-14).
 
 ### shell / http
 
-- Capture the exit code and stdout and stderr **separately**. A tool that writes its real error to
-  stderr and a generic message to stdout reads as a clean success if only one stream is checked.
-- For a long-running server surface, distinguish "process exited", "process hung", and "process is
-  running but its health check fails" -- they are three different findings, not one.
+pending-driver until M2/M3/M4 (A-14).
 
 These per-driver notes are the plugin's own shipped reference and are never appended to at
 runtime. A novel harness trap discovered during a run is written instead to the project's
