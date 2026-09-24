@@ -72,6 +72,7 @@ body{
 :root[data-theme="light"] .icon-btn .icon-moon{ display:none; }
 
 .stat{ font-family:var(--font-mono); color:var(--text-2); }
+.budget{ display:flex; align-items:center; gap:var(--space-2); }
 .meter{ position:relative; width:80px; height:6px; border-radius:var(--radius); background:var(--border); overflow:hidden; }
 .meter::after{ content:""; position:absolute; inset:0; transform-origin:left; transform:scaleX(calc(var(--pct, 0) / 100)); background:var(--accent); transition:transform var(--motion-base) var(--motion-ease); }
 .dots{ gap:var(--space-1); }

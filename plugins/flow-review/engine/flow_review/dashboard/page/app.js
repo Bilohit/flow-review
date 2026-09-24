@@ -40,9 +40,10 @@ function renderHeader(s) {
   const budgetEl = document.querySelector('[data-role="budget"]');
   const cap = s.budget.cap_tokens;
   const used = s.budget.used_tokens;
-  budgetEl.textContent = cap ? `${used}/${cap}` : String(used);
+  document.querySelector('[data-role="budget-text"]').textContent = cap ? `${used}/${cap}` : String(used);
   budgetEl.title = cap ? `${used} of ${cap} tokens used` : `${used} tokens used`;
-  budgetEl.style.setProperty('--pct', cap ? String(Math.min(1, used / cap) * 100) : '0');
+  document.querySelector('[data-role="budget-meter"]').style.setProperty(
+    '--pct', cap ? String(Math.min(1, used / cap) * 100) : '0');
 
   const dotsRoot = document.querySelector('[data-role="surface-dots"]');
   const dots = s.header.surface_dots || [];
@@ -51,7 +52,10 @@ function renderHeader(s) {
   for (const d of dots) {
     const dot = document.createElement('span');
     dot.className = `dot dot-${d.status}`;
-    dot.title = d.surface_id;
+    const label = `${d.surface_id}: ${d.status}`;
+    dot.title = label;
+    dot.setAttribute('role', 'img');
+    dot.setAttribute('aria-label', label);
     dotsRoot.appendChild(dot);
   }
 }

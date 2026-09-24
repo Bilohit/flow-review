@@ -46,3 +46,24 @@ def test_severity_dot_symbol_is_a_filled_circle():
     symbol = svg[start:svg.index("</symbol>", start)]
     assert "<circle" in symbol and 'fill="currentColor"' in symbol
     assert "<path" not in symbol, "the Phosphor ring path renders hollow"
+
+
+@pytest.mark.web
+def test_budget_shows_used_over_cap_as_text_beside_a_bar(page):
+    text = page.locator('[data-role="budget-text"]').inner_text()
+    assert text.replace(",", "").count("/") == 1 and text.split("/")[1].strip() == "200000", text
+    meter = page.locator('[data-role="budget-meter"]')
+    assert meter.inner_text() == ""
+    assert page.locator('[data-role="budget"]').get_attribute("title").endswith("tokens used")
+
+
+@pytest.mark.web
+def test_header_dots_name_their_surface_and_status(page):
+    dots = page.locator('[data-role="surface-dots"] .dot')
+    assert dots.count() >= 1
+    for i in range(dots.count()):
+        d = dots.nth(i)
+        title = d.get_attribute("title")
+        assert title.startswith("surface-") and ": " in title, title
+        assert d.get_attribute("aria-label") == title
+        assert d.get_attribute("role") == "img"
