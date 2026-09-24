@@ -47,5 +47,5 @@ disappeared, or that rested on an unverifiable claim, would be unfalsifiable.
 ## What this file does not decide
 
 Severity (`sev`) is set by the lens that filed the finding, or by the product-stuck floor rule in
-`lenses/{ui,api,cli}.md` section 4 -- never by this pipeline. This pipeline only decides whether a
+`lenses/ui.md` section 4 -- never by this pipeline. This pipeline only decides whether a
 filed finding survives, and how.
