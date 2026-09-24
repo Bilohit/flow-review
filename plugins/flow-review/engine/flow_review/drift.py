@@ -8,11 +8,10 @@ pending-driver surfaces never reach it.
 """
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 from flow_review import audit
-from flow_review.config import Config, Surface
+from flow_review.config import Config, Surface, slug
 
 DETECTED_PROVENANCE_KEY = "origin"
 DETECTED_PROVENANCE_VALUE = "audited"
@@ -24,20 +23,13 @@ DETECTED_PROVENANCE_VALUE = "audited"
 _PENDING_DRIVER = "pending"
 
 
-def _slug(name: str) -> str:
-    # Mirrors migrate.py's _slug exactly -- both derive a surface id from a human-facing name
-    # the same way, so a candidate freshly detected from the repo and an id a config was
-    # migrated with land on the same string.
-    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "surface"
-
-
 def detect_drift(cfg: Config, root: Path) -> list[str]:
     detected = audit.detect(Path(root))
     by_id = {s.id: s for s in cfg.surfaces}
     messages: list[str] = []
 
     for candidate in detected:
-        candidate_id = _slug(candidate.name)
+        candidate_id = slug(candidate.name)
         surface = by_id.get(candidate_id)
         if surface is None:
             messages.append(
@@ -53,7 +45,7 @@ def detect_drift(cfg: Config, root: Path) -> list[str]:
                 f"({surface.launch!r} -> {candidate.launch!r}) -- run /flow-review --reconfigure"
             )
 
-    detected_ids = {_slug(c.name) for c in detected}
+    detected_ids = {slug(c.name) for c in detected}
     for surface in cfg.surfaces:
         if surface.provenance.get(DETECTED_PROVENANCE_KEY) != DETECTED_PROVENANCE_VALUE:
             continue

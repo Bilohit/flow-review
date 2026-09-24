@@ -13,10 +13,18 @@ from __future__ import annotations
 
 import difflib
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 SCHEMA_VERSION = 2
+
+
+def slug(name: str) -> str:
+    """Derive a surface id from a human-facing name, used by drift/migrate to stabilize ids."""
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "surface"
+
+
 VALID_KINDS = ("ui", "cli", "api", "library")
 VALID_PROVENANCE = ("audited", "proven", "user")
 VALID_DRIVERS = ("cdp", "playwright", "adb", "ios-sim", "shell", "http", "custom", "pending")

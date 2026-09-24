@@ -72,7 +72,7 @@ function renderHeader(s) {
   }
 }
 
-function _findingRow(f) {
+function _findingRow(f, onClick) {
   const row = document.createElement('button');
   row.className = `sev-${f.sev || 'none'} finding-row`;
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -82,7 +82,7 @@ function _findingRow(f) {
   const label = document.createElement('span');
   label.textContent = f.text;
   row.append(svg, label);
-  row.addEventListener('click', () => openDrawer(f.id));
+  row.addEventListener('click', onClick || (() => openDrawer(f.id)));
   return row;
 }
 
@@ -367,16 +367,7 @@ function toggleFindingsList(findings) {
   if (!root.hidden) { closeFindingsList(); return; }
   _emptyEl(root);
   for (const f of findings) {
-    const row = document.createElement('button');
-    row.className = `sev-${f.sev || 'none'} finding-row`;
-    const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-    const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-    use.setAttribute('href', _iconHref('severity-dot'));
-    svg.appendChild(use);
-    const label = document.createElement('span');
-    label.textContent = f.text;
-    row.append(svg, label);
-    row.addEventListener('click', () => { closeFindingsList(); openDrawer(f.id); });
+    const row = _findingRow(f, () => { closeFindingsList(); openDrawer(f.id); });
     root.appendChild(row);
   }
   root.hidden = false;

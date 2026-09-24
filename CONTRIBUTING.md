@@ -32,7 +32,7 @@ python -m pytest test_readme.py -q
   the code it describes is worse than no reference at all.
 - `plugins/flow-review/skills/flow-review/templates/flows.md` -- the seed flow manifest copied into
   a new project on its first run.
-- `plugins/flow-review/skills/flow-review/dashboard/` -- the live HTML dashboard folded from a run's
+- `plugins/flow-review/engine/flow_review/dashboard/` -- the live HTML dashboard folded from a run's
   `events.jsonl`.
 - `assets/`, `docs/`, `README.md`, this file -- the page a stranger decides on.
 

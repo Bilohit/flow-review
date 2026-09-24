@@ -9,11 +9,11 @@ undone is a rewrite, not a migration.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
 from flow_review import config as cfgmod
+from flow_review.config import slug
 
 _V1_SURFACE_KNOWN = {
     "name", "kind", "driver", "launch", "preconditions", "destructive", "provenance",
@@ -26,11 +26,6 @@ _V1_TOP_KNOWN = {
 
 def is_v1(raw: dict) -> bool:
     return raw.get("schema_version", 1) <= 1
-
-
-def _slug(name: str) -> str:
-    slug = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-")
-    return slug or "surface"
 
 
 @dataclass
@@ -74,7 +69,7 @@ def migrate(raw: dict) -> tuple[cfgmod.Config, MigrationSummary]:
                     summary.dropped_keys.append(key)
 
         name = entry.get("name", "")
-        base_id = _slug(name)
+        base_id = slug(name)
         count = used_ids.get(base_id, 0) + 1
         used_ids[base_id] = count
         surface_id = base_id if count == 1 else f"{base_id}-{count}"
