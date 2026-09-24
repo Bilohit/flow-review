@@ -70,20 +70,27 @@ def _thumbnail_block(rel_path: str, run_dir: Path) -> str:
 def render_static(project_root: Path, run_dir: Path, cfg, out_path: Path) -> None:
     state = fold(project_root, run_dir, cfg)
 
+    # Full-res <a href> links for the hidden #evidence-thumbnails block below --
+    # built from the original run-relative paths before lane["shot"]/finding["evidence"]
+    # are overwritten with data URIs (test_static_thumbnails_are_downscaled_jpeg_data_uris_
+    # linking_to_full_res still asserts the full-res link is present).
     thumb_blocks: list[str] = []
     for lane in state["lanes"]:
         if lane.get("shot"):
             block = _thumbnail_block(lane["shot"], run_dir)
-            lane["shot_thumb_html"] = block
             if block:
                 thumb_blocks.append(block)
+            lane["shot"] = _thumbnail_data_uri(run_dir / lane["shot"])
     for f in state["findings"]:
         blocks = [
             _thumbnail_block(ev, run_dir) for ev in f.get("evidence", [])
             if ev.lower().endswith((".png", ".jpg", ".jpeg"))
         ]
-        f["evidence_thumbs_html"] = blocks
         thumb_blocks.extend(b for b in blocks if b)
+        f["evidence"] = [
+            _thumbnail_data_uri(run_dir / ev) if ev.lower().endswith((".png", ".jpg", ".jpeg")) else ev
+            for ev in f.get("evidence", [])
+        ]
 
     # JSON is embedded inside an HTML <script> element: escape "</" so user text
     # (a finding title, API output) can never close the tag early. This is the
@@ -93,6 +100,12 @@ def render_static(project_root: Path, run_dir: Path, cfg, out_path: Path) -> Non
 
     app_css = (PAGE_DIR / "app.css").read_text(encoding="utf-8")
     tokens_css = (PAGE_DIR / "tokens.css").read_text(encoding="utf-8")
+    # tokens.css's own @font-face rules point at relative fonts/*.woff2 paths that don't
+    # resolve offline. They duplicate (same family/weight/style) the data-URI rules
+    # _inline_fonts_css produces below, and Chromium's document.fonts.check() reports a
+    # family as unavailable when ANY matching @font-face record is unloaded -- even when
+    # another matching record has already loaded -- so the broken duplicates are stripped.
+    tokens_css = re.sub(r"@font-face\s*\{[^}]*\}\s*", "", tokens_css)
     app_js = (PAGE_DIR / "app.js").read_text(encoding="utf-8")
     sprite_svg = (PAGE_DIR / "icons" / "sprite.svg").read_text(encoding="utf-8")
     fonts_css = _inline_fonts_css()
@@ -103,15 +116,18 @@ def render_static(project_root: Path, run_dir: Path, cfg, out_path: Path) -> Non
     html = re.sub(r'<script src="app\.js"[^>]*></script>\n?', "", html)
     if "<head>" not in html or "</body>" not in html:
         raise ValueError("page/index.html is missing <head> or </body>")
+    # The theme-toggle icons are static markup in index.html (not built by app.js), so they
+    # need the same '#id' rewrite _iconHref does at runtime for the inlined sprite.
+    html = html.replace('href="icons/sprite.svg#', 'href="#')
 
     html = html.replace(
         "<head>",
         f"<head>\n<style>{tokens_css}\n{fonts_css}\n{app_css}</style>",
         1,
     )
-    # Icon sprite inlined directly in the body (app.js's <use href="/icons/sprite.svg#x">
-    # becomes <use href="#x"> against this inline sprite -- app.js is unchanged either way
-    # since <use> resolves a bare fragment against the current document).
+    # Icon sprite inlined directly in the body. app.js's own <use> elements pick '#x' via
+    # _iconHref() when #state-data is present; the rewrite above handles the static
+    # markup in index.html that app.js doesn't build (the theme-toggle icons).
     # Real (non-JSON-escaped) thumbnail markup, so the full-res link and the inlined
     # thumbnail data URI are present verbatim in the document, not only inside the
     # escaped JSON blob app.js reads. Hidden by default; app.js's own rendering

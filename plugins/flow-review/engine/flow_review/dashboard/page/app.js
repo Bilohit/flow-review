@@ -27,6 +27,12 @@ function _assetUrl(p) {
   return 'run/' + p.split('/').map(encodeURIComponent).join('/');
 }
 
+// Live mode fetches icons/sprite.svg over the network; the static report inlines the sprite
+// into the document itself, so a <use> there must resolve a bare '#id' fragment instead.
+function _iconHref(id) {
+  return document.getElementById('state-data') ? '#' + id : 'icons/sprite.svg#' + id;
+}
+
 function _fmtElapsed(totalSeconds) {
   const s = totalSeconds || 0;
   const m = Math.floor(s / 60);
@@ -71,7 +77,7 @@ function _findingRow(f) {
   row.className = `sev-${f.sev || 'none'} finding-row`;
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-  use.setAttribute('href', 'icons/sprite.svg#severity-dot');
+  use.setAttribute('href', _iconHref('severity-dot'));
   svg.appendChild(use);
   const label = document.createElement('span');
   label.textContent = f.text;
@@ -207,7 +213,7 @@ function _iconButton(iconId, ariaLabel, titleText) {
   btn.title = titleText;
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-  use.setAttribute('href', `icons/sprite.svg#${iconId}`);
+  use.setAttribute('href', _iconHref(iconId));
   svg.appendChild(use);
   btn.appendChild(svg);
   return btn;
@@ -322,7 +328,7 @@ function toggleFindingsList(findings) {
     row.className = `sev-${f.sev || 'none'} finding-row`;
     const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
-    use.setAttribute('href', 'icons/sprite.svg#severity-dot');
+    use.setAttribute('href', _iconHref('severity-dot'));
     svg.appendChild(use);
     const label = document.createElement('span');
     label.textContent = f.text;

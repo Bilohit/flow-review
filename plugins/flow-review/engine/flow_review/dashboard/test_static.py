@@ -4,9 +4,11 @@ import base64
 import json
 from pathlib import Path
 
+import pytest
 from PIL import Image
 
 from flow_review.dashboard.static import render_static
+from flow_review.dashboard.conftest import _seed_run
 
 
 class _FakeLedger:
@@ -90,3 +92,58 @@ def test_thumbnail_link_escapes_the_path(tmp_path):
     Image.new("RGB", (4, 4)).save(tmp_path / name)
     block = static._thumbnail_block(name, tmp_path)
     assert 'href="a&#x27;b&amp;c.png"' in block
+
+
+@pytest.mark.web
+def test_static_report_shows_thumbnails_and_icons_offline(tmp_path):
+    pytest.importorskip("playwright")
+    from playwright.sync_api import sync_playwright
+
+    project_root = tmp_path / "proj"
+    (project_root / ".flow-review").mkdir(parents=True)
+    (project_root / ".flow-review" / "findings.json").write_text("{}", encoding="utf-8")
+    run_dir = project_root / ".flow-review" / "runs" / "r1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "events.jsonl").write_text("", encoding="utf-8")
+    _seed_run(project_root, run_dir, 4)
+
+    class _FakeCfg:
+        budget = {"cap_tokens": 200000}
+
+    out_path = tmp_path / "dashboard.html"
+    render_static(project_root, run_dir, _FakeCfg(), out_path)
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        try:
+            page = browser.new_page()
+            page.route(
+                "**/*",
+                lambda route: route.continue_() if route.request.url.startswith("file:") else route.abort(),
+            )
+            page.goto(out_path.as_uri())
+            page.wait_for_selector('[data-role="lanes"] .lane')
+
+            widths = page.eval_on_selector_all(
+                '.lane .shot img', "els => els.map(el => el.naturalWidth)")
+            assert widths, "expected at least one lane thumbnail"
+            assert all(w > 0 for w in widths), widths
+
+            use_check = page.eval_on_selector_all(
+                '.finding-row svg use',
+                """els => els.map(el => {
+                    const href = el.getAttribute('href');
+                    const target = href ? document.querySelector(href) : null;
+                    return { href, found: target !== null };
+                })""")
+            assert use_check, "expected at least one finding-row icon"
+            for entry in use_check:
+                assert entry["href"] and entry["href"].startswith("#"), entry
+                assert entry["found"], entry
+
+            fonts_ok = page.evaluate(
+                "async () => { await document.fonts.ready; "
+                "return document.fonts.check('16px \"Schibsted Grotesk\"'); }")
+            assert fonts_ok
+        finally:
+            browser.close()
