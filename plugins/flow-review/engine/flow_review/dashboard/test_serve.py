@@ -155,3 +155,22 @@ def test_triage_post_returns_400_on_apply_exception(tmp_path, monkeypatch):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_triage_post_from_a_foreign_origin_is_403(tmp_path):
+    server, port = _start(tmp_path)
+    try:
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{port}/triage",
+            data=json.dumps({"finding_id": "f1", "state": "false-positive"}).encode(),
+            headers={"Content-Type": "application/json", "Origin": "https://evil.example"},
+            method="POST",
+        )
+        try:
+            urllib.request.urlopen(req, timeout=5)
+            assert False, "expected HTTPError"
+        except urllib.error.HTTPError as exc:
+            assert exc.code == 403
+    finally:
+        server.shutdown()
+        server.server_close()

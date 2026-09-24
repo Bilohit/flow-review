@@ -108,6 +108,11 @@ class Handler(BaseHTTPRequestHandler):
         if urlparse(self.path).path != "/triage":
             self._send_404()
             return
+        # Block cross-site writes: a browser tab on another site can POST to localhost.
+        origin = self.headers.get("Origin")
+        if origin and urlparse(origin).hostname not in ("127.0.0.1", "localhost"):
+            self._send_json({"error": "forbidden origin"}, status=403)
+            return
         length = int(self.headers.get("Content-Length", 0) or 0)
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
