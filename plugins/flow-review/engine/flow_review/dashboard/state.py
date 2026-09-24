@@ -187,7 +187,9 @@ def fold(project_root: Path, run_dir: Path, cfg) -> dict:
         "header": {"sparkline": header_history, "surface_dots": [
             {"surface_id": l.surface_id, "status": _dot_status(l.state)} for l in lanes.values()
         ]},
-        "report": _build_report(findings, goals, not_exercised) if run["finished"] else None,
+        "report": _build_report(_this_run_findings(ledger_findings, ledger_ids, live_findings,
+                                                     withdrawn, run["id"]),
+                                 goals, not_exercised) if run["finished"] else None,
         "findings": findings,
     }
 
@@ -203,6 +205,16 @@ def _elapsed_seconds(start_iso: str, end_iso: str) -> int:
 
 def _dot_status(lane_state: str) -> str:
     return "error" if lane_state in ("blocked", "error") else "ok"
+
+
+def _this_run_findings(ledger_findings: list[dict], ledger_ids: set[str],
+                        live_findings: dict[str, dict], withdrawn: set[str], run_id: str) -> list[dict]:
+    # CP3 minor finding 7: the report is scoped to *this run* -- a reconciled ledger entry
+    # whose last_run isn't this run's id (a different surface/flow this run didn't touch)
+    # stays out of it, while any live, not-yet-reconciled finding from this run always shows.
+    return [f for f in ledger_findings if f.get("last_run") == run_id] + [
+        f for fid, f in live_findings.items() if fid not in ledger_ids and fid not in withdrawn
+    ]
 
 
 def _is_opinion(f: dict) -> bool:
@@ -227,6 +239,9 @@ def _build_report(findings: list[dict], goals: dict[str, dict], not_exercised: l
             "repeats": [f for f in findings if f.get("state") == "open" and f.get("runs_seen", 1) > 1
                         and not _is_opinion(f)],
             "refuted": [f for f in findings if f.get("state") == "refuted"],
+            # A-15: a human's triage call (false-positive/wont-fix/accepted) is sticky -- it
+            # never vanishes, it gets its own collapsed group instead of falling into no section.
+            "triaged": [f for f in findings if f.get("state") in ("false-positive", "wont-fix", "accepted")],
             "not_exercised": not_exercised,
         },
     }

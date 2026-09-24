@@ -115,6 +115,7 @@ function renderReport(report) {
   root.appendChild(_findingSection('opinions', collapsed.opinions || [], false));
   root.appendChild(_findingSection('repeats', collapsed.repeats || [], false));
   root.appendChild(_findingSection('refuted', collapsed.refuted || [], false));
+  root.appendChild(_findingSection('triaged', collapsed.triaged || [], false));
 
   const notExercised = document.createElement('details');
   const neSummary = document.createElement('summary');
