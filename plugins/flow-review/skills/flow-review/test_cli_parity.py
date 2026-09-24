@@ -53,7 +53,8 @@ def _spans(text: str) -> list[tuple[int, str]]:
     return found
 
 
-def _check(path: Path, top_choices: dict, drive_root: argparse.ArgumentParser):
+def _check(path: Path, top_parser: argparse.ArgumentParser, top_choices: dict,
+           drive_root: argparse.ArgumentParser):
     text = path.read_text(encoding="utf-8")
     for lineno, span in _spans(text):
         rest = span[len("flow-review "):].strip()
@@ -62,6 +63,11 @@ def _check(path: Path, top_choices: dict, drive_root: argparse.ArgumentParser):
         if not tokens:
             continue
         verb = tokens[0]
+        if verb.startswith("--"):  # top-level flags only, e.g. `flow-review --help`
+            valid = {opt for action in top_parser._actions for opt in action.option_strings}
+            for flag in flags:
+                assert flag in valid, f"{path}:{lineno}: {flag!r} is not a top-level option"
+            continue
         if verb not in top_choices:
             assert not flags, f"{path}:{lineno}: unknown verb {verb!r} in {span!r}"
             continue
@@ -81,8 +87,9 @@ def _check(path: Path, top_choices: dict, drive_root: argparse.ArgumentParser):
 
 
 def test_every_flow_review_command_in_the_docs_matches_the_cli():
-    top_choices = _subparser_choices(build_parser())
+    top_parser = build_parser()
+    top_choices = _subparser_choices(top_parser)
     drive_root = build_drive_parser()
     assert DOC_FILES, "no doc files found to scan"
     for path in DOC_FILES:
-        _check(path, top_choices, drive_root)
+        _check(path, top_parser, top_choices, drive_root)

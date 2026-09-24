@@ -55,10 +55,21 @@ fingerprint and severity, so they collapse into two lines carrying a running cou
 
 ## Install
 
+In Claude Code:
+
 ```
 /plugin marketplace add Bilohit/flow-review
 /plugin install flow-review
 ```
+
+Then, once per machine, install the engine and its browser from the same repository:
+
+```
+pip install "flow-review[web] @ git+https://github.com/Bilohit/flow-review#subdirectory=plugins/flow-review/engine"
+python -m playwright install chromium
+```
+
+Restart Claude Code and `/flow-review` is available in every project.
 
 ## First run
 
@@ -159,7 +170,7 @@ the new screenshot instead.
 
 ## Requirements
 
-Python 3.10+. Setup runs `flow-review setup-env`, which creates a managed venv (uv, pip fallback) and installs only what the detected surfaces need -- Playwright and Pillow for `[web]`, more per surface at M2+. The engine ships inside the plugin (`plugins/flow-review/engine`), so installing the plugin from GitHub is all you need: `setup-env` installs the engine from that folder. There is no separate package to install.
+Python 3.10+. Setup runs `flow-review setup-env`, which creates a managed venv (uv, pip fallback) and installs only what the detected surfaces need -- Playwright and Pillow for `[web]`, more per surface at M2+. The engine ships inside the plugin repository (`plugins/flow-review/engine`) and installs from GitHub with the `pip` line above; it is never published to a package index.
 
 ## Credits
 

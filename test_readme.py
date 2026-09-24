@@ -21,6 +21,11 @@ def test_readme_has_both_install_paths_and_the_marketplace_name():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "/plugin marketplace add Bilohit/flow-review" in text
     assert "/plugin install flow-review" in text
+    # The skill calls the `flow-review` CLI from its first step, so the engine and the browser
+    # must be installed before the first /flow-review (found by the R12 end-to-end run).
+    assert ('pip install "flow-review[web] @ git+https://github.com/Bilohit/flow-review'
+            '#subdirectory=plugins/flow-review/engine"') in text
+    assert "python -m playwright install chromium" in text
 
 
 def test_readme_has_no_emoji():

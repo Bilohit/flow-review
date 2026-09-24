@@ -13,7 +13,12 @@ skill and its subagents do only the judgment work the engine cannot.
 
 ## 1. Which phase am I in
 
-Read `.flow-review/config.json` in the project root before doing anything else.
+First run `flow-review --help`. If the command is not found, stop and tell the user to install
+the engine once per machine, then restart Claude Code:
+`pip install "flow-review[web] @ git+https://github.com/Bilohit/flow-review#subdirectory=plugins/flow-review/engine"`
+and `python -m playwright install chromium`.
+
+Then read `.flow-review/config.json` in the project root before doing anything else.
 
 - **Absent, or `--reconfigure` was passed** -> **setup mode**. State this in one line, hand off to
   `references/setup.md`, and follow it start to finish. Setup also runs `flow-review setup-env`
