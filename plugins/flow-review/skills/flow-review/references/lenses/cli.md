@@ -1,13 +1,20 @@
 # lenses/cli.md -- CLI surface critique lenses
 
-You are one lens in a parallel review of a command-line surface. You have read nothing else about
-the product beyond this file and the evidence you were handed. This file is everything you need.
+You are handed the evidence bundle for one exercised invocation of a command-line surface and
+evaluate it in this single call against every lens below -- never dispatched once per lens.
+`fr-explorer` (or `fr-cold-eyes`) already drove the flow and captured this evidence; you never
+drive the surface yourself. You have read nothing else about the product beyond this file and the
+evidence you were handed.
 
 A CLI has no pixels, but it is not without an interface: its flags, its help text, its error
-messages and its exit codes ARE that interface, and this file's lenses judge exactly those. You are
-given: a surface, a flow id, and evidence (captured stdout/stderr, exit codes, the full `--help`
-text, logs). You return opinions in the format below. You do not fix anything, do not edit product
-code, do not run the flows yourself, and do not talk to the user.
+messages and its exit codes ARE that interface, and this file's lenses judge exactly those.
+
+The evidence bundle is ordered **text first, crops second**: captured stdout/stderr, exit codes,
+and the full `--help` text come before any screenshot crop, so the text portion of the prompt stays
+reusable across repeated calls on the same invocation (prompt caching). Suppressions for this
+surface, from `ledger.suppressions_for(ledger, rule)`, are injected into your context before you
+run -- suppressions derive from a finding's state (`false-positive`, `wont-fix`; there is no
+separate suppression store) -- a suppressed claim is never re-filed by you.
 
 ---
 
@@ -17,35 +24,50 @@ One object per finding. Nothing else. No preamble, no summary paragraph, no prai
 
 ```json
 {
-  "lens": "error-message quality",
-  "severity": "P1",
-  "location": "cli / `myapp sync --dry-run` / c07",
-  "claim": "A missing config file fails with a raw traceback instead of a stated cause and a next step.",
-  "evidence": "stderr capture, run c07, lines 1-14; exit code 1",
-  "confidence": "high"
+  "surface_id": "cli",
+  "flow_id": "c07",
+  "rule": "error-message quality",
+  "route": "myapp sync --dry-run",
+  "locator": "",
+  "sev": "P1",
+  "text": "A missing config file fails with a raw traceback instead of a stated cause and a next step.",
+  "evidence": ["stderr capture, run c07, lines 1-14", "exit code 1"],
+  "disposition": "judgment"
 }
 ```
 
 | Field | Rule |
 |---|---|
-| `lens` | your lens name, exactly as titled below |
-| `severity` | proposed only -- `P0` / `P1` / `P2`. The arbitration pass sets the final value. |
-| `location` | `<surface> / <command invoked> / <flow id>`. Never omit the flow id. |
-| `claim` | ONE sentence. What is wrong, stated as fact. Not a suggestion, not a question. |
-| `evidence` | the captured stdout/stderr text, the numeric exit code, or the `--help` output the claim rests on. "It's confusing" is not evidence; the literal text is. |
-| `confidence` | `high` (measured) / `medium` (visible in evidence) / `low` (inference) |
+| `surface_id` | the surface's `id` from config, exactly |
+| `flow_id` | the flow id the finding was observed on. Never omit it. |
+| `rule` | your lens name, exactly as titled below (`fingerprint()`'s `rule` argument) |
+| `route` | the subcommand invoked (e.g. `myapp sync --dry-run`) |
+| `locator` | empty, or the flag name the finding is about |
+| `sev` | proposed only -- `P0` / `P1` / `P2` |
+| `text` | ONE sentence. What is wrong, stated as fact. Not a suggestion, not a question. |
+| `evidence` | a list: the captured stdout/stderr text, the numeric exit code, or the `--help` output the claim rests on. "It's confusing" is not evidence; the literal text is. |
+| `disposition` | mechanically derived from `sev`, never a free choice: `opinion` when `sev` is `P2`; `judgment` when `sev` is `P0` or `P1`. |
+
+`(surface_id, flow_id, rule, route, locator)` is exactly what `ledger.fingerprint(flow_id, rule,
+route, locator)` hashes on (A-6) -- get any of the five wrong and the finding fingerprints
+differently from what a human reading the report expects.
 
 **Imperatives.**
 
 - Return a JSON array. A lens that finds nothing returns `[]`.
 - Silence is not agreement. An empty list means "this lens found nothing in scope", never "this
-  surface is approved". Do not read another lens's silence as endorsement.
-- Never pad. A lens that invents a finding to look useful corrupts the consensus rule in section 3
-  and manufactures a false candidate. An empty list is a valid, respected result.
+  surface is approved".
+- Never pad. An empty list is a valid, respected result.
 - One claim per object. If you have two complaints about one command, file two objects.
-- Stay in your rubric. If you notice something outside your lens, drop it -- another lens owns it.
-- If your claim rests on an impression and a capture was available and you did not take it, mark
-  `confidence: low`. The arbitration pass kills low-confidence claims that a capture contradicts.
+- Stay in your rubric. If you notice something outside your lens, it becomes a `context` note
+  (section 3), never a finding filed under the wrong `rule`.
+- If your claim rests on an impression and a capture was available and you did not take it, say so
+  in `text` and keep `evidence` honest about what was actually captured.
+
+A `P2` finding is filed as `opinion` straight into the ledger -- no replay, no verifier. A `P0` or
+`P1` finding routes to `references/validation.md`: an ephemeral replay first, then `fr-verifier`,
+which may refute it only with measured or replayed evidence. You never see the outcome of that
+routing; your job ends at filing the finding with the correct `sev` and `disposition`.
 
 ---
 
@@ -113,36 +135,24 @@ niche flag placed last, with a clear description, is correct ordering, not a vio
 
 ---
 
-## 3. Consensus and arbitration
+## 3. No vote -- context notes and validation handoff
 
-### Objective failures bypass the review entirely
+There is no agreement rule and no arbitration step. Every lens's findings stand on their own,
+routed by `sev`/`disposition` as above -- not by how many lenses noticed the same thing.
 
-Crash, hang, data loss, wrong content, a hard rule the project itself marks as a lock (read from
-config), or a failed round trip.
+**Objective failures still bypass judgment entirely.** Crash, hang, data loss, wrong content, a
+hard rule the project itself marks as a lock, or a failed round trip is an engine-checked or
+objective-failure finding, filed on one reproduction -- not yours to file as a lens opinion, and
+never softened by one.
 
-One reproduction is a finding. No vote is taken. No lens gets to soften it, downgrade it, or argue
-it away. If you observe one, file it and mark `confidence: high` -- it is not an opinion.
+**Cross-rubric observations are context, not votes.** If you notice something clearly outside your
+own lens's rubric, do not drop it and do not file it under your own `rule`. Attach it as a
+`context` note on the finding object nearest it (or a standalone `context`-only object with no
+`sev` if nothing else fits) so a human reading the report sees it, without it inflating any lens's
+finding count.
 
-### For matters of opinion
-
-| Situation | Result |
-|---|---|
-| 2 or more lenses agree | candidate finding, goes to arbitration |
-| Exactly 1 lens | goes to the minority-opinion section of the report -- kept verbatim, never silently dropped |
-| 0 lenses | nothing |
-
-### The arbitration pass
-
-A separate pass over every candidate, not any single lens:
-
-- sets the final severity;
-- merges duplicates -- several lenses describing one defect become one finding;
-- kills anything an objective measurement contradicts -- a captured exit code beats "that felt like
-  it failed", a captured stderr string beats "the message seemed unclear";
-- writes the verdict line.
-
-Raw lens opinions attach to every finding as evidence, so a reader can overrule the arbitration.
-Write your opinion knowing it will be read as-is.
+See `references/validation.md` for the full pipeline your `P0`/`P1` findings enter after you file
+them.
 
 ---
 
