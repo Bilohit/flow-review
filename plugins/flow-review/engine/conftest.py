@@ -22,27 +22,33 @@ def _make_handler(requests_log: list[dict]):
             path = self.path.split("?", 1)[0]
             if path == "/api/fail":
                 body = json.dumps({"error": "boom"}).encode()
+                # Log before responding: the client may read the reply before this thread
+                # appends, and a test asserting on the log would race.
+                requests_log.append({"method": "GET", "path": path, "status": 500})
                 self.send_response(500)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
-                requests_log.append({"method": "GET", "path": path, "status": 500})
                 return
             fs_path = WEBAPP_DIR / (path.lstrip("/") or "index.html")
             if fs_path.is_file():
                 data = fs_path.read_bytes()
                 ctype = _CONTENT_TYPES.get(fs_path.suffix, "application/octet-stream")
+                # Log before responding: the client may read the reply before this thread
+                # appends, and a test asserting on the log would race.
+                requests_log.append({"method": "GET", "path": path, "status": 200})
                 self.send_response(200)
                 self.send_header("Content-Type", ctype)
                 self.send_header("Content-Length", str(len(data)))
                 self.end_headers()
                 self.wfile.write(data)
-                requests_log.append({"method": "GET", "path": path, "status": 200})
             else:
+                # Log before responding: the client may read the reply before this thread
+                # appends, and a test asserting on the log would race.
+                requests_log.append({"method": "GET", "path": path, "status": 404})
                 self.send_response(404)
                 self.end_headers()
-                requests_log.append({"method": "GET", "path": path, "status": 404})
 
     return FixtureHandler
 
