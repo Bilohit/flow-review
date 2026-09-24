@@ -20,4 +20,4 @@ build-backend = "setuptools.build_meta"
 include = ["flow_review*"]
 
 [tool.setuptools.package-data]
-"flow_review.dashboard" = ["template.html", "page/*.*", "page/fonts/*", "page/icons/*"]
+"flow_review.dashboard" = ["page/*.*", "page/fonts/*", "page/icons/*"]
