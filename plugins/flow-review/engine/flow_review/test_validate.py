@@ -148,3 +148,17 @@ def test_orchestrator_catches_a_bad_refutation_and_the_finding_stands(tmp_path):
     except ValueError:
         raised = True
     assert raised
+
+
+@pytest.mark.parametrize("escape", ["../outside.json", "ABS"])
+def test_verifier_refuted_rejects_an_evidence_ref_outside_run_dir(tmp_path, escape):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    outside = tmp_path / "outside.json"
+    outside.write_text("{}", encoding="utf-8")
+    ref = str(outside) if escape == "ABS" else escape
+    with pytest.raises(ValueError):
+        resolve_after_verifier(
+            _finding(Disposition.JUDGMENT, "P0"), verifier_verdict="refuted",
+            reason="measured", evidence={"kind": "measurement", "ref": ref}, run_dir=run_dir,
+        )

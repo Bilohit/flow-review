@@ -21,6 +21,7 @@ route, locator)` hashes on -- so nothing here needs its own parallel finding typ
 from __future__ import annotations
 
 from enum import Enum
+from pathlib import Path
 
 VALID_SEVERITIES = ("P0", "P1", "P2")
 
@@ -105,7 +106,9 @@ def resolve_after_verifier(
                 f"evidence kind must be one of {EVIDENCE_KINDS}, got {evidence.get('kind')!r}"
             )
         ref = evidence.get("ref")
-        if not ref or not (run_dir / ref).is_file():
+        root = Path(run_dir).resolve()
+        target = (root / ref).resolve() if ref else None
+        if target is None or not target.is_relative_to(root) or not target.is_file():
             raise ValueError(f"evidence ref {ref!r} does not exist under {run_dir}")
         return Verdict.REFUTED, reason
     raise ValueError(f"verifier_verdict must be 'stands' or 'refuted', got {verifier_verdict!r}")
