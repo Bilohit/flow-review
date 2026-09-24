@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Flow Review Fixture App</title>
+  <link rel="stylesheet" href="app.css">
+</head>
+<body>
+  <header>
+    <nav><a href="/">Home</a></nav>
+  </header>
+  <main>
+    <h1>Fixture App</h1>
+    <p id="muted-note" class="muted">This note is intentionally low contrast.</p>
+
+    <section id="login" aria-label="Sign in">
+      <form id="login-form">
+        <label for="username">Username</label>
+        <input type="text" id="username" data-testid="username-input" name="username">
+        <label for="pw">Password</label>
+        <input type="password" id="pw" data-testid="pw-input" name="password">
+        <button type="submit" id="signin-button" data-testid="signin-button">Sign in</button>
+      </form>
+      <p id="signin-status" hidden>Signed in.</p>
+    </section>
+
+    <section id="actions">
+      <button id="cta-button" data-testid="cta-button">Continue</button>
+      <div class="button-stack">
+        <button id="save-button" data-testid="save-button">Save</button>
+        <button id="cancel-button" data-testid="cancel-button">Cancel</button>
+      </div>
+      <button id="help-button" data-testid="help-button">Help</button>
+      <button id="load-button" data-testid="load-button">Load data</button>
+      <p id="load-status" hidden></p>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>
