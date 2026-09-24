@@ -20,6 +20,7 @@ from flow_review.dashboard.state import fold
 PAGE_DIR = Path(__file__).parent / "page"
 HEARTBEAT_S = 15
 POLL_S = 0.5
+MAX_BODY = 64 * 1024  # a triage POST is a few hundred bytes
 
 
 def _ledger_path(project_root: Path) -> Path:
@@ -118,6 +119,10 @@ class Handler(BaseHTTPRequestHandler):
             self._send_404()
             return
         length = int(self.headers.get("Content-Length", 0) or 0)
+        if length > MAX_BODY:
+            self.close_connection = True
+            self._send_json({"error": "body too large"}, status=413)
+            return
         raw = self.rfile.read(length)  # drain first: replying mid-upload aborts the socket on Windows
         # Block cross-site writes: a browser tab on another site can POST to localhost.
         origin = self.headers.get("Origin")

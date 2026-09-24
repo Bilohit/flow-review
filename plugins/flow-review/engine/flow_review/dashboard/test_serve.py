@@ -199,3 +199,18 @@ def test_triage_post_from_a_foreign_origin_is_403(tmp_path):
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_triage_post_rejects_an_oversized_body_without_reading_it(tmp_path):
+    import http.client
+    server, port = _start(tmp_path)
+    try:
+        conn = http.client.HTTPConnection("127.0.0.1", port, timeout=5)
+        conn.putrequest("POST", "/triage")
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Content-Length", str(10 * 1024 * 1024))
+        conn.endheaders()
+        assert conn.getresponse().status == 413
+    finally:
+        server.shutdown()
+        server.server_close()
