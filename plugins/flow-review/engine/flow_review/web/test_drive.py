@@ -46,7 +46,7 @@ class FakeDriver:
     def click(self, locator):
         self.clicked.append(locator)
 
-    def fill(self, locator, value):
+    def fill(self, locator, value, secret=False):
         self.filled.append((locator, value))
 
     def press(self, key):
@@ -472,11 +472,17 @@ def test_server_accepts_request_with_no_origin_header(tmp_path):
 
 
 def test_server_rejects_oversized_body(tmp_path):
+    import http.client
     run_dir, project_root, state = _start_fake_server(tmp_path)
-    oversized = b"x" * (drive.MAX_BODY + 1)
     try:
-        with pytest.raises(urllib.error.HTTPError) as exc_info:
-            _raw_post(state["port"], oversized, {"Content-Type": "application/json"})
-        assert exc_info.value.code == 413
+        # Claim an oversized body via Content-Length but never write it: the server must
+        # reject on the length alone, without waiting to read a body that was never sent.
+        conn = http.client.HTTPConnection("127.0.0.1", state["port"], timeout=5)
+        conn.putrequest("POST", "/action")
+        conn.putheader("Content-Type", "application/json")
+        conn.putheader("Content-Length", str(drive.MAX_BODY + 1))
+        conn.endheaders()
+        assert conn.getresponse().status == 413
+        conn.close()
     finally:
         drive._post(state["port"], "stop", {})

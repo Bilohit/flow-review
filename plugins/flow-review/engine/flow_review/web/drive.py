@@ -77,7 +77,7 @@ class DriveSession:
             value = text or ""
             if is_secret:
                 events.register_secret(value)
-        return self._act("fill", lambda: self.driver.fill(locator, value),
+        return self._act("fill", lambda: self.driver.fill(locator, value, secret=is_secret),
                           locator=locator, value=value, secret=is_secret, from_env=from_env)
 
     def press(self, key: str) -> dict:

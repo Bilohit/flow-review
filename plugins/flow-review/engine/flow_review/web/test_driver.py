@@ -109,6 +109,50 @@ def test_click_settle_is_capped_when_the_network_never_idles():
 
 
 @pytest.mark.web
+def test_screenshot_masks_a_text_input_filled_as_a_secret(tmp_path, webapp_server):
+    # CP3 finding 4: only input[type=password] was masked, so a from_env fill into a text
+    # field (an API key, an OTP box) showed up in plain sight in look --shot screenshots.
+    pytest.importorskip("PIL")
+    from PIL import Image
+
+    base_url, _ = webapp_server
+    d = WebDriver(headless=True)
+    d.launch(base_url)
+    d.goto("/")
+    d.fill({"testid": "username-input"}, "s3cret-api-key", secret=True)
+    out = tmp_path / "shot.png"
+    d.screenshot(out)
+
+    box = d.page.locator("[data-testid=username-input]").bounding_box()
+    d.close()
+
+    img = Image.open(out).convert("RGB")
+    cx = int(box["x"] + box["width"] / 2)
+    cy = int(box["y"] + box["height"] / 2)
+    assert img.getpixel((cx, cy)) == (0, 0, 0)
+
+
+@pytest.mark.web
+def test_screenshot_does_not_mask_a_plain_text_input(tmp_path, webapp_server):
+    base_url, _ = webapp_server
+    d = WebDriver(headless=True)
+    d.launch(base_url)
+    d.goto("/")
+    d.fill({"testid": "username-input"}, "not-a-secret")
+    out = tmp_path / "shot.png"
+    d.screenshot(out)
+
+    box = d.page.locator("[data-testid=username-input]").bounding_box()
+    d.close()
+
+    from PIL import Image
+    img = Image.open(out).convert("RGB")
+    cx = int(box["x"] + box["width"] / 2)
+    cy = int(box["y"] + box["height"] / 2)
+    assert img.getpixel((cx, cy)) != (0, 0, 0)
+
+
+@pytest.mark.web
 def test_is_password_detects_password_input_and_false_for_others(webapp_server):
     base_url, _ = webapp_server
     d = WebDriver(headless=True)

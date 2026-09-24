@@ -44,6 +44,7 @@ class WebDriver:
         self._console_cursor = 0
         self._inflight = 0
         self._last_activity = 0.0
+        self._secret_locators: list[dict] = []
 
     def launch(self, base_url: str) -> None:
         self.base_url = base_url.rstrip("/")
@@ -131,12 +132,22 @@ class WebDriver:
         self.page.keyboard.press(key)  # Enter may submit a form: settle like a click
         self._settle()
 
-    def fill(self, locator: dict, value: str) -> None:
+    def fill(self, locator: dict, value: str, secret: bool = False) -> None:
+        if secret:
+            # CP3 finding 4: input[type=password] alone isn't enough -- a from_env fill can
+            # land in a plain text field (an API key, an OTP box). Remember it so screenshot()
+            # masks it too.
+            self._secret_locators.append(dict(locator))
         self.resolve(locator).fill(value)
 
     def screenshot(self, path: Path) -> Path:
         password_inputs = self.page.locator("input[type=password]")
         mask = [password_inputs.nth(i) for i in range(password_inputs.count())]
+        for locator in self._secret_locators:
+            try:
+                mask.append(self.resolve(locator))
+            except LocatorNotFound:
+                pass
         self.page.screenshot(path=str(path), mask=mask, mask_color="#000000")
         return path
 
