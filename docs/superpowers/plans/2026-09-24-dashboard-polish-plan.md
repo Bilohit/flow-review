@@ -389,3 +389,35 @@ git commit -m "feat(dashboard): serve run-folder images under /run/ so lane thum
   - (5) the lanes show thumbnails
   - (6) the header dots have tooltips (verified by the test)
 - [ ] **Step 4: Ask the user** (AskUserQuestion) to approve the look or request changes, attaching the PNG paths. Record the answer in the plan's decisions log and the progress ledger.
+
+---
+
+### Task T5: Offline static report shows thumbnails, icons and fonts
+
+**Executor:** sonnet · **Depends:** T3 · Found during T4: `flow-review serve --static` output rendered in chromium with all non-`file:` requests blocked shows thumbnail `naturalWidth == 0` and missing sprite icons.
+
+**Root causes:**
+1. `static.py` puts thumbnails in a hidden `#evidence-thumbnails` block and `lane.shot_thumb_html`, but `app.js` renders `lane.shot`/`finding.evidence` paths, which don't exist beside the report file.
+2. `app.js` builds `<use href="icons/sprite.svg#id">`, and `index.html` has the same for the theme icons. Offline, the sprite is inlined, so only `#id` resolves.
+
+**Files:**
+- Modify: `plugins/flow-review/engine/flow_review/dashboard/static.py`, `page/app.js`, `test_static.py`
+
+**Required behaviour:**
+- In `render_static`, replace `lane["shot"]` with its thumbnail data URI (`_thumbnail_data_uri(run_dir / rel)`; set `None` when the file is missing). Replace each image path in `finding["evidence"]` (`.png/.jpg/.jpeg`) with its data URI, and keep non-image evidence as is. Delete `shot_thumb_html`, `evidence_thumbs_html` and the hidden `#evidence-thumbnails` block if no test needs them; if an existing test asserts the full-res `<a href>` link, keep that block and say so. Keep `_thumbnail_block` escaping.
+- In `app.js`, add `function _iconHref(id) { return document.getElementById('state-data') ? '#' + id : 'icons/sprite.svg#' + id; }` and use it for every `use.setAttribute('href', ...)`. `_assetUrl` already passes data URIs through in static mode (`!p || static` returns `p`).
+- In `static.py`, rewrite `href="icons/sprite.svg#` to `href="#` in the inlined `index.html` markup (plain `str.replace`).
+- Fonts: verify with `await document.fonts.ready` before `document.fonts.check`. Fix `_inline_fonts_css` only if the check is still false after `ready`.
+
+**Test (write first, `@pytest.mark.web`, in `test_static.py`):**
+- Seed a 4-lane run via `conftest._seed_run`.
+- Render with `render_static`.
+- Open the file in chromium with `page.route("**/*", lambda r: r.continue_() if r.request.url.startswith("file:") else r.abort())`.
+- Wait for `[data-role="lanes"] .lane`.
+- Assert every `.lane .shot img` has `naturalWidth > 0`.
+- Assert every `.finding-row svg use` has an `href` starting with `#` and that the target symbol exists: `document.querySelector(href)` is not null.
+- Assert `await document.fonts.ready; document.fonts.check('16px "Schibsted Grotesk"')` is true.
+- Close the browser in `finally`.
+- Watch the test fail first.
+
+**Verify:** the dashboard suite command from Global Constraints is all green. Commit: `fix(dashboard): static report inlines thumbnails and resolves icons offline`.
