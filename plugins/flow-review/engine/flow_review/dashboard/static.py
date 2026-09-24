@@ -5,12 +5,9 @@ embedded as small downscaled JPEG thumbnails that link out to the
 full-resolution file in the run folder, never inlined at full size.
 
 The served dashboard's real page assets (app.css/app.js/fonts/icon sprite)
-are built in E1 (page skeleton + live serve) and E3 (font subsetting), under
-`dashboard/page/`. This module reads from `page/` when those files exist
-(so it picks up the real assets the moment those tasks land) and otherwise
-falls back to the minimal inline constants below, so `--static` stays usable
-standalone. The fallback CSS/JS is intentionally tiny -- it is not the design
-pass, only a functioning single-file snapshot.
+live under `dashboard/page/` (E1 page skeleton + live serve, E3 font
+subsetting, E4 the built page) and are always present alongside this module
+in the repo, so this reads them directly -- no placeholder fallback.
 """
 from __future__ import annotations
 
@@ -29,38 +26,6 @@ PAGE_DIR = Path(__file__).parent / "page"
 THUMB_MAX_EDGE = 320   # px, longest edge -- proposed default, tune once real shots are seen
 THUMB_QUALITY = 70      # JPEG quality
 
-# Minimal fallback assets used only until E1 (page/index.html, app.css, app.js,
-# icons/sprite.svg) and E3 (page/fonts/*.woff2) land on this branch.
-_FALLBACK_TOKENS_CSS = ":root{--bg:#fff;--fg:#111;--accent:#2563eb;--radius:4px;}"
-_FALLBACK_APP_CSS = (
-    "body{font-family:'Schibsted Grotesk',sans-serif;background:var(--bg);color:var(--fg);"
-    "margin:0;padding:16px;}"
-    "code,.mono{font-family:'IBM Plex Mono',monospace;}"
-)
-_FALLBACK_APP_JS = (
-    "(function(){"
-    "var el=document.getElementById('state-data');"
-    "if(!el)return;"
-    "var state=JSON.parse(el.textContent);"
-    "window.__FLOW_REVIEW_STATE__=state;"
-    "})();"
-)
-# A tiny valid woff2 blob is not worth vendoring for a fallback path; the fallback
-# instead ships a placeholder byte string base64-encoded as a woff2 data URI. It is
-# not a usable font -- browsers fall back to the OS default -- but it keeps the
-# "everything inlined, nothing fetched" contract (A-21) true even before E3 lands
-# real subsetted fonts, and is replaced automatically once page/fonts/*.woff2 exist.
-_FALLBACK_FONT_PLACEHOLDER = b"flow-review-placeholder-font"
-_FALLBACK_SPRITE_SVG = (
-    '<svg xmlns="http://www.w3.org/2000/svg" style="display:none">'
-    '<symbol id="icon-placeholder" viewBox="0 0 24 24"></symbol>'
-    "</svg>"
-)
-_FALLBACK_HTML = (
-    "<!doctype html>\n<html><head><meta charset=\"utf-8\"><title>flow-review</title></head>"
-    "<body><div id=\"app\"></div></body></html>"
-)
-
 
 def _b64(data: bytes) -> str:
     return base64.b64encode(data).decode("ascii")
@@ -70,22 +35,14 @@ def _inline_fonts_css() -> str:
     """@font-face rules with base64 data URIs for every subsetted .woff2 in page/fonts/."""
     fonts_dir = PAGE_DIR / "fonts"
     rules = []
-    if fonts_dir.is_dir():
-        for woff2 in sorted(fonts_dir.glob("*.woff2")):
-            family = "Schibsted Grotesk" if "SchibstedGrotesk" in woff2.name else "IBM Plex Mono"
-            weight = "600" if "SemiBold" in woff2.name or "Medium" in woff2.name else "400"
-            data_uri = f"data:font/woff2;base64,{_b64(woff2.read_bytes())}"
-            rules.append(
-                f'@font-face{{font-family:"{family}";font-weight:{weight};'
-                f'src:url({data_uri}) format("woff2");font-display:swap;}}'
-            )
-    if not rules:
-        for family, weight in (("Schibsted Grotesk", "400"), ("IBM Plex Mono", "400")):
-            data_uri = f"data:font/woff2;base64,{_b64(_FALLBACK_FONT_PLACEHOLDER)}"
-            rules.append(
-                f'@font-face{{font-family:"{family}";font-weight:{weight};'
-                f'src:url({data_uri}) format("woff2");font-display:swap;}}'
-            )
+    for woff2 in sorted(fonts_dir.glob("*.woff2")):
+        family = "Schibsted Grotesk" if "SchibstedGrotesk" in woff2.name else "IBM Plex Mono"
+        weight = "600" if "SemiBold" in woff2.name or "Medium" in woff2.name else "400"
+        data_uri = f"data:font/woff2;base64,{_b64(woff2.read_bytes())}"
+        rules.append(
+            f'@font-face{{font-family:"{family}";font-weight:{weight};'
+            f'src:url({data_uri}) format("woff2");font-display:swap;}}'
+        )
     return "\n".join(rules)
 
 
@@ -107,10 +64,6 @@ def _thumbnail_block(rel_path: str, run_dir: Path) -> str:
     if not data_uri:
         return ""
     return f'<a href="{rel_path}"><img src="{data_uri}" alt=""></a>'
-
-
-def _read_or_fallback(path: Path, fallback: str) -> str:
-    return path.read_text(encoding="utf-8") if path.exists() else fallback
 
 
 def render_static(project_root: Path, run_dir: Path, cfg, out_path: Path) -> None:
@@ -137,18 +90,18 @@ def render_static(project_root: Path, run_dir: Path, cfg, out_path: Path) -> Non
     # never a template substitution of individual fields (see M8 fix in E2).
     payload = json.dumps(state).replace("</", "<\\/")
 
-    app_css = _read_or_fallback(PAGE_DIR / "app.css", _FALLBACK_APP_CSS)
-    tokens_css = _read_or_fallback(PAGE_DIR / "tokens.css", _FALLBACK_TOKENS_CSS)
-    app_js = _read_or_fallback(PAGE_DIR / "app.js", _FALLBACK_APP_JS)
-    sprite_svg = _read_or_fallback(PAGE_DIR / "icons" / "sprite.svg", _FALLBACK_SPRITE_SVG)
+    app_css = (PAGE_DIR / "app.css").read_text(encoding="utf-8")
+    tokens_css = (PAGE_DIR / "tokens.css").read_text(encoding="utf-8")
+    app_js = (PAGE_DIR / "app.js").read_text(encoding="utf-8")
+    sprite_svg = (PAGE_DIR / "icons" / "sprite.svg").read_text(encoding="utf-8")
     fonts_css = _inline_fonts_css()
 
-    html = _read_or_fallback(PAGE_DIR / "index.html", _FALLBACK_HTML)
+    html = (PAGE_DIR / "index.html").read_text(encoding="utf-8")
     # Strip the external asset links the served page uses; replace with inline equivalents.
     html = re.sub(r'<link rel="stylesheet"[^>]*>\n?', "", html)
     html = re.sub(r'<script src="app\.js"[^>]*></script>\n?', "", html)
     if "<head>" not in html or "</body>" not in html:
-        raise ValueError("page/index.html (or the built-in fallback) is missing <head> or </body>")
+        raise ValueError("page/index.html is missing <head> or </body>")
 
     html = html.replace(
         "<head>",
