@@ -108,5 +108,9 @@ the extra gotchas that only show up once you are actually driving one.
 - For a long-running server surface, distinguish "process exited", "process hung", and "process is
   running but its health check fails" -- they are three different findings, not one.
 
-These per-driver notes grow with the same discipline as the run's stuck-episode table: a novel
-harness trap earns one new line here, symptom first, so the next run does not rediscover it.
+These per-driver notes are the plugin's own shipped reference and are never appended to at
+runtime. A novel harness trap discovered during a run is written instead to the project's
+own `.flow-review/traps.md` (created by `flow-review setup-env` if it does not already
+exist), symptom first, so the next run on this project does not rediscover it -- without
+polluting the plugin's install directory, which every project sharing that plugin install
+would otherwise see.

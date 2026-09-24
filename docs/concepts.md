@@ -5,12 +5,12 @@ The vocabulary flow-review uses, and where each term lives in the code.
 ## Surface
 
 One thing a run can drive: a UI, a CLI, an API, or a library. Defined per project in
-`.flow-review/config.json` as a `Surface` -- `name`, `kind`, `driver`, `launch`, `preconditions`,
-`destructive`, `provenance`. `plugins/flow-review/skills/flow-review/fr/config.py`.
+`.flow-review/config.json` as a `Surface` -- `id`, `name`, `kind`, `driver`, `launch`, `cwd`, `env`, `options`, `preconditions`,
+`state`, `reset`, `creds`, `record`, `provenance`. `plugins/flow-review/engine/flow_review/config.py`.
 
 ## Kind
 
-What a surface is: `ui`, `cli`, `api`, or `library` (`VALID_KINDS` in `fr/config.py`). Kind decides
+What a surface is: `ui`, `cli`, `api`, or `library` (`VALID_KINDS` in `engine/flow_review/config.py`). Kind decides
 which lens set applies to a surface -- see Lens below.
 
 ## Driver
@@ -26,21 +26,20 @@ A critique question plus the evidence it is allowed to answer from -- nothing mo
 not code, keyed by surface kind, and never universal: a `ui` lens set differs from a `cli` lens set
 because the interface itself differs. `library` gets no lens set at all -- code called only by other
 code has no human-facing edge to critique.
-`plugins/flow-review/skills/flow-review/fr/lenses.py`.
+`plugins/flow-review/engine/flow_review/lenses.py`.
 
 ## Flow
 
 One end-to-end path through a surface: an entry point, a sequence of steps, an expected outcome, and
 the evidence to capture proving it. The base list is a project's own `.flow-review/flows.md`,
 hand-edited and reconciled -- never guessed at, never overwritten wholesale --
-`plugins/flow-review/skills/flow-review/fr/manifest.py` and
+`plugins/flow-review/engine/flow_review/manifest.py` and
 `plugins/flow-review/skills/flow-review/templates/flows.md`.
 
 ## Finding
 
-One thing a run observed: a severity (`P0`, `P1`, `P2`), a location, and text. Findings that repeat
-unchanged from the previous run demote to a count instead of re-headlining --
-`plugins/flow-review/skills/flow-review/fr/findings.py`. The reporting schema for how a finding is
+One thing a run observed: a severity (`P0`, `P1`, `P2`), a location, and text. Findings are keyed by fingerprint in the ledger and repeat unchanged from the previous run collapse to a count instead of re-headlining --
+`plugins/flow-review/engine/flow_review/ledger.py`. The reporting schema for how a finding is
 appended during a run is `plugins/flow-review/skills/flow-review/references/evidence.md`.
 
 ## Evidence
@@ -53,8 +52,8 @@ answers "does this look wrong", never "is this wrong". `references/evidence.md`.
 
 How sure flow-review is about a fact it recorded about a surface, one of `audited` (detected in the
 repo but never run), `proven` (actually run and confirmed working), or `user` (a person said so) --
-`VALID_PROVENANCE` in `fr/config.py`. `audited` versus `proven` is decided by
-`fr.prove.outcome_to_provenance`, which only awards `proven` to a launch command that was actually
+`VALID_PROVENANCE` in `engine/flow_review/config.py`. `audited` versus `proven` is decided by
+`engine/flow_review/prove.outcome_to_provenance`, which only awards `proven` to a launch command that was actually
 witnessed exiting clean or reaching a confirmed-ready running state.
 
 ## Drift
@@ -64,15 +63,32 @@ surface's evidence appeared that was not configured, a configured launch command
 configured surface's evidence disappeared. The comparison stays deliberately dumb and structural --
 surface set and launch command, never meaning -- because a drift check that flags a harmless rename
 every run trains a user to click through the gate, which loses the gate entirely.
-`plugins/flow-review/skills/flow-review/fr/drift.py`.
+`plugins/flow-review/engine/flow_review/drift.py`.
+
+## Ledger
+
+The project's permanent record of findings across runs. Findings are keyed by fingerprint and grouped by state: `open`, `fixed`, `regressed`, `false-positive`, `wont-fix`, `accepted`, `refuted`. Suppressions are derived from state (false-positive and wont-fix are suppressed). `plugins/flow-review/engine/flow_review/ledger.py`.
+
+## Fingerprint
+
+A stable, deterministic identifier for a finding: sha1 of the flow id, rule id, route template, and semantic locator. When an exact match misses but an open finding exists on the same flow and rule, Haiku triage decides if it is the same issue and the ledger records an alias. `ledger.fingerprint(flow_id, rule, route, locator)`.
+
+## Budget
+
+Token accounting across a run. The engine records token usage by surface, role, and count. Estimates use per-role priors; once a surface has 3+ runs in `usage_history.json`, medians of actuals replace the priors. A cap is enforced at dispatch time. `plugins/flow-review/engine/flow_review/budget.py`.
+
+## Validation
+
+The P0/P1 replay-then-verify replay state machine. Engine findings feed a replay replay that confirms them, then Opus verifier judges whether each is real. Replay exit status: 0 (clean), 1 (verified), 2 (divergence). Dispositions: `engine`, `objective`, `judgment`. `plugins/flow-review/engine/flow_review/validate.py`.
 
 ## The two phases
 
 **First run.** `.flow-review/config.json` does not exist, so flow-review interviews you: it proposes
-candidate surfaces detected from the project's own files (`fr/audit.py`), proves each confirmed
-launch command actually works before recording it (`fr/prove.py`), and writes the config plus a
+candidate surfaces detected from the project's own files (`engine/flow_review/audit.py`), proves each confirmed
+launch command actually works before recording it (`engine/flow_review/prove.py`), and writes the config plus a
 seeded `flows.md`.
 
 **Every run after.** The config exists, so the interview is skipped. flow-review reports structural
 drift, reconciles and drives the configured flows through whichever lens set applies to each
-surface's kind, and folds findings through repeat demotion before they reach the report.
+surface's kind, and reconciles findings into the ledger so unchanged findings collapse to a count
+before they reach the report.

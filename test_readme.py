@@ -96,3 +96,31 @@ def test_docs_and_contributing_exist_and_are_not_stubs():
         assert path.is_file(), f"{rel} is missing"
         text = path.read_text(encoding="utf-8")
         assert len(text.strip()) > 400, f"{rel} looks like a stub"
+
+
+def test_readme_no_longer_claims_stdlib_only():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "Standard library only" not in text
+    assert "no third-party packages" not in text.lower()
+
+
+def test_readme_states_the_managed_venv_and_pypi_package():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "flow-review setup-env" in text
+    assert re.search(r"\bpypi\b", text, re.I)
+
+
+def test_contributing_no_longer_claims_stdlib_only():
+    text = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    assert "no dependencies to install" not in text.lower()
+
+
+def test_readme_points_at_the_engine_package_location():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "engine/flow_review" in text or "flow_review" in text
+
+
+def test_docs_reference_the_ledger_not_the_v1_findings_module():
+    text = (ROOT / "docs" / "concepts.md").read_text(encoding="utf-8")
+    assert "fr/findings.py" not in text
+    assert "ledger" in text.lower()

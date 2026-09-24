@@ -1,6 +1,6 @@
 # Contributing
 
-flow-review is standard-library Python -- no dependencies to install, no build step.
+flow-review's engine (`plugins/flow-review/engine/flow_review/`) is a managed-venv Python package (uv, pip fallback) with per-surface extras; the skill and agent files (`plugins/flow-review/skills/flow-review/`, `plugins/flow-review/agents/`) are plain Markdown with no build step.
 
 ## Running the tests
 
@@ -11,8 +11,8 @@ python -m pytest -q
 ```
 
 This runs every test in the repository, including `test_readme.py` and `test_manifests.py` at the
-root, and the `fr/`, `dashboard/` and skill-level suites under
-`plugins/flow-review/skills/flow-review/`. `pytest.ini` already puts both locations on
+root, and the engine, `dashboard/` and skill-level suites under
+`plugins/flow-review/`. `pytest.ini` already puts both locations on
 `pythonpath`, so no extra setup is needed.
 
 To run only this repository's own documentation checks:
@@ -23,10 +23,9 @@ python -m pytest test_readme.py -q
 
 ## What to change and where
 
-- `plugins/flow-review/skills/flow-review/fr/` -- the tool itself: `config.py` (the per-project
+- `plugins/flow-review/engine/flow_review/` -- the tool's engine: `config.py` (the per-project
   schema), `audit.py` (proposes candidate surfaces), `prove.py` (actually runs and classifies a
-  launch command), `lenses.py` (the critique lens sets, kept as data), `findings.py` (repeat
-  demotion), `drift.py` (structural drift), `manifest.py` (the human-owned flow manifest).
+  launch command), `lenses.py` (the critique lens sets, kept as data), `ledger.py` (findings, fingerprint, suppressions), `drift.py` (structural drift), `manifest.py` (the human-owned flow manifest), `validate.py` (the P0/P1 replay-then-verify state machine), `triage.py` (transitions and fix briefs), `budget.py` (token estimate and cap), `plan.py` (the GO-gate plan).
 - `plugins/flow-review/skills/flow-review/references/` -- the reference docs the skill reads at run
   time: drivers (`surfaces.md`), evidence and reporting rules (`evidence.md`), the stuck protocol
   (`stuck.md`). Keep these in sync with the modules they document -- a reference that drifts from
@@ -42,11 +41,11 @@ python -m pytest test_readme.py -q
 - Every non-trivial module keeps a sibling test (`test_*.py` next to it). Read the module's own
   docstring before changing it -- several of these modules exist specifically because an earlier,
   simpler version was proven wrong by a real failure, and the docstring names which one.
-- A lens set is data (`fr/lenses.py`), never code -- add or change one there, never by special-
+- A lens set is data (`engine/flow_review/lenses.py`), never code -- add or change one there, never by special-
   casing a surface kind somewhere else. A new lens set is added when a real user asks for one, never
   on a hunch.
 - The flow manifest (`.flow-review/flows.md` in a consuming project, `templates/flows.md` here) is a
-  human's document. Nothing in this repository may overwrite it unconditionally -- `fr/manifest.py`
+  human's document. Nothing in this repository may overwrite it unconditionally -- `engine/flow_review/manifest.py`
   is the mechanism that protects a hand edit.
 - No emoji, no arrow characters, no typographic dashes in anything you write here -- use `->` and
   `--`. Keep the register plain: this is a QA tool, not a pitch.

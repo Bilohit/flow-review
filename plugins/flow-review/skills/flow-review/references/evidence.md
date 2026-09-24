@@ -30,23 +30,19 @@ a `flow` key** -- never a count of `step` events. Emit one when a flow ends, alw
 A screenshot is only visible on the dashboard if it has a `shot` event -- **write the PNG and
 emit the event together, every time.** Files alone leave the surface's panel blank.
 
-### The append idiom -- use exactly this
+### How to append an event -- use the engine, never a hand-rolled append
 
 ```bash
-flow-review event --run "$RUN" --type step surface=<surface-name> flow=f1 step="open the target screen" state=ok
+flow-review event --run "$RUN" --type step surface=<surface-id> flow=f1 step="open the target screen" state=ok
 ```
 
-- The `flow-review event` CLI is the only way to write to `events.jsonl`. Never hand-build a
-  JSON line and never shell-append or `Add-Content` it directly -- the CLI owns the timestamp
-  (millisecond UTC, `Z` suffix), assigns every `finding` event its id, and redacts any
-  registered secret before the line touches disk.
-- Pass `--json '{"sev":"P1","text":"..."}'` for a payload with nested values, or plain
-  `key=value` arguments for the common flat case -- both may be combined; `--type` always wins
-  over a `type` key inside `--json`.
-- Escape `"` and newlines inside a `text` value the normal way for your shell; the CLI itself
-  never shells out to build the line.
-- **Never rewrite the file. Never read it back.** Multiple writers append concurrently; it is
-  not yours alone.
+- **Always the CLI (or `events.append` if called from Python), never a hand-rolled shell
+  append.** Hand-rolled appends become shell-injectable the moment captured output contains
+  special characters like double quotes.
+- `k=v` pairs become JSON fields; `ts` (ms, UTC, trailing `Z`) and secret redaction
+  (`events.redact`) are applied by the writer, not the caller.
+- Multiple writers still append concurrently; the file is still never read back or
+  rewritten by a tester.
 
 ## 2. Evidence rules
 
