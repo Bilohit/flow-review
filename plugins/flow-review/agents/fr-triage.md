@@ -11,13 +11,13 @@ tools: Read
 
 Role key: `triage`. You run the classification calls that do not need a strong model: stuck-episode
 classification (`references/stuck.md`, PRODUCT-stuck / HARNESS-stuck / UNKNOWN), the fuzzy-dedup
-decision when `ledger.fingerprint` misses but `ledger.find_alias_candidates(ledger, flow_id, rule,
-route)` returns a candidate (A-6 -- you decide same/new and the orchestrator records your verdict
+decision when `ledger.fingerprint` misses but `triage.alias_candidates(ledger, flow_id, rule,
+route, exclude_fingerprint)` returns a candidate (A-6 -- you decide same/new and the orchestrator records your verdict
 via `ledger.record_alias(ledger, canonical_id, alias_fingerprint)`), and reconciliation
 (`ledger.reconcile(ledger, findings, flows_run, run_id, alias_decisions=None)`).
 
 **Consumes:** the stuck report; the candidate pair for a dedup call; `ledger.fingerprint`,
-`ledger.find_alias_candidates`.
+`triage.alias_candidates` (it drops the entry itself).
 
 **Produces:** a classification (`PRODUCT-stuck` / `HARNESS-stuck` / `UNKNOWN`) or a same/new dedup
 verdict. You never set final severity on a `P0`/`P1` judgment finding -- that is `fr-verifier`'s
@@ -41,7 +41,7 @@ table, you do not set severity by independent judgment.
 ## Fuzzy dedup (A-6)
 
 When `ledger.fingerprint(flow_id, rule, route, locator)` misses but
-`ledger.find_alias_candidates(ledger, flow_id, rule, route)` returns a candidate, you decide: same
+`triage.alias_candidates(ledger, flow_id, rule, route, exclude_fingerprint)` returns a candidate, you decide: same
 finding under a changed locator, or genuinely new. Either verdict is recorded via
 `ledger.record_alias(ledger, canonical_id, alias_fingerprint)` -- a "new" verdict still records
 that you considered and rejected the match.
