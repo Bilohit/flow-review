@@ -178,8 +178,10 @@ class DriveSession:
         # false P0 against the app for an error the tool made up): the point of `drive fault` is
         # to see how the app handles the failure, not to report the failure we caused.
         rule = finding.get("rule")
-        if self._offline_active and rule in ("http.5xx", "console.error"):
-            return True  # every request fails while offline is active; that's fault, not app bug
+        if rule == "console.error" and (self._offline_active or self._active_5xx_patterns):
+            # Only the browser's own notice for the request we failed; an app error (an uncaught
+            # exception while offline) is exactly what the fault is there to expose, so it files.
+            return (finding.get("text") or "").startswith("Failed to load resource")
         if rule == "http.5xx" and self._active_5xx_patterns:
             url = self._finding_url(finding)
             if url is not None:

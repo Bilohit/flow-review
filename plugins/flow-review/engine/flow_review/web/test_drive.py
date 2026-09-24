@@ -666,7 +666,9 @@ def test_fault_offline_suppresses_self_inflicted_console_error(
             session.click({"testid": "load-button"})
         except Exception:
             pass  # the click itself may fail while offline; only the finding suppression matters
-        assert _findings(run_dir, "console.error") == []
+        texts = [f["text"] for f in _findings(run_dir, "console.error")]
+        assert not any(t.startswith("Failed to load resource") for t in texts)
+        assert any(t.startswith("load error:") for t in texts)  # the app's own error still files
         assert _findings(run_dir, "http.5xx") == []
     finally:
         driver.close()
@@ -686,3 +688,21 @@ def test_is_self_inflicted_matches_active_5xx_pattern_via_evidence_url(tmp_path)
         "evidence": [json.dumps({"method": "GET", "url": "http://x/api/fail", "status": 500})],
     }
     assert session._is_self_inflicted(other) is False
+
+
+def test_is_self_inflicted_keeps_real_app_console_errors_during_a_fault(tmp_path):
+    run_dir, project_root = _dirs(tmp_path)
+    session = DriveSession(FakeDriver(), "webapp", run_dir, project_root, record_enabled=False)
+    session._offline_active = True
+    browser_notice = {"rule": "console.error",
+                      "text": "Failed to load resource: net::ERR_FAILED"}
+    app_crash = {"rule": "console.error",
+                 "text": "Uncaught (in promise) TypeError: Failed to fetch"}
+    assert session._is_self_inflicted(browser_notice) is True
+    assert session._is_self_inflicted(app_crash) is False
+    session._offline_active = False
+    session._active_5xx_patterns = ["**/api/broken"]
+    assert session._is_self_inflicted(
+        {"rule": "console.error",
+         "text": "Failed to load resource: the server responded with a status of 503 ()"}) is True
+    assert session._is_self_inflicted(app_crash) is False
