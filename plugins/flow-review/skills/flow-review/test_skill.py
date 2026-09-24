@@ -83,7 +83,15 @@ def test_skill_resolves_model_via_the_model_command():
 
 def test_skill_names_manifest_apply_learnings_explicitly():
     text = _text()
-    assert "manifest.apply_learnings" in text
+    assert "flow-review manifest apply-learnings" in text
+
+
+def test_skill_uses_ledger_cli_verbs_never_python_calls():
+    text = _text()
+    for cmd in ("flow-review ledger reconcile --run", "flow-review ledger suppressions --rule",
+                "flow-review ledger alias-candidates", "flow-review ledger record-miss"):
+        assert cmd in text, cmd
+    assert not re.search(r"`(ledger|manifest)\.\w+\(", text)
 
 
 def test_skill_states_record_is_opt_in():

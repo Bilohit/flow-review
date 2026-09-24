@@ -37,8 +37,9 @@ against what pass 1 found. Drive whatever pass 2 adds using the goal-around set 
 
 A function pass 2 reveals that no cold-eyes pass has found yet is filed, on its first miss, as a
 **goal-card metric only** -- labelled "from docs", never a severity-bearing finding -- and recorded
-with `ledger.record_miss(ledger, function, run_id)`. It becomes a `P2` discoverability finding only
-once `ledger.missed_twice(ledger, function)` returns true for that function (i.e. it has now been
+with `flow-review ledger record-miss --function NAME --run DIR` (backed by `ledger.record_miss`;
+it prints the miss count). It becomes a `P2` discoverability finding only
+once that count reaches 2 (`ledger.missed_twice`) for that function (i.e. it has now been
 missed by cold-eyes on 2 separate runs). It is never `P1`, and it is never sent to `fr-verifier` --
 `missed_twice` is the only gate on this, not lens discretion.
 
