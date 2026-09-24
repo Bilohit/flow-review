@@ -141,3 +141,11 @@ def test_skill_report_names_the_hybrid_sections():
     text = _text()
     for phrase in ("needs-attention", "goal card", "opinion", "refuted", "not-exercised"):
         assert phrase.lower() in text.lower(), f"SKILL.md report section missing {phrase!r}"
+
+
+def test_skill_uses_validate_and_budget_cli_verbs_never_python_calls():
+    text = _text()
+    assert "flow-review validate resolve --run" in text
+    assert "flow-review budget fold --run" in text
+    assert not re.search(r"`(validate|budget)\.\w+\(", text)
+    assert "catch" not in text.lower() or "ValueError" not in text

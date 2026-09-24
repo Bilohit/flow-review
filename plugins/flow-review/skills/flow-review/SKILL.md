@@ -99,10 +99,11 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
      engine check or objective failure is filed on one reproduction; a `P2` judgment finding is
      filed directly as an opinion; a `P0`/`P1` judgment finding gets an ephemeral replay, then
      `fr-verifier` at Opus, which may refute it only with measured or replayed evidence -- enforced
-     by `validate.resolve_after_verifier` requiring a real evidence file under the run folder, not
-     a reason string alone. If the verifier cannot supply that file, `resolve_after_verifier`
-     raises `ValueError`; **catch it and treat the finding as `stands`**, exactly as if the
-     verifier had returned `stands` directly -- never let a failed refutation crash the run. A
+     by `flow-review validate resolve --run DIR --verdict stands|refuted --reason R --kind
+     measurement|replay --ref PATH` (PATH relative to the run folder), which requires a real
+     evidence file inside the run folder, not a reason string alone. It prints the final verdict,
+     `stands` or `refuted`, and always exits 0: a refutation without a valid evidence file prints
+     `stands`, exactly as if the verifier had returned `stands` directly. A
      successful refutation stays in the ledger with the reason and the evidence ref, never
      deleted.
    - **Triage.** `fr-triage` at Haiku classifies stuck episodes, resolves fuzzy-dedup ties
@@ -116,7 +117,8 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
    rewrite of `flows.md`, and never touching a human-edited file (see `references/setup.md`
    section 8 for the append-only mechanism this reuses). A run that learned nothing calls it with
    no `--learning`; the printed hash only moves when there was something to record.
-7. **Report.** Section 4 below. Stop every drive session (step 4) once the report is assembled.
+7. **Report.** After `flow-review ledger reconcile --run DIR`, run
+   `flow-review budget fold --run DIR` to fold this run's usage into `usage_history.json`. Then the report: section 4 below. Stop every drive session (step 4) once the report is assembled.
 
 ## 4. Agent tiering
 
