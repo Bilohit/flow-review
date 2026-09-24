@@ -111,12 +111,42 @@ def test_load_dotenv_parses_key_value_pairs_skipping_comments_and_blanks(tmp_pat
     assert env == result
 
 
-def test_load_dotenv_registers_every_value_for_redaction(tmp_path):
+def test_load_dotenv_redacts_a_creds_named_value(tmp_path):
     path = tmp_path / ".env"
     path.write_text("ADMIN_PASSWORD=hunter2\n", encoding="utf-8")
-    envsetup.load_dotenv(path, environ={})
+    envsetup.load_dotenv(path, environ={}, secret_names={"ADMIN_PASSWORD"})
     written = events.append(tmp_path, {"type": "step", "text": "logged in with hunter2"})
     assert "hunter2" not in written["text"]
+
+
+def test_load_dotenv_does_not_redact_a_non_creds_value(tmp_path):
+    # A-26: DEBUG=1 used to blank every "1" in every event, timestamps included.
+    path = tmp_path / ".env"
+    path.write_text("DEBUG=1\nADMIN_PASSWORD=hunter2\n", encoding="utf-8")
+    env = {}
+    envsetup.load_dotenv(path, environ=env, secret_names={"ADMIN_PASSWORD"})
+    assert env["DEBUG"] == "1"
+    written = events.append(tmp_path, {"type": "step", "text": "step 1 of 10"})
+    assert written["text"] == "step 1 of 10"
+    assert "[redacted]" not in written["ts"]
+
+
+def test_load_dotenv_never_registers_a_creds_value_under_four_chars(tmp_path):
+    path = tmp_path / ".env"
+    path.write_text("PIN=123\n", encoding="utf-8")
+    envsetup.load_dotenv(path, environ={}, secret_names={"PIN"})
+    written = events.append(tmp_path, {"type": "step", "text": "code 123"})
+    assert written["text"] == "code 123"
+
+
+def test_secret_names_is_the_union_of_every_surface_creds_env_name():
+    from flow_review.config import Config, Surface
+    cfg = Config(schema_version=2, generator_version="x", surfaces=[
+        Surface(id="a", name="A", kind="ui", driver="playwright", launch="x", creds={"user": "A_USER", "pw": "A_PW"}),
+        Surface(id="b", name="B", kind="ui", driver="playwright", launch="x", creds={"pw": "B_PW"}),
+        Surface(id="c", name="C", kind="cli", driver="shell", launch="x"),
+    ])
+    assert envsetup.secret_names(cfg) == {"A_USER", "A_PW", "B_PW"}
 
 
 def test_load_dotenv_defaults_to_os_environ_when_none_given(tmp_path, monkeypatch):

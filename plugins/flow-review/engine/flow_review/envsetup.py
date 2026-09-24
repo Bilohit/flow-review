@@ -99,7 +99,17 @@ def write_gitignore(flow_review_dir: Path, commit_recordings: bool = True) -> No
     (flow_review_dir / ".gitignore").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def load_dotenv(path: Path, environ: dict | None = None) -> dict[str, str]:
+_MIN_SECRET_LEN = 4
+
+
+def secret_names(cfg) -> set[str]:
+    """A-26: the env-var names some surface's `creds` points at -- the only .env values that
+    are secrets. Registering every value (DEBUG=1, PORT=3000) blanked those substrings in every
+    event, timestamps included."""
+    return {name for surface in cfg.surfaces for name in (surface.creds or {}).values()}
+
+
+def load_dotenv(path: Path, environ: dict | None = None, secret_names=()) -> dict[str, str]:
     from flow_review import events  # local import: envsetup must not force events' import cost
                                      # onto every caller that only wants the .gitignore writer
 
@@ -118,6 +128,7 @@ def load_dotenv(path: Path, environ: dict | None = None) -> dict[str, str]:
         if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
             value = value[1:-1]
         parsed[key] = value
-        events.register_secret(value)
+        if key in secret_names and len(value) >= _MIN_SECRET_LEN:
+            events.register_secret(value)
         target[key] = value
     return parsed
