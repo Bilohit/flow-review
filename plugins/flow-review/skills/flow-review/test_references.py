@@ -12,6 +12,7 @@ thing that changes freely.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from flow_review import lenses
@@ -21,6 +22,7 @@ REFS = ROOT / "references"
 
 REQUIRED = [
     REFS / "surfaces.md", REFS / "testing.md", REFS / "evidence.md", REFS / "stuck.md",
+    REFS / "goals.md", REFS / "validation.md",
     REFS / "lenses" / "ui.md", REFS / "lenses" / "cli.md", REFS / "lenses" / "api.md",
     ROOT / "templates" / "flows.md",
 ]
@@ -184,3 +186,56 @@ def test_cli_reconfigures_stdout_only_inside_main():
     assert "sys.stdout.reconfigure" not in before_main, (
         "the guard must live inside main(), not at module import time"
     )
+
+
+def test_goals_reference_exists_and_is_required():
+    assert (REFS / "goals.md") in REQUIRED
+
+
+def test_goals_file_states_the_around_set_and_default_on():
+    text = (REFS / "goals.md").read_text(encoding="utf-8")
+    for phrase in ("unhappy path", "interruption", "alternate route", "variant"):
+        assert phrase in text.lower()
+    assert re.search(r"on by default", text, re.I)
+    assert re.search(r"quick mode", text, re.I)
+
+
+def test_goals_file_states_cold_eyes_then_docs_pass():
+    text = (REFS / "goals.md").read_text(encoding="utf-8")
+    assert re.search(r"pass 1", text, re.I)
+    assert re.search(r"pass 2", text, re.I)
+    assert re.search(r"no code|not read.{0,20}code|read no code", text, re.I)
+
+
+def test_goals_file_uses_the_canonical_ledger_functions_for_discoverability():
+    text = (REFS / "goals.md").read_text(encoding="utf-8")
+    assert "record_miss" in text
+    assert "missed_twice" in text
+    assert re.search(r"\bP2\b", text)
+    assert "P1" not in text.split("record_miss")[0].split("Hidden-feature")[-1]
+
+
+def test_goals_file_states_path_ratio_metric():
+    text = (REFS / "goals.md").read_text(encoding="utf-8")
+    assert re.search(r"path.{0,10}ratio|shortest.{0,20}route", text, re.I)
+
+
+def test_goals_file_states_the_safety_limits():
+    text = (REFS / "goals.md").read_text(encoding="utf-8")
+    for phrase in ("sandbox only", "test_inbox", "no-test-inbox", "payment-not-sandboxed",
+                   "destructive-no-optin", "not-exercised"):
+        assert phrase in text, phrase
+
+
+def test_goals_file_names_the_drive_cli_and_secret_handling():
+    text = (REFS / "goals.md").read_text(encoding="utf-8")
+    assert "flow-review drive" in text
+    assert "--from-env" in text
+
+
+def test_goals_file_never_claims_the_explorer_writes_its_own_action_log_or_step_events():
+    text = (REFS / "goals.md").read_text(encoding="utf-8")
+    assert "events.append" not in text
+    assert "flow-review event" not in text
+    assert re.search(r"explorer.{0,60}(writes|emits|hand-writes).{0,40}(action log|step event)",
+                      text, re.I) is None
