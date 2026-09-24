@@ -199,3 +199,55 @@ def save(cfg: Config, path: Path) -> None:
     _validate(cfg)
     text = json.dumps(asdict(cfg), indent=2, ensure_ascii=True) + "\n"
     Path(path).write_text(text, encoding="utf-8")
+
+
+# --- Model routing (C1; Canonical Interfaces "Model routing") -----------------------------
+#
+# Profiles are shipped as data, never as a parsed Markdown table: every agents/fr-*.md file's
+# "## Model profile" table is a documentation mirror of PROFILES below, generated to match it --
+# never the other direction. The engine never reads Markdown at runtime.
+
+ROLES: tuple[str, ...] = (
+    "explorer", "cold-eyes", "lens", "replay-repair", "triage", "verifier",
+)
+
+PROFILES: dict[str, dict[str, str]] = {
+    "lean": {
+        "explorer": "haiku",
+        "cold-eyes": "haiku",
+        "lens": "haiku",
+        "replay-repair": "haiku",
+        "triage": "haiku",
+        "verifier": "sonnet",
+    },
+    "default": {
+        "explorer": "sonnet",
+        "cold-eyes": "sonnet",
+        "lens": "sonnet",
+        "replay-repair": "haiku",
+        "triage": "haiku",
+        "verifier": "opus",
+    },
+    "max": {
+        "explorer": "opus",
+        "cold-eyes": "opus",
+        "lens": "opus",
+        "replay-repair": "sonnet",
+        "triage": "sonnet",
+        "verifier": "opus",
+    },
+}
+
+
+def resolve_model(cfg: "Config", role: str) -> str:
+    """The model to dispatch `role` at, honouring `cfg.role_overrides` first.
+
+    `role` must be one of `ROLES` -- the bare role name, never an `fr-` prefixed agent filename;
+    the prefix is a Claude Code agent-file naming convention, not part of the role's identity.
+    """
+    if role not in ROLES:
+        raise ValueError(f"unknown role {role!r}, must be one of {ROLES}")
+    override = cfg.role_overrides.get(role)
+    if override:
+        return override
+    return PROFILES[cfg.model_profile][role]

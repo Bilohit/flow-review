@@ -20,10 +20,28 @@ def test_main_with_no_args_prints_usage_and_exits_nonzero(capsys):
 def test_main_dispatches_known_stub_subcommands():
     for verb in (
         "prove", "serve", "triage", "ledger",
-        "model",
     ):
         code = cli.main([verb])
         assert code == 2, f"{verb} stub must report not-yet-implemented, not crash or succeed"
+
+
+def test_model_prints_resolved_model_for_role(tmp_path, capsys):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
+    code = cli.main(["model", "--project", str(tmp_path), "verifier"])
+    assert code == 0
+    assert capsys.readouterr().out.strip() == "opus"
+
+
+def test_model_honours_role_overrides(tmp_path, capsys):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": [], '
+        '"role_overrides": {"verifier": "sonnet"}}', encoding="utf-8")
+    code = cli.main(["model", "--project", str(tmp_path), "verifier"])
+    assert code == 0
+    assert capsys.readouterr().out.strip() == "sonnet"
 
 
 def test_budget_check_exits_nonzero_when_cap_would_be_exceeded(tmp_path):

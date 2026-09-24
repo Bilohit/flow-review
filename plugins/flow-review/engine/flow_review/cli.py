@@ -19,7 +19,6 @@ from pathlib import Path
 # change.
 _STUB_VERBS = (
     "prove", "serve", "triage", "ledger",
-    "model",
 )
 
 
@@ -192,11 +191,32 @@ def build_parser() -> argparse.ArgumentParser:
     event_parser.add_argument("fields", nargs="*")
     event_parser.set_defaults(func=_run_event)
 
+    model_parser = sub.add_parser("model", parents=[project_after_verb])
+    from flow_review import config as configmod
+    model_parser.add_argument("role", choices=list(configmod.ROLES))
+    model_parser.set_defaults(func=_run_model)
+
     drive_parser = sub.add_parser("drive")
     drive_parser.add_argument("drive_args", nargs=argparse.REMAINDER)
     drive_parser.set_defaults(func=_run_drive)
 
     return parser
+
+
+def _run_model(args: argparse.Namespace) -> int:
+    from flow_review import config as configmod
+    project_root = args.project_root
+    if project_root is None:
+        print("no .flow-review/ found; run /flow-review setup first, or pass --project",
+              file=sys.stderr)
+        return 3
+    try:
+        cfg = configmod.load(Path(project_root) / ".flow-review" / "config.json")
+    except Exception as exc:  # noqa: BLE001 -- CLI boundary, report and exit, never traceback
+        print(str(exc), file=sys.stderr)
+        return 3
+    print(configmod.resolve_model(cfg, args.role))
+    return 0
 
 
 def _run_drive(args: argparse.Namespace) -> int:
