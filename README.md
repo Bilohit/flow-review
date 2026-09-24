@@ -122,7 +122,7 @@ Once every candidate is resolved, flow-review writes `.flow-review/config.json` 
 
 ## Lenses
 
-A lens is a critique question plus the evidence it may answer from (`engine/flow_review/lenses.py`). Lens sets are
+A lens is a critique question plus the evidence it may answer from (`references/lenses/ui.md`). Lens sets are
 data, keyed by surface kind, and never universal.
 
 | Kind | Lenses |

@@ -46,7 +46,8 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
 
 ## 3. Run mode procedure
 
-1. **Plan.** Run `flow-review plan --mode <mode> [--goal "<goal>"] [--record] --json`. It returns
+1. **Plan.** Run `flow-review plan --mode <mode> [--goal "<goal>"] [--record]` (M1 always prints
+   JSON). It returns
    the planned work per surface, a token estimate per surface (A-19: per-mode unit priors, refined
    by `budget.estimate` once `usage_history.json` has >=3 runs), and gaps: missing credentials, and
    every `persistent`-state surface a destructive action was planned against.

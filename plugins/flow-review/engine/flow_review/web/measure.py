@@ -160,27 +160,6 @@ def _css_color_to_rgb(css: str) -> tuple[int, int, int] | None:
     return None if a == 0 else (r, g, b)
 
 
-def check_contrast(driver, selector: str = "body *", route: str = "/") -> list[Finding]:
-    findings: list[Finding] = []
-    elements = driver.page.locator(selector)
-    for i in range(elements.count()):
-        el = elements.nth(i)
-        style = el.evaluate(
-            "el => { const s = getComputedStyle(el); return {color: s.color, "
-            "bg: s.backgroundColor, fontSize: parseFloat(s.fontSize), fontWeight: s.fontWeight}; }"
-        )
-        fg = _css_color_to_rgb(style["color"])
-        bg = _css_color_to_rgb(style["bg"])
-        if fg is None or bg is None:
-            continue
-        large = style["fontSize"] >= 24 or (
-            style["fontSize"] >= 18.66 and style["fontWeight"] in ("bold", "700", "800", "900")
-        )
-        locator = {"css": f"{selector}:nth-of-type({i + 1})"}
-        findings.extend(check_contrast_pair(fg, bg, large, locator, route))
-    return findings
-
-
 # ---------- token.color ----------
 
 def check_tokens(computed: dict[str, str], tokens: dict[str, str],

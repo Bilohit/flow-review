@@ -26,7 +26,7 @@ A critique question plus the evidence it is allowed to answer from -- nothing mo
 not code, keyed by surface kind, and never universal: a `ui` lens set differs from a `cli` lens set
 because the interface itself differs. `library` gets no lens set at all -- code called only by other
 code has no human-facing edge to critique.
-`plugins/flow-review/engine/flow_review/lenses.py`.
+`plugins/flow-review/skills/flow-review/references/lenses/ui.md`.
 
 ## Flow
 
@@ -79,7 +79,7 @@ Token accounting across a run. The engine records token usage by surface, role, 
 
 ## Validation
 
-The P0/P1 replay-then-verify replay state machine. Engine findings feed a replay replay that confirms them, then Opus verifier judges whether each is real. Replay exit status: 0 (clean), 1 (verified), 2 (divergence). Dispositions: `engine`, `objective`, `judgment`. `plugins/flow-review/engine/flow_review/validate.py`.
+The P0/P1 replay-then-verify state machine. A replayed finding is handed to the Opus verifier, who judges whether it is real; `flow-review validate resolve` turns that verdict into `stands` or `refuted`, gated on a real evidence ref. Replay exit status: 0 (clean), 1 (verified), 2 (divergence). Dispositions: `engine`, `objective`, `judgment`. `plugins/flow-review/engine/flow_review/validate.py`.
 
 ## The two phases
 

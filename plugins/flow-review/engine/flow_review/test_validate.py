@@ -2,59 +2,20 @@ from __future__ import annotations
 
 import pytest
 
-from flow_review.validate import (
-    Disposition,
-    Verdict,
-    resolve_after_replay,
-    resolve_after_verifier,
-    route,
-)
+from flow_review.validate import Verdict, resolve_after_verifier
 
 
-def _finding(disposition: Disposition, sev: str = "P1") -> dict:
+def _finding(sev: str = "P1") -> dict:
     return {
-        "disposition": disposition, "sev": sev,
+        "disposition": "judgment", "sev": sev,
         "surface_id": "web", "flow_id": "w03", "rule": "identity",
         "route": "/settings", "locator": "role=row,name=Notifications",
         "text": "example claim", "evidence": ["example evidence"],
     }
 
 
-def test_engine_check_routes_straight_to_filed():
-    assert route(_finding(Disposition.ENGINE, "P1")) == "file"
-
-
-def test_objective_failure_routes_straight_to_filed():
-    assert route(_finding(Disposition.OBJECTIVE, "P0")) == "file"
-
-
-def test_judgment_p2_routes_to_opinion_never_replay():
-    assert route(_finding(Disposition.JUDGMENT, "P2")) == "opinion"
-
-
-@pytest.mark.parametrize("sev", ["P0", "P1"])
-def test_judgment_p0_p1_routes_to_replay(sev):
-    assert route(_finding(Disposition.JUDGMENT, sev)) == "replay"
-
-
-def test_unreplayable_p0_p1_still_reaches_the_verifier():
-    finding = _finding(Disposition.JUDGMENT, "P0")
-    assert resolve_after_replay(finding, replay_result=None) == "verify"
-
-
-def test_replay_confirming_the_claim_still_goes_to_the_verifier():
-    finding = _finding(Disposition.JUDGMENT, "P1")
-    assert resolve_after_replay(finding, replay_result={"confirmed": True}) == "verify"
-
-
-def test_resolve_after_replay_rejects_a_non_replay_route():
-    finding = _finding(Disposition.JUDGMENT, "P2")
-    with pytest.raises(ValueError):
-        resolve_after_replay(finding, replay_result=None)
-
-
 def test_verifier_stands_returns_the_stands_verdict_with_no_reason_or_evidence_required(tmp_path):
-    finding = _finding(Disposition.JUDGMENT, "P0")
+    finding = _finding("P0")
     verdict, reason = resolve_after_verifier(
         finding, verifier_verdict="stands", reason=None, evidence=None, run_dir=tmp_path,
     )
@@ -63,7 +24,7 @@ def test_verifier_stands_returns_the_stands_verdict_with_no_reason_or_evidence_r
 
 
 def test_verifier_refuted_requires_a_reason(tmp_path):
-    finding = _finding(Disposition.JUDGMENT, "P0")
+    finding = _finding("P0")
     evidence = {"kind": "measurement", "ref": "repro/contrast.json"}
     (tmp_path / "repro").mkdir()
     (tmp_path / "repro" / "contrast.json").write_text("{}", encoding="utf-8")
@@ -76,7 +37,7 @@ def test_verifier_refuted_requires_a_reason(tmp_path):
 def test_verifier_refuted_requires_evidence_at_all():
     """A "refuted" verdict with evidence=None is exactly the "taste" refutation the brief
     forbids -- it must raise, never silently pass through as a bare reason string."""
-    finding = _finding(Disposition.JUDGMENT, "P0")
+    finding = _finding("P0")
     with pytest.raises(ValueError):
         resolve_after_verifier(
             finding, verifier_verdict="refuted", reason="looked wrong to me",
@@ -85,7 +46,7 @@ def test_verifier_refuted_requires_evidence_at_all():
 
 
 def test_verifier_refuted_rejects_an_evidence_kind_outside_the_two_known_values(tmp_path):
-    finding = _finding(Disposition.JUDGMENT, "P0")
+    finding = _finding("P0")
     (tmp_path / "shot.png").write_bytes(b"")
     evidence = {"kind": "impression", "ref": "shot.png"}
     with pytest.raises(ValueError):
@@ -96,7 +57,7 @@ def test_verifier_refuted_rejects_an_evidence_kind_outside_the_two_known_values(
 
 
 def test_verifier_refuted_rejects_a_missing_evidence_file(tmp_path):
-    finding = _finding(Disposition.JUDGMENT, "P0")
+    finding = _finding("P0")
     evidence = {"kind": "replay", "ref": "repro/does-not-exist.json"}
     with pytest.raises(ValueError):
         resolve_after_verifier(
@@ -107,7 +68,7 @@ def test_verifier_refuted_rejects_a_missing_evidence_file(tmp_path):
 
 
 def test_verifier_refuted_with_a_real_evidence_file_returns_refuted(tmp_path):
-    finding = _finding(Disposition.JUDGMENT, "P0")
+    finding = _finding("P0")
     (tmp_path / "repro").mkdir()
     (tmp_path / "repro" / "contrast.json").write_text('{"ratio": 5.1}', encoding="utf-8")
     evidence = {"kind": "measurement", "ref": "repro/contrast.json"}
@@ -124,7 +85,7 @@ def test_verifier_refuted_with_a_real_evidence_file_returns_refuted(tmp_path):
 
 
 def test_verifier_verdict_outside_the_two_known_values_is_rejected(tmp_path):
-    finding = _finding(Disposition.JUDGMENT, "P0")
+    finding = _finding("P0")
     with pytest.raises(ValueError):
         resolve_after_verifier(
             finding, verifier_verdict="probably fine", reason="taste",
@@ -138,7 +99,7 @@ def test_orchestrator_catches_a_bad_refutation_and_the_finding_stands(tmp_path):
     for catching it and treating the finding as `stands` rather than propagating the exception
     into a crashed run. This test only proves the raise happens; the catch-and-stand behavior
     lives in the orchestrator (SKILL.md, C2), not in this module."""
-    finding = _finding(Disposition.JUDGMENT, "P0")
+    finding = _finding("P0")
     try:
         resolve_after_verifier(
             finding, verifier_verdict="refuted", reason="it just looks wrong",
@@ -159,6 +120,6 @@ def test_verifier_refuted_rejects_an_evidence_ref_outside_run_dir(tmp_path, esca
     ref = str(outside) if escape == "ABS" else escape
     with pytest.raises(ValueError):
         resolve_after_verifier(
-            _finding(Disposition.JUDGMENT, "P0"), verifier_verdict="refuted",
+            _finding("P0"), verifier_verdict="refuted",
             reason="measured", evidence={"kind": "measurement", "ref": ref}, run_dir=run_dir,
         )

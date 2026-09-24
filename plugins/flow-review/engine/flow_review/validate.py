@@ -16,7 +16,10 @@ Every finding that reaches the ledger has already been through exactly one of th
 
 Findings here are plain dicts shaped `{surface_id, flow_id, rule, route, locator, sev, text,
 evidence, disposition}` -- the same shape `fr-lens` files and `ledger.fingerprint(flow_id, rule,
-route, locator)` hashes on -- so nothing here needs its own parallel finding type.
+route, locator)` hashes on -- so nothing here needs its own parallel finding type. `disposition`
+is one of "engine", "objective" or "judgment" (Canonical Interfaces); this module has no code that
+routes on it -- the only wired path is `resolve_after_verifier`, reached via `flow-review validate
+resolve` once a P0/P1 judgment finding has already been replayed and handed to the verifier.
 """
 from __future__ import annotations
 
@@ -26,45 +29,9 @@ from pathlib import Path
 VALID_SEVERITIES = ("P0", "P1", "P2")
 
 
-class Disposition(str, Enum):
-    ENGINE = "engine"
-    OBJECTIVE = "objective"
-    JUDGMENT = "judgment"
-
-
 class Verdict(str, Enum):
-    FILED = "filed"
-    OPINION = "opinion"
     STANDS = "stands"
     REFUTED = "refuted"
-
-
-def route(finding: dict) -> str:
-    """Where a freshly-filed finding goes next, before any replay or verifier call has run.
-
-    Returns "file" (engine/objective), "opinion" (P2 judgment), or "replay" (P0/P1 judgment).
-    """
-    sev = finding["sev"]
-    if sev not in VALID_SEVERITIES:
-        raise ValueError(f"sev must be one of {VALID_SEVERITIES}, got {sev!r}")
-    disposition = finding["disposition"]
-    if disposition in (Disposition.ENGINE, Disposition.OBJECTIVE):
-        return "file"
-    if sev == "P2":
-        return "opinion"
-    return "replay"
-
-
-def resolve_after_replay(finding: dict, replay_result: dict | None) -> str:
-    """Always "verify" for a P0/P1 judgment finding, regardless of what the replay found.
-
-    The replay's outcome is evidence the verifier will weigh -- never itself a filing decision. A
-    replay that could not run at all (`replay_result=None`) still goes to the verifier rather than
-    being silently filed or dropped.
-    """
-    if route(finding) != "replay":
-        raise ValueError("resolve_after_replay is only for P0/P1 judgment findings")
-    return "verify"
 
 
 EVIDENCE_KINDS = ("measurement", "replay")

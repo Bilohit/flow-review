@@ -193,19 +193,6 @@ pytest.importorskip("playwright")
 
 
 @pytest.mark.web
-def test_check_contrast_catches_fixture_muted_note(webapp_server):
-    from flow_review.web.driver import WebDriver
-
-    base_url, _ = webapp_server
-    d = WebDriver(headless=True)
-    d.launch(base_url)
-    d.goto("/")
-    findings = measure.check_contrast(d, selector="#muted-note", route="/")
-    d.close()
-    assert any(f["rule"] == "contrast.aa" for f in findings)
-
-
-@pytest.mark.web
 def test_check_page_catches_fixture_bugs_end_to_end(webapp_server):
     from flow_review.web.driver import WebDriver
 

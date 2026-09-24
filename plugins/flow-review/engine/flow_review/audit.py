@@ -24,8 +24,6 @@ _DEV_SCRIPTS = ("dev", "start", "serve")
 _SCRIPTS_KEY = re.compile(r'"scripts"\s*:')
 _OPENAPI_NAMES = ("openapi.yaml", "openapi.yml", "openapi.json", "swagger.yaml", "swagger.json")
 
-WORKSPACE_FRAMEWORK_PORTS = {"vite": 5173, "next": 3000, "react-scripts": 3000}
-
 
 @dataclass
 class Candidate:
@@ -34,7 +32,6 @@ class Candidate:
     driver: str
     launch: str
     evidence: str
-    default_port: int | None = None
 
 
 def _evidence(path: Path, root: Path, line: int | None, snippet: str) -> str:
@@ -42,14 +39,6 @@ def _evidence(path: Path, root: Path, line: int | None, snippet: str) -> str:
     if line is None:
         return EVIDENCE_FORMAT_NO_LINE.format(path=rel)
     return EVIDENCE_FORMAT.format(path=rel, line=line, snippet=snippet.strip())
-
-
-def _default_port(data: dict) -> int | None:
-    deps = {**(data.get("dependencies") or {}), **(data.get("devDependencies") or {})}
-    for framework, port in WORKSPACE_FRAMEWORK_PORTS.items():
-        if framework in deps:
-            return port
-    return None
 
 
 def _from_package_json(pkg_dir: Path, evidence_root: Path, name: str = "web") -> list[Candidate]:
@@ -77,7 +66,6 @@ def _from_package_json(pkg_dir: Path, evidence_root: Path, name: str = "web") ->
                 driver="playwright",
                 launch=f"npm run {script_name}",
                 evidence=_evidence(path, evidence_root, number, snippet),
-                default_port=_default_port(data),
             )]
     return []
 

@@ -13,22 +13,6 @@ import json
 import sys
 from pathlib import Path
 
-# One entry per verb this milestone plan adds a subcommand for. Each later task (A3 migrate,
-# A4 event, A10 setup-env, B3 replay, B9 plan, C1 model, C6 triage, B8 budget, E1 serve,
-# A5 ledger) replaces exactly one function here with real behaviour; the parser wiring does not
-# change.
-_STUB_VERBS = (
-    "prove",
-)
-
-
-def _stub(verb: str):
-    def _run(args: argparse.Namespace) -> int:
-        print(f"{verb}: not yet implemented", file=sys.stderr)
-        return 2
-    return _run
-
-
 def _run_migrate(args: argparse.Namespace) -> int:
     from flow_review import migrate as migratemod
     if args.path:
@@ -144,9 +128,6 @@ def build_parser() -> argparse.ArgumentParser:
     project_after_verb = argparse.ArgumentParser(add_help=False)
     project_after_verb.add_argument("--project", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     sub = parser.add_subparsers(dest="verb")
-    for verb in _STUB_VERBS:
-        verb_parser = sub.add_parser(verb, parents=[project_after_verb])
-        verb_parser.set_defaults(func=_stub(verb))
     setup_env_parser = sub.add_parser("setup-env", parents=[project_after_verb])
     setup_env_parser.add_argument("--extras", default="web")
     setup_env_parser.add_argument("--engine-path", default=None)
@@ -194,7 +175,6 @@ def build_parser() -> argparse.ArgumentParser:
     plan_parser.add_argument("--goal")
     plan_parser.add_argument("--record", action="store_true")
     plan_parser.add_argument("--skip", action="append", default=[])
-    plan_parser.add_argument("--json", action="store_true")  # M1 always prints JSON; flag kept
     plan_parser.set_defaults(func=_run_plan)
 
     event_parser = sub.add_parser("event", parents=[project_after_verb])

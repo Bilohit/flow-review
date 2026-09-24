@@ -41,7 +41,6 @@ def test_setup_env_uses_uv_when_found(tmp_path):
         tmp_path, tmp_path / "engine", runner=runner, which=lambda n: "/usr/bin/uv" if n == "uv" else None,
     )
     assert result.created is True
-    assert result.used_uv is True
     assert any("uv" in cmd[0] or cmd[0].endswith("uv") for cmd in runner.calls)
     assert (tmp_path / ".flow-review" / ".venv").exists()
 
@@ -49,7 +48,7 @@ def test_setup_env_uses_uv_when_found(tmp_path):
 def test_setup_env_falls_back_to_stdlib_venv_and_pip_without_uv(tmp_path):
     runner = _RecordingRunner()
     result = envsetup.setup_env(tmp_path, tmp_path / "engine", runner=runner, which=lambda n: None)
-    assert result.used_uv is False
+    assert result.created is True
     assert any(sys.executable in cmd or "python" in cmd[0].lower() for cmd in runner.calls)
 
 

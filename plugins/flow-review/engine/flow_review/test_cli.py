@@ -17,14 +17,6 @@ def test_main_with_no_args_prints_usage_and_exits_nonzero(capsys):
     assert "flow-review" in (captured.out + captured.err)
 
 
-def test_main_dispatches_known_stub_subcommands():
-    for verb in (
-        "prove",
-    ):
-        code = cli.main([verb])
-        assert code == 2, f"{verb} stub must report not-yet-implemented, not crash or succeed"
-
-
 def test_triage_cli_applies_the_state_via_flow_review_triage_apply(tmp_path, capsys):
     from flow_review import ledger as ledger_mod
     (tmp_path / ".flow-review").mkdir()
@@ -228,7 +220,7 @@ def test_find_project_root_matches_the_start_dir_itself(tmp_path):
 def test_project_option_resolves_project_root_on_args(tmp_path):
     (tmp_path / ".flow-review").mkdir()
     parser = cli.build_parser()
-    args = parser.parse_args(["--project", str(tmp_path), "prove"])
+    args = parser.parse_args(["--project", str(tmp_path), "migrate"])
     cli._resolve_project_root(args)
     assert args.project_root == tmp_path.resolve()
 

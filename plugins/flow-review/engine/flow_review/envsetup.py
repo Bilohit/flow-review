@@ -14,7 +14,7 @@ import os
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 VENV_DIRNAME = ".venv"
@@ -24,9 +24,7 @@ _MARKER_NAME = ".flow-review-setup.json"
 @dataclass
 class SetupResult:
     created: bool
-    used_uv: bool
     venv_path: Path
-    commands_run: list[list[str]] = field(default_factory=list)
 
 
 def find_uv(which=shutil.which) -> str | None:
@@ -62,32 +60,25 @@ def setup_env(
         except ValueError:
             existing = None
         if existing == desired:
-            return SetupResult(created=False, used_uv=False, venv_path=venv_path)
+            return SetupResult(created=False, venv_path=venv_path)
 
     flow_review_dir.mkdir(parents=True, exist_ok=True)
-    commands: list[list[str]] = []
     uv = find_uv(which)
 
     if uv:
         create_cmd = [uv, "venv", str(venv_path)]
         _run(runner, create_cmd)
-        commands.append(create_cmd)
         install_cmd = [uv, "pip", "install", "--python", str(_venv_python(venv_path)), f"{engine_path}[{extras}]"]
         _run(runner, install_cmd)
-        commands.append(install_cmd)
-        used_uv = True
     else:
         create_cmd = [sys.executable, "-m", "venv", str(venv_path)]
         _run(runner, create_cmd)
-        commands.append(create_cmd)
         install_cmd = [str(_venv_python(venv_path)), "-m", "pip", "install", f"{engine_path}[{extras}]"]
         _run(runner, install_cmd)
-        commands.append(install_cmd)
-        used_uv = False
 
     venv_path.mkdir(parents=True, exist_ok=True)
     marker.write_text(json.dumps(desired), encoding="utf-8")
-    return SetupResult(created=True, used_uv=used_uv, venv_path=venv_path, commands_run=commands)
+    return SetupResult(created=True, venv_path=venv_path)
 
 
 def write_gitignore(flow_review_dir: Path, commit_recordings: bool = True) -> None:

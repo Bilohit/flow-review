@@ -43,7 +43,7 @@ Once every candidate is resolved, flow-review writes `.flow-review/config.json` 
 Now you run flow-review again with a goal in mind: you want to test the checkout flow end to end.
 
 ```
-flow-review plan --mode goal --goal "Complete a purchase with a credit card" --json
+flow-review plan --mode goal --goal "Complete a purchase with a credit card"
 ```
 
 The planner estimates tokens needed at the GO gate:

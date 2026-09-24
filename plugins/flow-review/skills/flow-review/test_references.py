@@ -1,7 +1,4 @@
-"""The markdown half and the Python half must not drift.
-
-A lens named in fr/lenses.py but absent from its reference file is a lens the critique agent
-was told to run and given no rubric for.
+"""Structural checks over the reference markdown, and the docs<->code binding-rule census.
 
 The binding-rule checker here is deliberately PART-aware rather than LINE-aware. An earlier
 version counted physical lines and could not see the project's own rules: they sit indented
@@ -14,8 +11,6 @@ from __future__ import annotations
 
 import re
 from pathlib import Path
-
-from flow_review import lenses
 
 ROOT = Path(__file__).resolve().parent
 REFS = ROOT / "references"
@@ -57,16 +52,6 @@ WINDOW = 8
 MIN_BODY_LINES = 2
 
 
-def _lens_anchor(name: str) -> str:
-    """The machine-readable declaration a rubric makes about a lens.
-
-    Grepping the bare name would pass on prose that merely mentions it -- "the copy reads well"
-    is not a rubric for the `copy` lens. The heading is the file declaring what it covers,
-    which is a claim a document can make rather than one a substring search has to infer.
-    """
-    return f"### Lens -- `{name}`"
-
-
 def _binding_rule_is_whole(lines: list[str], start: int) -> bool:
     """A rule runs from its marker through its `why:` pointer.
 
@@ -100,30 +85,6 @@ def test_every_reference_file_exists_and_is_not_a_stub():
     for path in REQUIRED:
         assert path.is_file(), f"missing {path}"
         assert len(path.read_text(encoding="utf-8")) > 400, f"{path} is a stub"
-
-
-def test_every_lens_in_the_registry_declares_a_rubric_in_its_reference_file():
-    for kind in ("ui", "cli", "api"):
-        text = (REFS / "lenses" / f"{kind}.md").read_text(encoding="utf-8")
-        for lens in lenses.for_kind(kind):
-            anchor = _lens_anchor(lens.name)
-            assert anchor in text, f"lenses/{kind}.md has no rubric declared as {anchor!r}"
-
-
-def test_a_rubric_declares_no_lens_the_registry_does_not_have():
-    """The contract runs both ways: a rubric for a lens nobody dispatches is dead prose."""
-    for kind in ("ui", "cli", "api"):
-        text = (REFS / "lenses" / f"{kind}.md").read_text(encoding="utf-8")
-        declared = {
-            line.split("`")[1]
-            for line in text.splitlines()
-            if line.startswith("### Lens -- `")
-        }
-        registered = {lens.name for lens in lenses.for_kind(kind)}
-        assert declared == registered, (
-            f"lenses/{kind}.md declares {sorted(declared - registered)} "
-            f"and is missing {sorted(registered - declared)}"
-        )
 
 
 def test_no_emoji_in_any_reference_file():

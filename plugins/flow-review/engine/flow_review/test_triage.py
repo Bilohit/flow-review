@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from flow_review import ledger as ledger_mod
-from flow_review.triage import build_fix_brief, apply, alias_candidates
+from flow_review.triage import apply, alias_candidates
 
 
 @pytest.fixture
@@ -73,33 +73,6 @@ def test_reopen_is_just_apply_open(ledger_path):
     apply(ledger_path, "f1", "false-positive", reason="documented exception")
     entry = apply(ledger_path, "f1", "open")
     assert entry.state == "open"
-
-
-def test_build_fix_brief_uses_ledger_entry_fields(ledger_path):
-    reloaded = ledger_mod.load(ledger_path)
-    entry = reloaded.findings["f1"]
-    brief = build_fix_brief(entry, repro_steps=["open Settings", "inspect the row"], source_map=None)
-    assert brief.repro_steps == ["open Settings", "inspect the row"]
-    assert brief.evidence == entry.evidence
-    assert brief.suspected_location == "unknown"
-
-
-def test_build_fix_brief_uses_the_source_map_when_available(ledger_path):
-    reloaded = ledger_mod.load(ledger_path)
-    entry = reloaded.findings["f1"]
-    source_map = {f"{entry.route}|{entry.locator}": "src/settings/Row.tsx:42"}
-    brief = build_fix_brief(entry, repro_steps=["open Settings"], source_map=source_map)
-    assert brief.suspected_location == "src/settings/Row.tsx:42"
-
-
-def test_build_fix_brief_is_report_content_only(ledger_path):
-    reloaded = ledger_mod.load(ledger_path)
-    entry = reloaded.findings["f1"]
-    brief = build_fix_brief(entry, repro_steps=["x"], source_map=None)
-    for field_name in ("repro_steps", "evidence", "suspected_location"):
-        assert hasattr(brief, field_name)
-    assert not hasattr(brief, "patch")
-    assert not hasattr(brief, "diff")
 
 
 def test_alias_candidates_excludes_the_exact_match_entry_itself(ledger_path):
