@@ -3,6 +3,7 @@
 let state = null;
 let openDrawerId = null;   // preserved across patches (Step 2)
 let prevBadgeTotal = 0;    // for the new-P0 flash (Step 4)
+let drawerReturnFocus = null;   // element to refocus when the drawer closes (E5 review fix)
 
 function patch(newState) {
   const laneEl = document.querySelector('[data-role="lanes"]');
@@ -208,14 +209,26 @@ function _emptyEl(el) {
 }
 
 function openDrawer(findingId) {
+  const wasOpen = openDrawerId !== null;
+  if (!wasOpen) drawerReturnFocus = document.activeElement;   // remember the trigger, not a nav hop
   openDrawerId = findingId;
   hydrateDrawer(findingId);
-  document.querySelector('[data-role="drawer"]').hidden = false;
+  const drawerEl = document.querySelector('[data-role="drawer"]');
+  drawerEl.hidden = false;
+  moveFocusIntoDrawer(drawerEl);   // also re-anchors focus on j/k navigation between findings
+}
+
+function moveFocusIntoDrawer(drawerEl) {
+  const target = drawerEl.querySelector('button, [href], [tabindex]') || drawerEl;
+  if (!drawerEl.hasAttribute('tabindex') && target === drawerEl) drawerEl.setAttribute('tabindex', '-1');
+  target.focus();
 }
 
 function closeDrawer() {
   openDrawerId = null;
   document.querySelector('[data-role="drawer"]').hidden = true;
+  if (drawerReturnFocus && document.contains(drawerReturnFocus)) drawerReturnFocus.focus();
+  drawerReturnFocus = null;
 }
 
 function hydrateDrawer(findingId) {
@@ -251,16 +264,19 @@ function renderEvidence(finding, container) {
   if (finding.rule === 'regression' && finding.evidence.length >= 2) {
     const wrap = document.createElement('div');
     wrap.className = 'before-after';
-    for (const src of finding.evidence.slice(0, 2)) {
+    const labels = ['before', 'after'];
+    finding.evidence.slice(0, 2).forEach((src, i) => {
       const img = document.createElement('img');
       img.src = src;
+      img.alt = `${finding.text || finding.rule} -- ${labels[i]}`;
       wrap.appendChild(img);
-    }
+    });
     container.appendChild(wrap);
   } else if (finding.surface_id && isVisual(finding)) {
     const img = document.createElement('img');
     img.className = 'annotated-shot';
     img.src = finding.evidence[0] || '';
+    img.alt = finding.text || `${finding.surface_id} evidence`;
     container.appendChild(img);
   } else {
     const pre = document.createElement('pre');
@@ -289,7 +305,7 @@ function showTriageError(message) {
 
 function toggleFindingsList(findings) {
   const root = document.querySelector('[data-role="findings-list"]');
-  if (!root.hidden) { root.hidden = true; return; }
+  if (!root.hidden) { closeFindingsList(); return; }
   _emptyEl(root);
   for (const f of findings) {
     const row = document.createElement('button');
@@ -301,18 +317,33 @@ function toggleFindingsList(findings) {
     const label = document.createElement('span');
     label.textContent = f.text;
     row.append(svg, label);
-    row.addEventListener('click', () => { root.hidden = true; openDrawer(f.id); });
+    row.addEventListener('click', () => { closeFindingsList(); openDrawer(f.id); });
     root.appendChild(row);
   }
   root.hidden = false;
 }
 
+function closeFindingsList() {
+  const root = document.querySelector('[data-role="findings-list"]');
+  root.hidden = true;
+  _emptyEl(root);
+}
+
+function isFindingsListOpen() {
+  const root = document.querySelector('[data-role="findings-list"]');
+  return root && !root.hidden;
+}
+
 // Triage keys + drawer navigation -- ONLY act when a drawer is open, never on lane/finding rows.
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') {
+    if (openDrawerId) { closeDrawer(); return; }
+    if (isFindingsListOpen()) { closeFindingsList(); return; }
+    return;
+  }
   if (!openDrawerId) return;
   const key = { f: 'false-positive', w: 'wont-fix', a: 'accepted', x: 'fixed' }[e.key];
   if (key) { triage(openDrawerId, key); return; }
-  if (e.key === 'Escape') { closeDrawer(); return; }
   if (e.key === 'j' || e.key === 'k') focusAdjacentFinding(e.key === 'j' ? 1 : -1);
 });
 
