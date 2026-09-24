@@ -469,3 +469,29 @@ def test_ledger_alias_candidates_and_reconcile_alias(tmp_path, capsys):
     led = ledger_mod.load(path)
     assert list(led.findings) == [canonical] and fp in led.findings[canonical].aliases
     assert moved["id"] not in led.findings
+
+
+def test_validate_resolve_refuted_with_real_evidence(tmp_path, capsys):
+    (tmp_path / "m.json").write_text("{}", encoding="utf-8")
+    code = cli.main(["validate", "resolve", "--run", str(tmp_path), "--verdict", "refuted",
+                     "--reason", "measured 5:1", "--kind", "measurement", "--ref", "m.json"])
+    assert code == 0 and capsys.readouterr().out.strip() == "refuted"
+
+
+def test_validate_resolve_bad_evidence_prints_stands(tmp_path, capsys):
+    run = tmp_path / "run"
+    run.mkdir()
+    (tmp_path / "m.json").write_text("{}", encoding="utf-8")
+    code = cli.main(["validate", "resolve", "--run", str(run), "--verdict", "refuted",
+                     "--reason", "x", "--kind", "measurement", "--ref", "../m.json"])
+    assert code == 0 and capsys.readouterr().out.strip() == "stands"
+
+
+def test_budget_fold_writes_usage_history(tmp_path):
+    from flow_review import budget
+    (tmp_path / ".flow-review").mkdir()
+    run = tmp_path / "run1"
+    run.mkdir()
+    budget.record_usage(run, "web", "lens", 1234)
+    assert cli.main(["--project", str(tmp_path), "budget", "fold", "--run", str(run)]) == 0
+    assert (tmp_path / ".flow-review" / "usage_history.json").exists()

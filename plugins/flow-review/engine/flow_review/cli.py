@@ -175,6 +175,19 @@ def build_parser() -> argparse.ArgumentParser:
     budget_check_parser.add_argument("--next", required=True, dest="next_role")
     budget_check_parser.add_argument("--surface", required=True)
     budget_check_parser.set_defaults(func=_run_budget_check)
+    budget_fold_parser = budget_sub.add_parser("fold", parents=[project_after_verb])
+    budget_fold_parser.add_argument("--run", required=True, dest="run_dir", type=Path)
+    budget_fold_parser.set_defaults(func=_run_budget_fold)
+
+    validate_parser = sub.add_parser("validate", parents=[project_after_verb])
+    validate_sub = validate_parser.add_subparsers(dest="validate_cmd", required=True)
+    p = validate_sub.add_parser("resolve", parents=[project_after_verb])
+    p.add_argument("--run", required=True, dest="run_dir", type=Path)
+    p.add_argument("--verdict", required=True, choices=["stands", "refuted"])
+    p.add_argument("--reason", default=None)
+    p.add_argument("--kind", default=None)
+    p.add_argument("--ref", default=None)
+    p.set_defaults(func=_run_validate_resolve)
 
     plan_parser = sub.add_parser("plan", parents=[project_after_verb])
     plan_parser.add_argument("--mode", required=True, choices=["goal", "auto", "full", "quick"])
@@ -244,6 +257,33 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(func=_run_manifest_apply_learnings)
 
     return parser
+
+
+def _run_budget_fold(args: argparse.Namespace) -> int:
+    from flow_review import budget as budgetmod
+    if args.project_root is None:
+        print("no .flow-review/ found; run /flow-review setup first, or pass --project",
+              file=sys.stderr)
+        return 3
+    budgetmod.fold_history(Path(args.project_root), args.run_dir)
+    return 0
+
+
+def _run_validate_resolve(args: argparse.Namespace) -> int:
+    """Prints the final verdict. Invalid refutation evidence means the finding stands (C5), so
+    the orchestrator never has to catch a Python exception."""
+    from flow_review import validate as validatemod
+    evidence = None
+    if args.kind is not None or args.ref is not None:
+        evidence = {"kind": args.kind, "ref": args.ref}
+    try:
+        verdict, _ = validatemod.resolve_after_verifier(
+            {}, args.verdict, args.reason, evidence, args.run_dir)
+    except ValueError as exc:
+        print(f"refutation rejected: {exc}", file=sys.stderr)
+        verdict = validatemod.Verdict.STANDS
+    print(verdict.value)
+    return 0
 
 
 def _ledger_path(args: argparse.Namespace) -> Path | None:
