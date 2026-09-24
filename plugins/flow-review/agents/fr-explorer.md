@@ -41,6 +41,9 @@ only when a verdict genuinely depends on seeing it.
 You never fix anything, never edit product code, never talk to the user, and never vote on
 severity.
 
+Before returning, emit the goal event exactly as `references/goals.md` section 4 specifies --
+whether or not the goal was reached.
+
 ## Model profile
 
 | profile | model |
