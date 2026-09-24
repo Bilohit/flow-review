@@ -79,8 +79,9 @@ def replay_one(driver, log: dict, measure: MeasureHook | None = None,
                                          f"environment or .flow-review/.env")
                 else:
                     value = step["value"] or ""
+                secret = bool(step.get("from_env") or (step.get("locator") or {}).get("secret"))
                 with _step_window(driver, index):
-                    driver.fill(step["locator"], value)
+                    driver.fill(step["locator"], value, secret=secret)
             elif action == "assert_url":
                 expected = _url_path(step["url"])
                 actual = _current_path(driver)
@@ -123,7 +124,9 @@ def replay_one(driver, log: dict, measure: MeasureHook | None = None,
 
 def _run_variants(surface, base_url: str, log: dict, mode: str,
                   storage_state_dir: Path | None,
-                  measure: MeasureHook | None = None) -> tuple[list[dict], list[str]]:
+                  measure: MeasureHook | None = None,
+                  base_findings: list[dict] | None = None,
+                  base_viewport: dict | None = None) -> tuple[list[dict], list[str]]:
     """B7/A-28: runs the device/persona variant set (viewport, light/dark, keyboard-only,
     reduced motion, new/returning storage state) over `log`, measuring each one with the same
     `measure` hook the base replay uses so a variant-only contrast/overlap bug is filed under
@@ -135,28 +138,48 @@ def _run_variants(surface, base_url: str, log: dict, mode: str,
     lazily -- `variants` imports `replay_one` from this module, so a top-level import here
     would be circular.
 
-    Returns `(findings, flow_ids)`: `flow_ids` is every variant's tagged flow id that actually
-    ran (clean or not), for the caller to fold into `flows_run` -- otherwise a variant finding
-    from an earlier run can never be marked fixed once the underlying bug is fixed, because
-    `ledger.reconcile` only retires an entry whose flow id is in `flows_run` this run."""
+    Returns `(findings, flow_ids)`: `flow_ids` is every variant's tagged flow id that ran to a
+    non-diverged result (clean or regression, never divergence -- I5), for the caller to fold
+    into `flows_run` -- otherwise a variant finding from an earlier run can never be marked fixed
+    once the underlying bug is fixed, because `ledger.reconcile` only retires an entry whose flow
+    id is in `flows_run` this run. A diverged variant never reached its later steps, so adding
+    its flow id would falsely mark an unrelated, unseen finding "fixed".
+
+    `base_findings` (the base flow's own findings) and `base_viewport` (the base flow's own
+    viewport) let this drop a variant finding that is really just the base flow's own finding
+    re-filed under a different flow id -- I6.
+    """
     from flow_review.web import variants as variants_mod
 
     def driver_factory(**kwargs):
         return WebDriver(headless=True, **kwargs)
 
+    base_keys = {(f["rule"], f["route"], f["locator"]) for f in (base_findings or [])}
+
     findings: list[dict] = []
     flow_ids: list[str] = []
     for variant, result in variants_mod.run_all(driver_factory, base_url, log, surface,
-                                                 storage_state_dir, mode=mode, measure=measure):
-        flow_ids.append(result["flow_id"])
-        if result["findings"]:
-            findings.extend(result["findings"])
-            continue
+                                                 storage_state_dir, mode=mode, measure=measure,
+                                                 base_viewport=base_viewport):
+        if result["status"] != "divergence":
+            flow_ids.append(result["flow_id"])
+        variant_findings = [
+            f for f in result["findings"]
+            if (f["rule"], f["route"], f["locator"]) not in base_keys
+        ]
+        if variant_findings:
+            findings.extend(variant_findings)
         if result["status"] == "clean":
             continue
+        if variant_findings and result["status"] != "divergence":
+            continue
+        # A bare divergence (or one with no findings of its own) has nothing else to carry its
+        # own sev, so it still gets a synthetic P1 `variant.<kind>` summary -- and a variant that
+        # diverged AFTER filing findings of its own still gets this marker too (I5): the findings
+        # already extended above must not make the divergence itself invisible.
         route = _url_path(result["divergence"]["url"]) if result["divergence"] else ""
         # No `context` field exists on the canonical finding payload, so the variant's params
-        # go into `evidence` (see task-R6-report.md).
+        # go into `evidence`.
         findings.append({
             "surface_id": surface.id, "flow_id": result["flow_id"],
             "rule": f"variant.{variant['kind']}", "route": route, "locator": "",
@@ -225,36 +248,40 @@ def _visual_baseline_check(driver, surface_dir: Path, run_dir: Path, flow_slug: 
     current_path = surface_dir / f"{flow_slug}.current.png"
     driver.screenshot(current_path)
 
-    if update_baselines or not baseline_path.exists():
-        current_path.replace(baseline_path)
-        return None
+    try:
+        if update_baselines or not baseline_path.exists():
+            current_path.replace(baseline_path)
+            return None
 
-    with Image.open(baseline_path) as base_img, Image.open(current_path) as cur_img:
-        base_size, cur_size = base_img.size, cur_img.size
-    if base_size != cur_size:
-        result = {
-            "changed": True, "diff_ratio": 1.0,
-            "regions": [{"x": 0, "y": 0, "w": cur_size[0], "h": cur_size[1]}],
+        with Image.open(baseline_path) as base_img, Image.open(current_path) as cur_img:
+            base_size, cur_size = base_img.size, cur_img.size
+        if base_size != cur_size:
+            result = {
+                "changed": True, "diff_ratio": 1.0,
+                "regions": [{"x": 0, "y": 0, "w": cur_size[0], "h": cur_size[1]}],
+            }
+        else:
+            result = visual.diff(baseline_path, current_path)
+
+        if not result["changed"]:
+            return None
+
+        crops_dir = run_dir / "visual" / surface_id / flow_slug
+        crop_paths = visual.crop_regions(current_path, result["regions"], crops_dir)
+        evidence = [p.relative_to(run_dir).as_posix() for p in crop_paths]
+        return {
+            "surface_id": surface_id, "flow_id": flow_id,
+            "rule": "visual.changed", "route": route, "locator": "",
+            "sev": "P2",
+            "text": f"visual diff: {result['diff_ratio']:.2%} of the page changed since "
+                    f"the baseline",
+            "evidence": evidence,
+            "disposition": "engine",
         }
-    else:
-        result = visual.diff(baseline_path, current_path)
-
-    if not result["changed"]:
+    finally:
+        # `current_path` must never linger in recordings/ -- whether it was consumed above,
+        # diffed clean, cropped, or the code in between raised.
         current_path.unlink(missing_ok=True)
-        return None
-
-    crops_dir = run_dir / "visual" / surface_id / flow_slug
-    crop_paths = visual.crop_regions(current_path, result["regions"], crops_dir)
-    current_path.unlink(missing_ok=True)
-    evidence = [p.relative_to(run_dir).as_posix() for p in crop_paths]
-    return {
-        "surface_id": surface_id, "flow_id": flow_id,
-        "rule": "visual.changed", "route": route, "locator": "",
-        "sev": "P2",
-        "text": f"visual diff: {result['diff_ratio']:.2%} of the page changed since the baseline",
-        "evidence": evidence,
-        "disposition": "engine",
-    }
 
 
 def _health_ok(surface) -> bool:
@@ -308,7 +335,10 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
         surface_dir = recordings_root / surface.id
         if not surface_dir.is_dir():
             continue
-        flow_files = sorted(surface_dir.glob("*.json"))
+        # Only recorded flow logs live here as `*.json`; a replay result (written under
+        # `run_dir / "replay"`, never here) must never be picked back up as a recording.
+        flow_files = sorted(p for p in surface_dir.glob("*.json")
+                            if not p.name.endswith(".result.json"))
         if flow_id is not None:
             flow_files = [p for p in flow_files if p.stem == flow_id]
         if not flow_files:
@@ -337,7 +367,7 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
                 all_findings.extend(result["findings"])
                 if result["status"] != "divergence":
                     # a diverged flow never reached its later steps: its unseen findings are
-                    # unknown, not fixed (CP2 I6)
+                    # unknown, not fixed
                     flows_run.add(log["flow_id"])
                     # A-28/A-32: baselines are the base flow only, never a variant -- taken here,
                     # before any variant run, on the same driver session the base flow just left
@@ -353,12 +383,14 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
                         if visual_finding is not None:
                             all_findings.append(visual_finding)
                     if variants:
-                        storage_state_dir = (
-                            project_root / ".flow-review" / "variants" / surface.id
-                        )
+                        # I3: under the run dir, never `.flow-review/variants/` -- that path is
+                        # not gitignored, and a storage state can carry cookies/tokens.
+                        storage_state_dir = run_dir / "variants" / surface.id
+                        base_viewport = (surface.options.get("viewport") or [None])[0]
                         variant_findings, variant_flow_ids = _run_variants(
                             surface, surface.options["base_url"], log, mode, storage_state_dir,
-                            measure=hook,
+                            measure=hook, base_findings=result["findings"],
+                            base_viewport=base_viewport,
                         )
                         all_findings.extend(variant_findings)
                         flows_run.update(variant_flow_ids)
@@ -445,16 +477,28 @@ def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path,
     # reproduce the same failure N more times, so it only runs after a base flow that completed.
     if variants and result["status"] != "divergence":
         storage_state_dir = run_dir / "variants" / surfaces[0].id
-        variant_findings, _variant_flow_ids = _run_variants(
+        base_viewport = (surfaces[0].options.get("viewport") or [None])[0]
+        variant_findings, variant_flow_ids = _run_variants(
             surfaces[0], surfaces[0].options["base_url"], log, mode, storage_state_dir,
-            measure=hook,
+            measure=hook, base_findings=result["findings"], base_viewport=base_viewport,
         )
         for finding in variant_findings:
             events.append(run_dir, {"type": "finding", **finding})
+        # I4: on this --log path, a variant flow that ran (never a diverged one -- I5) must be
+        # recorded the same way `drive`'s own flow-begin is, or `ledger reconcile`'s flows_run
+        # builder (cli.py's `_run_ledger_reconcile`) never learns the variant flow ran at all,
+        # and a variant finding from an earlier run can never be marked fixed.
+        for vid in variant_flow_ids:
+            events.append(run_dir, {
+                "type": "step", "surface_id": surfaces[0].id, "flow_id": vid,
+                "step": "flow-begin",
+            })
 
     out = dict(result)
     out["variant_findings"] = variant_findings
-    result_path = log_path.with_name(log_path.name + ".result.json")
+    replay_dir = run_dir / "replay"
+    replay_dir.mkdir(parents=True, exist_ok=True)
+    result_path = replay_dir / f"{log_path.stem}.result.json"
     result_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
 
     if result["status"] == "divergence":

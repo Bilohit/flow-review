@@ -146,9 +146,14 @@ def _replay_keyboard_only(driver: Any, log: dict) -> ReplayResult:
 
 def run_all(driver_factory: Callable[..., Any], base_url: str, log: dict, surface: Any,
             storage_state_dir: Path, mode: str = "full",
-            measure: Callable[..., list[dict]] | None = None) -> list[tuple[Variant, ReplayResult]]:
+            measure: Callable[..., list[dict]] | None = None,
+            base_viewport: dict | None = None) -> list[tuple[Variant, ReplayResult]]:
     results = []
     for variant in plan_variants(surface, mode):
+        if (variant["kind"] == "viewport" and base_viewport is not None
+                and variant["params"]["width"] == base_viewport.get("width")
+                and variant["params"]["height"] == base_viewport.get("height")):
+            continue  # the base flow already ran at this viewport; a variant run would be a dupe
         storage_state_path = (
             storage_state_dir / "storage_state.json"
             if variant["kind"] == "storage-state" else None

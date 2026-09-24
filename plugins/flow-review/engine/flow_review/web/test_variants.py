@@ -13,7 +13,10 @@ class _FakeVariantDriver:
 
     def __init__(self, **kwargs):
         self.kwargs = kwargs
-        self.page = SimpleNamespace(url="http://x/")
+        self.page = SimpleNamespace(
+            url="http://x/", evaluate=lambda js: 0,
+            keyboard=SimpleNamespace(press=lambda key: None),
+        )
 
     def launch(self, base_url):
         self.page.url = base_url
@@ -24,7 +27,7 @@ class _FakeVariantDriver:
     def click(self, locator):
         pass
 
-    def fill(self, locator, value):
+    def fill(self, locator, value, secret=False):
         pass
 
     def begin_step(self, index):
@@ -60,10 +63,6 @@ def test_plan_variants_expands_viewport_and_modes():
 
 def test_plan_variants_goal_and_auto_and_full_all_expand():
     # 1 viewport + 2 color-scheme + 1 keyboard-only + 1 reduced-motion + 2 storage-state = 7.
-    # (Brief's literal test text says "== 6"; that undercounts by one relative to the brief's
-    # own reference implementation and to test_plan_variants_expands_viewport_and_modes above,
-    # which for 2 viewports asserts counts summing to 8 = N + 6. Fixed here for internal
-    # consistency; see task-B7-report.md.)
     surface = _FakeSurface({"viewport": [{"width": 1280, "height": 800}]})
     for mode in ("goal", "auto", "full"):
         assert len(variants.plan_variants(surface, mode)) == 7
@@ -112,6 +111,20 @@ def test_run_variant_threads_measure_hook_and_tags_the_finding_flow_id():
     assert result["findings"][0]["rule"] == "contrast.aa"
     assert result["findings"][0]["sev"] == "P2"
     assert result["findings"][0]["flow_id"] == "sign-in@color-scheme:dark"
+
+
+def test_run_all_skips_viewport_variant_matching_base_viewport(tmp_path):
+    # I6: the base flow already ran at its own viewport, so re-running that exact viewport as
+    # a "variant" would just re-file every base finding a second time under a different flow id.
+    surface = _FakeSurface({"viewport": [{"width": 1280, "height": 800},
+                                          {"width": 375, "height": 812}]})
+    log = {"surface_id": "webapp", "flow_id": "f", "steps": []}
+    results = variants.run_all(lambda **kw: _FakeVariantDriver(**kw), "http://x", log, surface,
+                                storage_state_dir=tmp_path, mode="goal",
+                                base_viewport={"width": 1280, "height": 800})
+    viewport_variants = [v for v, _ in results if v["kind"] == "viewport"]
+    assert len(viewport_variants) == 1
+    assert viewport_variants[0]["params"] == {"width": 375, "height": 812}
 
 
 def test_run_all_quick_mode_runs_nothing_and_never_launches_a_driver():

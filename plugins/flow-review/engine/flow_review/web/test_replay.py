@@ -238,13 +238,138 @@ def test_replay_log_mode_writes_result_json_and_never_touches_ledger(tmp_path, w
     code = replay_mod.replay_log(cfg, project_root, log_path, run_dir)
     assert code == 1
 
-    result_path = log_path.with_name(log_path.name + ".result.json")
+    # C1: the result lands under the run dir, never next to the recorded log -- a
+    # `<log>.result.json` sitting in recordings/ would be picked up by the next `replay()`
+    # glob (which matches `*.json`) and crash it with a KeyError trying to parse it as a log.
+    result_path = run_dir / "replay" / f"{log_path.stem}.result.json"
     assert result_path.exists()
+    assert not log_path.with_name(log_path.name + ".result.json").exists()
     data = json.loads(result_path.read_text())
     assert any(f["rule"] == "http.5xx" for f in data["findings"])
     assert not (project_root / ".flow-review" / "findings.json").exists()
     assert not (project_root / ".flow-review" / "divergences.json").exists()
 
+
+
+def test_replay_log_recording_result_then_replay_does_not_crash(tmp_path, monkeypatch):
+    # C1: a previous bug wrote `<log>.result.json` next to the recorded log itself. Since the
+    # log lives under recordings/ as `f.json`, the next `replay()` glob (`*.json`) would pick
+    # the result file back up as if it were a recording and crash trying to parse it as one.
+    project_root = tmp_path / "project"
+    rec = project_root / ".flow-review" / "recordings" / "webapp"
+    rec.mkdir(parents=True)
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    (rec / "f.json").write_text(json.dumps(log), encoding="utf-8")
+
+    drv = _FakeDriver(click_target="/")
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+
+    run_dir = project_root / ".flow-review" / "runs" / "r1"
+    run_dir.mkdir(parents=True)
+    replay_mod.replay_log(cfg, project_root, rec / "f.json", run_dir,
+                          variants=True, mode="quick")
+
+    assert sorted(p.name for p in rec.iterdir()) == ["f.json"]
+    code = replay_mod.replay(cfg, project_root)  # must not raise KeyError
+    assert code == 0
+
+
+def test_replay_variants_storage_state_dir_is_under_run_dir(tmp_path, monkeypatch):
+    # I3: `.flow-review/variants/` is not gitignored, and a storage state can carry
+    # cookies/tokens -- it must live under the (gitignored) run dir instead, like replay_log's
+    # variants already do.
+    project_root = tmp_path / "project"
+    recordings = project_root / ".flow-review" / "recordings" / "webapp"
+    recordings.mkdir(parents=True)
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    (recordings / "f.json").write_text(json.dumps(log), encoding="utf-8")
+
+    drv = _FakeDriver(click_target="/")
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+
+    captured = {}
+
+    def spy(surface, base_url, log_, mode, storage_state_dir, **kw):
+        captured["dir"] = storage_state_dir
+        return [], []
+
+    monkeypatch.setattr(replay_mod, "_run_variants", spy)
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+    replay_mod.replay(cfg, project_root, variants=True, mode="goal")
+
+    old_path = project_root / ".flow-review" / "variants" / "webapp"
+    assert captured["dir"] != old_path
+    assert (project_root / ".flow-review" / "runs") in captured["dir"].parents
+
+
+def test_replay_log_variants_clean_emits_flow_begin_for_reconcile(tmp_path, monkeypatch):
+    # I4: on the --log path (the path SKILL.md uses), a variant flow id that ran must be
+    # recorded the same way `drive`'s own flow-begin is, or `ledger reconcile`'s flows_run
+    # builder never learns the variant flow ran, and a variant finding can never turn fixed.
+    project_root = tmp_path / "project"
+    run_dir = tmp_path / "runs" / "run1"
+    run_dir.mkdir(parents=True)
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    log_path = actionlog.save(log, run_dir, project_root, record_enabled=False)
+
+    drv = _FakeDriver(click_target="/")
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+
+    variant = {"kind": "color-scheme", "params": {"scheme": "dark"}}
+    clean = replay_mod.ReplayResult(flow_id="f@color-scheme:dark", status="clean", steps_run=1,
+                                    divergence=None, findings=[])
+    monkeypatch.setattr("flow_review.web.variants.run_all", lambda *a, **kw: [(variant, clean)])
+
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+    code = replay_mod.replay_log(cfg, project_root, log_path, run_dir,
+                                 variants=True, mode="goal")
+    assert code == 0
+
+    events_path = run_dir / "events.jsonl"
+    lines = [json.loads(line) for line in events_path.read_text().splitlines()]
+    flow_begins = [e for e in lines if e["type"] == "step" and e.get("step") == "flow-begin"]
+    assert any(e["flow_id"] == "f@color-scheme:dark" for e in flow_begins)
+
+
+def test__run_variants_drops_findings_that_match_the_base_flow(monkeypatch):
+    # I6: a variant replay re-measures the whole page and re-files every base-flow finding
+    # under its own tagged flow id -- drop whatever exactly matches (rule, route, locator) on
+    # the base flow's own result, keep whatever is genuinely new under the variant.
+    surface = _surface("http://x")
+    log = {"flow_id": "f", "steps": []}
+    variant = {"kind": "color-scheme", "params": {"scheme": "dark"}}
+    dup = {"surface_id": "webapp", "flow_id": "f@color-scheme:dark", "rule": "contrast.aa",
+           "route": "/", "locator": "", "sev": "P2", "text": "low contrast", "evidence": [],
+           "disposition": "engine"}
+    fresh = {"surface_id": "webapp", "flow_id": "f@color-scheme:dark", "rule": "contrast.aa",
+             "route": "/other", "locator": "", "sev": "P2", "text": "low contrast",
+             "evidence": [], "disposition": "engine"}
+    clean_with_findings = replay_mod.ReplayResult(
+        flow_id="f@color-scheme:dark", status="clean", steps_run=1, divergence=None,
+        findings=[dup, fresh],
+    )
+    monkeypatch.setattr("flow_review.web.variants.run_all",
+                        lambda *a, **kw: [(variant, clean_with_findings)])
+    base_findings = [{"rule": "contrast.aa", "route": "/", "locator": ""}]
+    findings, flow_ids = replay_mod._run_variants(surface, "http://x", log, "goal", None,
+                                                   base_findings=base_findings)
+    assert findings == [fresh]
 
 
 def test_replay_one_resolves_from_env_fill_and_registers_secret(monkeypatch):
@@ -255,10 +380,12 @@ def test_replay_one_resolves_from_env_fill_and_registers_secret(monkeypatch):
     actionlog.record_step(log, "fill", locator={"css": "#pw", "secret": True}, from_env="RP_PW")
     filled = []
     drv = _FakeDriver()
-    drv.fill = lambda loc, v: filled.append(v)
+    drv.fill = lambda loc, v, secret=False: filled.append((v, secret))
     result = replay_mod.replay_one(drv, log)
     assert result["status"] == "clean"
-    assert filled == ["Rp9secretvalue"]
+    # I2: a from_env fill must reach driver.fill with secret=True so a baseline screenshot
+    # masks it, even though this locator's own "secret" flag is also True here.
+    assert filled == [("Rp9secretvalue", True)]
     assert "Rp9secretvalue" not in events.redact("Rp9secretvalue")
 
 
@@ -358,7 +485,10 @@ def test__run_variants_files_p1_summary_for_a_bare_divergence(monkeypatch):
     assert finding["disposition"] == "engine"
     assert finding["route"] == "/x"
     assert any("375" in item for item in finding["evidence"])
-    assert flow_ids == ["f@viewport:375x812"]
+    # I5: a diverged variant never reached its later steps, so its flow id must NOT be folded
+    # into flows_run -- otherwise an unrelated, unseen finding under that flow id would be
+    # marked "fixed" simply because the variant never got far enough to see it again.
+    assert flow_ids == []
 
 
 def test__run_variants_passes_through_measured_findings_with_their_own_severity(monkeypatch):
@@ -405,7 +535,8 @@ def test__run_variants_threads_the_measure_hook_into_run_all(monkeypatch):
     log = {"flow_id": "f", "steps": []}
     captured = {}
 
-    def fake_run_all(driver_factory, base_url, log_, surface_, storage_state_dir, mode, measure):
+    def fake_run_all(driver_factory, base_url, log_, surface_, storage_state_dir, mode, measure,
+                     base_viewport=None):
         captured["measure"] = measure
         return []
 
