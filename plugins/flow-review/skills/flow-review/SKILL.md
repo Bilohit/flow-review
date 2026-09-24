@@ -14,9 +14,9 @@ skill and its subagents do only the judgment work the engine cannot.
 ## 1. Which phase am I in
 
 First run `flow-review --help`. If the command is not found, stop and tell the user to install
-the engine once per machine, then restart Claude Code:
-`pip install "flow-review[web] @ git+https://github.com/Bilohit/flow-review#subdirectory=plugins/flow-review/engine"`
-and `python -m playwright install chromium`.
+the engine once per machine (the README's Install section: `uv tool install` or `pip install`
+of `flow-review[web]` from the GitHub repo, then `playwright install chromium`), then restart
+Claude Code.
 
 Then read `.flow-review/config.json` in the project root before doing anything else.
 

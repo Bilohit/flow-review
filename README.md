@@ -62,7 +62,15 @@ In Claude Code:
 /plugin install flow-review
 ```
 
-Then, once per machine, install the engine and its browser from the same repository:
+Then, once per machine, install the engine and its browser from the same repository. With
+[uv](https://docs.astral.sh/uv/) (puts `flow-review` on your PATH in its own environment):
+
+```
+uv tool install "flow-review[web] @ git+https://github.com/Bilohit/flow-review#subdirectory=plugins/flow-review/engine"
+uvx --from playwright playwright install chromium
+```
+
+Or with pip (if pip falls back to a per-user install, add its `Scripts`/`bin` folder to PATH):
 
 ```
 pip install "flow-review[web] @ git+https://github.com/Bilohit/flow-review#subdirectory=plugins/flow-review/engine"
