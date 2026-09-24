@@ -120,7 +120,7 @@ def reconcile(
             entry.last_run = run_id
             entry.evidence = f.get("evidence", entry.evidence)
             continue
-        new_id = uuid.uuid4().hex
+        new_id = f.get("id") or uuid.uuid4().hex  # keep the finding event's id
         ledger_.findings[new_id] = LedgerEntry(
             id=new_id, fingerprint=fp, surface_id=f["surface_id"], flow_id=f["flow_id"],
             rule=f["rule"], route=f["route"], locator=f["locator"], sev=f["sev"], text=f["text"],

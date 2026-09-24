@@ -189,3 +189,11 @@ def test_save_redacts_registered_secrets(tmp_path):
         assert "hunter2secret" not in path.read_text(encoding="utf-8")
     finally:
         events.clear_secrets()
+
+
+def test_a_new_entry_keeps_the_finding_event_id():
+    led = ledger.reconcile(ledger.Ledger(), [dict(_finding(), id="evt-123")], {"checkout"}, "run-1")
+    assert list(led.findings) == ["evt-123"]
+    assert led.findings["evt-123"].id == "evt-123"
+    led = ledger.reconcile(led, [dict(_finding(), id="evt-999")], {"checkout"}, "run-2")
+    assert list(led.findings) == ["evt-123"]  # existing entry keeps its id
