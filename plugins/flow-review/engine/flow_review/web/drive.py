@@ -74,7 +74,7 @@ class DriveSession:
                           locator=locator, value=value, secret=is_secret)
 
     def press(self, key: str) -> dict:
-        return self._act("press", lambda: self.driver.page.keyboard.press(key), value=key)
+        return self._act("press", lambda: self.driver.press(key), value=key)
 
     def look(self, shot: bool = False) -> dict:
         result = self._after("look", step_index=None, record=False)

@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 from typing import TypedDict
 
@@ -7,6 +8,8 @@ from playwright.sync_api import sync_playwright
 from flow_review.events import REDACTED
 
 SETTLE_MS = 3000
+QUIET_MS = 300  # after the network looks idle, how long nothing may start before we call it settled
+POLL_MS = 50
 
 
 class Locator(TypedDict, total=False):
@@ -39,6 +42,8 @@ class WebDriver:
         self._current_step: int | None = None
         self._network_cursor = 0
         self._console_cursor = 0
+        self._inflight = 0
+        self._last_activity = 0.0
 
     def launch(self, base_url: str) -> None:
         self.base_url = base_url.rstrip("/")
@@ -54,6 +59,9 @@ class WebDriver:
         self.page = self.browser.new_page(**page_kwargs)
         self.page.on("console", self._on_console)
         self.page.on("response", self._on_response)
+        self.page.on("request", self._on_request_start)
+        self.page.on("requestfinished", self._on_request_done)
+        self.page.on("requestfailed", self._on_request_done)
 
     def storage_state(self) -> str:
         import json
@@ -89,10 +97,32 @@ class WebDriver:
         # ponytail: networkidle capped at SETTLE_MS; apps with long-poll/SSE never go idle, so
         # an uncapped wait would stall every click for Playwright's 30s default. Upgrade path:
         # an app-specific ready signal from config.
+        # networkidle returns at once when the page was already idle before the action, so we
+        # then also wait until no request is in flight and nothing (request or console error)
+        # happened for QUIET_MS -- click-triggered requests and their errors land in this step.
+        deadline = time.monotonic() + SETTLE_MS / 1000
         try:
             self.page.wait_for_load_state("networkidle", timeout=SETTLE_MS)
         except PlaywrightTimeoutError:
-            pass
+            return
+        self._last_activity = max(self._last_activity, time.monotonic())
+        while time.monotonic() < deadline:
+            quiet = time.monotonic() - self._last_activity >= QUIET_MS / 1000
+            if self._inflight <= 0 and quiet:
+                return
+            self.page.wait_for_timeout(POLL_MS)
+
+    def _on_request_start(self, request) -> None:
+        self._inflight += 1
+        self._last_activity = time.monotonic()
+
+    def _on_request_done(self, request) -> None:
+        self._inflight = max(0, self._inflight - 1)
+        self._last_activity = time.monotonic()
+
+    def press(self, key: str) -> None:
+        self.page.keyboard.press(key)  # Enter may submit a form: settle like a click
+        self._settle()
 
     def fill(self, locator: dict, value: str) -> None:
         self.resolve(locator).fill(value)
@@ -154,6 +184,7 @@ class WebDriver:
 
     def _on_console(self, msg) -> None:
         if msg.type == "error":
+            self._last_activity = time.monotonic()
             self._console_errors.append({
                 "text": msg.text,
                 "location": str(msg.location),

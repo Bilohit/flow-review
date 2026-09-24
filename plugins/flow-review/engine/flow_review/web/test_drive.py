@@ -47,6 +47,9 @@ class FakeDriver:
     def fill(self, locator, value):
         self.filled.append((locator, value))
 
+    def press(self, key):
+        self.page.keyboard.press(key)
+
     def is_password(self, locator):
         return locator.get("testid") == "pw-input"
 

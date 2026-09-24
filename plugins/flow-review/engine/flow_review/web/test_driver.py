@@ -95,3 +95,64 @@ def test_is_password_false_for_unresolvable_locator(webapp_server):
     d.goto("/")
     assert d.is_password({"testid": "does-not-exist"}) is False
     d.close()
+
+
+def _slow_fail_server(delay_s: float):
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from pathlib import Path
+    import time as _time
+
+    root = Path(__file__).resolve().parents[2] / "fixtures" / "webapp"
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            path = self.path.split("?", 1)[0]
+            if path == "/api/fail":
+                _time.sleep(delay_s)
+                self.send_response(500)
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+                return
+            f = root / (path.lstrip("/") or "index.html")
+            if not f.is_file():
+                self.send_response(404)
+                self.end_headers()
+                return
+            data = f.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html" if f.suffix == ".html"
+                             else "application/javascript" if f.suffix == ".js" else "text/css")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+@pytest.mark.web
+def test_click_settle_waits_for_click_triggered_request_and_console_error():
+    srv = _slow_fail_server(0.6)
+    d = WebDriver(headless=True)
+    try:
+        d.launch(f"http://127.0.0.1:{srv.server_address[1]}")
+        d.goto("/")
+        # the app defers its request slightly after the click (debounce, animation, etc.)
+        d.page.evaluate("""() => document.getElementById('load-button').addEventListener(
+            'click', () => setTimeout(() => fetch('/api/fail').then(r => {
+                if (!r.ok) console.error('deferred failed ' + r.status); }), 150))""")
+        d.page.wait_for_load_state("networkidle")  # page already idle, as after earlier steps
+        d.begin_step(7)
+        d.click({"testid": "load-button"})
+        d.end_step()
+        assert sum(e["status"] == 500 for e in d.network_log()) == 2
+        assert {e["text"]: e["step_index"] for e in d.console_errors()}.get(
+            "deferred failed 500") == 7
+    finally:
+        d.close()
+        srv.shutdown()
