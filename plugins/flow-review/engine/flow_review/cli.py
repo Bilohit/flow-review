@@ -18,7 +18,7 @@ from pathlib import Path
 # A5 ledger) replaces exactly one function here with real behaviour; the parser wiring does not
 # change.
 _STUB_VERBS = (
-    "prove", "ledger",
+    "prove",
 )
 
 
@@ -216,7 +216,95 @@ def build_parser() -> argparse.ArgumentParser:
                                help="render one self-contained HTML snapshot to this path instead of serving")
     serve_parser.set_defaults(func=_run_serve)
 
+    ledger_parser = sub.add_parser("ledger", parents=[project_after_verb])
+    ledger_sub = ledger_parser.add_subparsers(dest="ledger_cmd", required=True)
+    p = ledger_sub.add_parser("reconcile", parents=[project_after_verb])
+    p.add_argument("--run", required=True, dest="run_dir", type=Path)
+    p.set_defaults(func=_run_ledger_reconcile)
+    p = ledger_sub.add_parser("record-miss", parents=[project_after_verb])
+    p.add_argument("--function", required=True)
+    p.add_argument("--run", required=True, dest="run_dir", type=Path)
+    p.set_defaults(func=_run_ledger_record_miss)
+    p = ledger_sub.add_parser("suppressions", parents=[project_after_verb])
+    p.add_argument("--rule", required=True)
+    p.set_defaults(func=_run_ledger_suppressions)
+
+    manifest_parser = sub.add_parser("manifest", parents=[project_after_verb])
+    manifest_sub = manifest_parser.add_subparsers(dest="manifest_cmd", required=True)
+    p = manifest_sub.add_parser("apply-learnings", parents=[project_after_verb])
+    p.add_argument("--path", required=True, type=Path)
+    p.add_argument("--hash", required=True, dest="recorded_hash")
+    p.add_argument("--learning", action="append", default=[])
+    p.set_defaults(func=_run_manifest_apply_learnings)
+
     return parser
+
+
+def _ledger_path(args: argparse.Namespace) -> Path | None:
+    if args.project_root is None:
+        print("no .flow-review/ found; run /flow-review setup first, or pass --project",
+              file=sys.stderr)
+        return None
+    return Path(args.project_root) / ".flow-review" / "findings.json"
+
+
+def _run_ledger_reconcile(args: argparse.Namespace) -> int:
+    from flow_review import ledger as ledgermod
+    path = _ledger_path(args)
+    if path is None:
+        return 3
+    findings: list[dict] = []
+    withdrawn: set[str] = set()
+    flows_run: set[str] = set()
+    log = Path(args.run_dir) / "events.jsonl"
+    if log.exists():
+        for line in log.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            event = json.loads(line)
+            if event.get("type") == "finding":
+                findings.append(event)
+                flows_run.add(event["flow_id"])
+            elif event.get("type") == "withdraw":
+                withdrawn.add(event.get("finding_id"))
+            elif event.get("type") == "step" and event.get("step") == "flow-begin":
+                flows_run.add(event["flow_id"])
+    findings = [f for f in findings if f.get("id") not in withdrawn]
+    ledger_ = ledgermod.reconcile(ledgermod.load(path), findings, flows_run,
+                                  Path(args.run_dir).name)
+    ledgermod.save(ledger_, path)
+    return 0
+
+
+def _run_ledger_record_miss(args: argparse.Namespace) -> int:
+    from flow_review import ledger as ledgermod
+    path = _ledger_path(args)
+    if path is None:
+        return 3
+    ledger_ = ledgermod.load(path)
+    count = ledgermod.record_miss(ledger_, args.function, Path(args.run_dir).name)
+    ledgermod.save(ledger_, path)
+    print(count)
+    return 0
+
+
+def _run_ledger_suppressions(args: argparse.Namespace) -> int:
+    from flow_review import ledger as ledgermod
+    path = _ledger_path(args)
+    if path is None:
+        return 3
+    print(json.dumps(ledgermod.suppressions_for(ledgermod.load(path), args.rule)))
+    return 0
+
+
+def _run_manifest_apply_learnings(args: argparse.Namespace) -> int:
+    from flow_review import manifest as manifestmod
+    try:
+        print(manifestmod.apply_learnings(args.path, args.recorded_hash, args.learning))
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    return 0
 
 
 def _run_triage(args: argparse.Namespace) -> int:

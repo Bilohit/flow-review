@@ -19,7 +19,7 @@ def test_main_with_no_args_prints_usage_and_exits_nonzero(capsys):
 
 def test_main_dispatches_known_stub_subcommands():
     for verb in (
-        "prove", "ledger",
+        "prove",
     ):
         code = cli.main([verb])
         assert code == 2, f"{verb} stub must report not-yet-implemented, not crash or succeed"
@@ -378,3 +378,75 @@ def test_serve_without_static_calls_serve(tmp_path, monkeypatch):
     assert seen["project_root"] == tmp_path.resolve()
     assert seen["run_dir"] == run_dir
     assert seen["port"] == 9999
+
+
+def _ledger_project(tmp_path):
+    (tmp_path / ".flow-review").mkdir()
+    run = tmp_path / "run"
+    run.mkdir()
+    return run
+
+
+def _finding_event(flow_id="login", rule="ui.clarity", **kw):
+    return dict(type="finding", surface_id="web", flow_id=flow_id, rule=rule, route="/",
+                locator="#go", sev="P1", text="unclear", **kw)
+
+
+def test_ledger_reconcile_folds_run_findings_keeping_event_ids(tmp_path):
+    from flow_review import events as ev, ledger as ledger_mod
+    run = _ledger_project(tmp_path)
+    ev.append(run, {"type": "step", "surface_id": "web", "flow_id": "login", "step": "flow-begin"})
+    kept = ev.append(run, _finding_event())
+    gone = ev.append(run, _finding_event(rule="ui.other"))
+    ev.append(run, {"type": "withdraw", "finding_id": gone["id"]})
+    code = cli.main(["--project", str(tmp_path), "ledger", "reconcile", "--run", str(run)])
+    assert code == 0
+    led = ledger_mod.load(tmp_path / ".flow-review" / "findings.json")
+    assert list(led.findings) == [kept["id"]]
+    assert led.findings[kept["id"]].last_run == "run"
+
+
+def test_ledger_reconcile_marks_unseen_finding_fixed_only_for_flows_run(tmp_path):
+    from flow_review import events as ev, ledger as ledger_mod
+    run = _ledger_project(tmp_path)
+    path = tmp_path / ".flow-review" / "findings.json"
+    led = ledger_mod.reconcile(ledger_mod.Ledger(), [_finding_event(), _finding_event(flow_id="pay")],
+                               {"login", "pay"}, "r0")
+    ledger_mod.save(led, path)
+    ev.append(run, {"type": "step", "surface_id": "web", "flow_id": "login", "step": "flow-begin"})
+    assert cli.main(["--project", str(tmp_path), "ledger", "reconcile", "--run", str(run)]) == 0
+    states = {e.flow_id: e.state for e in ledger_mod.load(path).findings.values()}
+    assert states == {"login": "fixed", "pay": "open"}
+
+
+def test_ledger_record_miss_prints_count(tmp_path, capsys):
+    run = _ledger_project(tmp_path)
+    args = ["--project", str(tmp_path), "ledger", "record-miss", "--function", "export", "--run"]
+    assert cli.main(args + [str(run)]) == 0
+    assert cli.main(args + [str(tmp_path / "run2")]) == 0
+    assert capsys.readouterr().out.split() == ["1", "2"]
+
+
+def test_ledger_suppressions_prints_json(tmp_path, capsys):
+    from flow_review import ledger as ledger_mod
+    _ledger_project(tmp_path)
+    path = tmp_path / ".flow-review" / "findings.json"
+    led = ledger_mod.reconcile(ledger_mod.Ledger(), [_finding_event()], {"login"}, "r0")
+    next(iter(led.findings.values())).state = "false-positive"
+    ledger_mod.save(led, path)
+    assert cli.main(["--project", str(tmp_path), "ledger", "suppressions", "--rule", "ui.clarity"]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out == [{"route": "/", "locator": "#go", "text": "unclear", "state": "false-positive"}]
+
+
+def test_manifest_apply_learnings_prints_new_hash(tmp_path, capsys):
+    from flow_review import manifest as manifest_mod
+    _ledger_project(tmp_path)
+    flows = tmp_path / "flows.md"
+    flows.write_text("# flows" + chr(10), encoding="utf-8")
+    h = manifest_mod.manifest_hash(flows.read_text(encoding="utf-8"))
+    code = cli.main(["--project", str(tmp_path), "manifest", "apply-learnings", "--path", str(flows),
+                     "--hash", h, "--learning", "login needs 2FA"])
+    assert code == 0
+    new = capsys.readouterr().out.strip()
+    assert new != h and "login needs 2FA" in flows.read_text(encoding="utf-8")
