@@ -408,3 +408,15 @@ def test_fill_from_env_missing_raises_and_never_types_empty(tmp_path, monkeypatc
     with pytest.raises(Exception, match="NOPE_PW"):
         session.fill({"css": "#pw"}, from_env="NOPE_PW")
     assert driver.filled == []
+
+
+def test_check_page_route_is_url_path_without_scheme_host_port(tmp_path, monkeypatch):
+    run_dir, project_root = _dirs(tmp_path)
+    routes = []
+    monkeypatch.setattr(drive.measure, "check_page",
+                        lambda d, s, f, route, t, i: routes.append(route) or [])
+    driver = FakeDriver()
+    driver.goto = lambda p: setattr(driver.page, "url", "http://127.0.0.1:8765" + p)
+    session = DriveSession(driver, "webapp", run_dir, project_root, record_enabled=False)
+    session.goto("/dash?x=1")
+    assert routes == ["/dash"]

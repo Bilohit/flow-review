@@ -93,7 +93,7 @@ def replay_one(driver, log: dict, measure: MeasureHook | None = None,
         except Exception as exc:
             findings.append({
                 "surface_id": surface_id, "flow_id": flow_id,
-                "rule": "replay.step_failed", "route": step.get("url"), "locator": "",
+                "rule": "replay.step_failed", "route": _url_path(step.get("url")), "locator": "",
                 "sev": "P1", "text": f"step {index} ({action}) raised: {exc}",
                 "evidence": [], "disposition": "objective",
             })

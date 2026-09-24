@@ -12,6 +12,7 @@ import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flow_review import envsetup, events
 from flow_review.web import actionlog, measure
@@ -119,7 +120,9 @@ class DriveSession:
         return self._result(new_ids)
 
     def _run_checks(self, step_index) -> list:
-        route = self._current_url() or "/"
+        # A-6: the route is the URL path only, so fingerprints match replay's and survive a
+        # port change between runs.
+        route = urlparse(self._current_url() or "").path or "/"
         findings = measure.check_page(
             self.driver, self.surface_id, self.flow_id, route, self.tokens, step_index,
         )
