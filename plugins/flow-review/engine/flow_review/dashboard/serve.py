@@ -111,7 +111,7 @@ class Handler(BaseHTTPRequestHandler):
                     self.wfile.flush()
                     last_beat = time.monotonic()
                 time.sleep(POLL_S)
-        except (BrokenPipeError, ConnectionResetError):
+        except ConnectionError:  # client closed the stream (reset, abort, broken pipe)
             return
 
     def do_POST(self):  # noqa: N802

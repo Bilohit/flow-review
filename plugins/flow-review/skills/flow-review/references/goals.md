@@ -50,6 +50,12 @@ route to the same outcome (the shortest route observed across any run so far). T
 **goal-card metric only**, never a severity-bearing finding on its own in M1; revisited at M5 with
 benchmark data.
 
+Report each goal's outcome once, through the CLI's `event` subcommand, as a `goal` event with
+exactly these fields (the dashboard goal card reads them):
+`--type goal --json '{"flow_id": "<flow id>", "text": "<goal text>", "reached": true|false, "actions": N, "shortest": M, "from_docs": true|false}'`.
+`flow_id` is required: the dashboard keys goal cards by it and drops a goal event without one.
+`from_docs` is true only when the goal was reached on the docs pass after a cold miss (section 3).
+
 ## 5. Driving (A-24, B10)
 
 You never touch Playwright or an MCP browser tool directly -- for a web surface, `flow-review
