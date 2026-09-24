@@ -16,7 +16,7 @@ body{
 .topbar{ flex:none; display:flex; align-items:center; gap:var(--space-3); padding:var(--space-2) var(--space-4); border-bottom:1px solid var(--border); background:var(--panel); }
 
 .lanes{
-  flex:1 1 auto;
+  flex:0 1 auto;
   min-height:0;
   overflow-y:auto;
   display:grid;
@@ -45,7 +45,7 @@ body{
 .findings-list:not([hidden]){ display:flex; }   /* [hidden] must win the cascade, not display:flex */
 .finding-row{ display:flex; align-items:center; gap:var(--space-2); text-align:left; border:none; border-bottom:1px solid var(--border); background:var(--panel); color:var(--text-1); padding:var(--space-2) var(--space-3); cursor:pointer; transition:background var(--motion-fast) var(--motion-ease); }
 .finding-row:hover{ background:var(--border); }
-.finding-row svg{ width:10px; height:10px; flex:none; }
+.finding-row svg{ width:12px; height:12px; flex:none; }
 .finding-row.sev-P0 svg{ color:var(--sev-p0); }
 .finding-row.sev-P1 svg{ color:var(--sev-p1); }
 .finding-row.sev-P2 svg{ color:var(--sev-p2); }
@@ -81,6 +81,6 @@ body{
 
 .report{ flex:1 1 auto; min-height:0; overflow-y:auto; padding:var(--space-4); }
 .report details{ margin-bottom:var(--space-3); }
-.report summary{ cursor:pointer; color:var(--text-2); font-family:var(--font-mono); }
+.report summary{ cursor:pointer; color:var(--text-1); }
 .goal-card{ border:1px solid var(--border); border-radius:var(--radius); padding:var(--space-2) var(--space-3); margin-bottom:var(--space-2); }
-.not-exercised-row{ color:var(--text-2); font-family:var(--font-mono); padding:var(--space-1) 0; }
+.not-exercised-row{ color:var(--text-1); padding:var(--space-1) 0; }

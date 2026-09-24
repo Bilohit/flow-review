@@ -6,7 +6,7 @@ See LICENSE-phosphor.txt in this directory for the full license text.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true">
   <symbol id="severity-dot" viewBox="0 0 256 256">
-    <path fill="currentColor" d="M128,24A104,104,0,1,0,232,128,104.11,104.11,0,0,0,128,24Zm0,192a88,88,0,1,1,88-88A88.1,88.1,0,0,1,128,216Z"/>
+    <circle cx="128" cy="128" r="104" fill="currentColor"/>
   </symbol>
   <symbol id="check" viewBox="0 0 256 256">
     <path fill="currentColor" d="M229.66,77.66l-128,128a8,8,0,0,1-11.32,0l-56-56a8,8,0,0,1,11.32-11.32L96,188.69,218.34,66.34a8,8,0,0,1,11.32,11.32Z"/>
