@@ -30,20 +30,19 @@ a `flow` key** -- never a count of `step` events. Emit one when a flow ends, alw
 A screenshot is only visible on the dashboard if it has a `shot` event -- **write the PNG and
 emit the event together, every time.** Files alone leave the surface's panel blank.
 
-### The append idiom -- use exactly this
+### How to append an event -- use the engine, never a hand-rolled append
 
 ```bash
-TS=$(date +%Y-%m-%dT%H:%M:%S)
-printf '%s\n' "{\"ts\":\"$TS\",\"type\":\"step\",\"surface\":\"<surface-name>\",\"flow\":\"f1\",\"step\":\"open the target screen\",\"state\":\"ok\"}" >> "$RUN/events.jsonl"
+flow-review event --run "$RUN" --type step surface=<surface-id> flow=f1 step="open the target screen" state=ok
 ```
 
-- **Bash tool only.** Do NOT use PowerShell `Add-Content` / `Out-File` / `>` for this file -- they
-  write a BOM or ANSI bytes and the first line stops parsing as JSON.
-- `date +%Y-%m-%dT%H:%M:%S` -- **no timezone offset.** An offset-bearing `ts` breaks elapsed math.
-- One line. `>>` only, never `>`. Trailing newline mandatory.
-- **Never rewrite the file. Never read it back.** Multiple writers append concurrently; it is not
-  yours alone.
-- Escape `"` and newlines inside `text`. Keep `text` to one sentence.
+- **Always the CLI (or `events.append` if called from Python), never a hand-rolled shell
+  append.** Hand-rolled appends become shell-injectable the moment captured output contains
+  special characters like double quotes.
+- `k=v` pairs become JSON fields; `ts` (ms, UTC, trailing `Z`) and secret redaction
+  (`events.redact`) are applied by the writer, not the caller.
+- Multiple writers still append concurrently; the file is still never read back or
+  rewritten by a tester.
 
 ## 2. Evidence rules
 

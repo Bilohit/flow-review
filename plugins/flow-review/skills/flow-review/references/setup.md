@@ -98,6 +98,12 @@ Report to the user, by name, any surface whose `Proof.teardown_ok` came back `Fa
 silently discarding that fact and moving on is how an orphaned process outlives the setup run that
 started it.
 
+An `audited`-only surface (never reaching `proven`) is not blocked from being written into
+`config.json` -- this section's binding rule is about being *proven or declined*, and `audited` is
+neither; the surface is written with `provenance["launch"] = "audited"` and is asked about again at
+the top of every subsequent setup or `--reconfigure` pass. What is never allowed is skipping proving
+entirely and writing a surface with no `provenance["launch"]` value at all.
+
 ## 5. Stamp provenance
 
 Every surface accepted from the audit in section 2 -- and only those -- gets
@@ -116,35 +122,22 @@ direction and the drift gate breaks in one of two ways:
   run. The gate cries wolf and the user learns to click through it -- which loses the gate
   entirely for the surfaces that actually matter.
 
-## 6. Pick lens sets per surface
+## 6. Surface setup: state, reset, and credentials
 
-For each surface, call `fr.lenses.for_kind(surface.kind)` and record the returned lens names under
-`config.lens_sets[surface.name]`. `ui`, `cli`, and `api` each get a real lens set (see
-`references/lenses/ui.md` for the `ui` set in full; `cli` and `api` lenses live in `fr/lenses.py`
-alongside it). A `library` surface's lens set is always empty -- `fr.lenses.has_critique("library")`
-returns `False` -- because a surface called only from code has no human-facing edge to critique.
+Lens sets are no longer chosen at setup -- `references/lenses/ui.md` fixes the lens set by surface
+`kind` (API and CLI lenses return with M4). Setup instead records the surface's `state`
+(disposable or persistent), optional
+`reset` command, and credential env-var names (`creds`) -- see section 8 below for the flows
+manifest and `docs/concepts.md`'s Surface entry for the full v2 field list.
 
-**Tell the user plainly, in the setup summary, that a `library` surface gets QA and no critique.**
-It still gets the full QA pass: flows driven, evidence gathered, and objective failures (crash,
-wrong output, a broken contract) surfaced as findings and ranked exactly like any other surface.
-What it never gets is a design-critique pass, and the eventual report says so in words rather than
-printing an empty critique section for it.
-
-## 7. Choose the tester agent and evidence types
-
-Ask the user (or accept a default) for which agent type dispatches as the tester for each surface,
-and which evidence types that surface's tester is expected to produce (screenshots, view-tree
-dumps, response bodies, logs -- per its driver in `references/surfaces.md`). Record these as
-`config.tester_agent` and `config.evidence_types`.
-
-## 8. Seed the flows manifest
+## 7. Seed the flows manifest
 
 Copy `templates/flows.md` into `.flow-review/flows.md` if it does not already exist. Interview the
 user for the first few real flows -- replace the template's example section with real entry
 points, steps, and expected outcomes for this project's actual surfaces, following the row format
 `templates/flows.md` documents.
 
-Record the seeded file's hash as `config.flows_hash` -- `fr.manifest.manifest_hash(text)` is what
+Record the seeded file's hash as `config.flows_hash` -- `engine/flow_review/manifest.manifest_hash(text)` is what
 the tool last wrote. This hash is an **ownership token**, not a cache-busting detail:
 
 BINDING -- Never overwrite the flows manifest when a human has edited it.
@@ -152,12 +145,12 @@ Applies even when a run learns something that would correct a row in it; append 
 block instead of rewriting.
 A version that rewrote the file unconditionally at run end destroyed hand-written flow notes the
 first time someone edited the file between runs.
-why: fr/manifest.py, BINDING rule at the top of the module
+why: engine/flow_review/manifest.py, BINDING rule at the top of the module
 
-A **run that learned nothing writes nothing** -- `fr.manifest.apply_learnings` returns the
+A **run that learned nothing writes nothing** -- `engine/flow_review/manifest.apply_learnings` returns the
 recorded hash unchanged, before reading or writing the file at all, so a no-op run never
 transfers ownership away from a human who has never touched the file. Only when there is
-something to record does the tool check `fr.manifest.is_human_edited`: if the file still hashes to
+something to record does the tool check `engine/flow_review/manifest.is_human_edited`: if the file still hashes to
 what was recorded, the tool wrote it last and may extend it directly; if the hash has moved, a
 human owns the file now, and the tool's contribution lands inside the delimited
 `<!-- flow-review learnings -->` ... `<!-- /flow-review learnings -->` block -- a header and a
@@ -165,7 +158,7 @@ footer bracketing exactly the tool's own lines -- leaving every byte outside tha
 The manifest is append-only either way: it is never truncated, and a prior well-formed block is
 replaced precisely, never the surrounding human content.
 
-## 9. Keep run artifacts out of the host project's git history
+## 8. Keep run artifacts out of the host project's git history
 
 `.flow-review/runs/` fills up with screenshots and `events.jsonl` on every pass. This repository's
 own `.gitignore` covers its own `.flow-review/runs/`, but a project you are setting up has no such
@@ -178,11 +171,11 @@ Check the project root for a `.gitignore`. If one exists and does not already co
 the project has no root `.gitignore` at all, create `.flow-review/.gitignore` containing `runs/`
 instead of inventing a root one on the user's behalf.
 
-## 10. Write config.json
+## 9. Write config.json
 
 Assemble the `Config` (schema_version, generator_version, surfaces with their launch commands,
-preconditions, and provenance, lens_sets, tester_agent, evidence_types, flows_hash) and write it
-with `fr.config.save`. `generator_version` is the flow-review plugin's own version: read the
+preconditions, and provenance, flows_hash, budget cap, model profile and role overrides) and write it
+with `engine/flow_review/config.save`. `generator_version` is the flow-review plugin's own version: read the
 `"version"` string from this plugin's `plugin.json` at write time -- never hardcode it, never
 carry it forward from an older config. It is provenance for debugging, not a compatibility gate;
 `schema_version` is the gate. Then `save` re-validates every surface's `kind` and every provenance value before

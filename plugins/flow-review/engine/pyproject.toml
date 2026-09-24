@@ -1,0 +1,23 @@
+[project]
+name = "flow-review"
+version = "2.0.0"
+description = "flow-review engine: deterministic launch/prove/replay/measure/ledger for the flow-review Claude Code plugin"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+
+[project.optional-dependencies]
+web = ["playwright>=1.40", "pillow>=10.0"]
+
+[project.scripts]
+flow-review = "flow_review.cli:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["flow_review*"]
+
+[tool.setuptools.package-data]
+"flow_review.dashboard" = ["page/*.*", "page/fonts/*", "page/icons/*"]

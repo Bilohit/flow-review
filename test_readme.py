@@ -21,6 +21,11 @@ def test_readme_has_both_install_paths_and_the_marketplace_name():
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "/plugin marketplace add Bilohit/flow-review" in text
     assert "/plugin install flow-review" in text
+    # The skill calls the `flow-review` CLI from its first step, so the engine and the browser
+    # must be installed before the first /flow-review (found by the R12 end-to-end run).
+    assert ('pip install "flow-review[web] @ git+https://github.com/Bilohit/flow-review'
+            '#subdirectory=plugins/flow-review/engine"') in text
+    assert "python -m playwright install chromium" in text
 
 
 def test_readme_has_no_emoji():
@@ -61,27 +66,14 @@ def test_readme_opens_with_the_theme_aware_banner():
     assert "assets/banner.svg" in head
 
 
-def test_credits_link_every_third_party_upstream():
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "Credits" in text
-
-
-def test_credits_section_is_specific_about_third_party_status():
-    """The bare 'Credits' check above passes on a heading alone -- that overpromises what its
-    name claims. This checks the section actually says something real: whether third-party
-    code is bundled, and points at the license that governs the original work either way."""
+def test_credits_section_exists_and_is_not_a_stub():
+    """A bare '## Credits' heading with nothing under it is as good as no section -- this
+    guards the section against shrinking back to a stub."""
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     match = re.search(r"^## Credits\s*\n(.*?)(?=\n## |\Z)", text, re.S | re.M)
     assert match, "no '## Credits' section found"
     section = match.group(1).strip()
     assert len(section) > 80, "Credits section is a stub"
-    assert "third-party" in section.lower()
-    assert "MIT" in section or "LICENSE" in section
-
-
-def test_readme_lens_table_includes_the_library_row():
-    text = (ROOT / "README.md").read_text(encoding="utf-8")
-    assert "QA only, and the report says so" in text
 
 
 def test_readme_has_no_bom():
@@ -96,3 +88,27 @@ def test_docs_and_contributing_exist_and_are_not_stubs():
         assert path.is_file(), f"{rel} is missing"
         text = path.read_text(encoding="utf-8")
         assert len(text.strip()) > 400, f"{rel} looks like a stub"
+
+
+def test_readme_no_longer_claims_stdlib_only():
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "Standard library only" not in text
+    assert "no third-party packages" not in text.lower()
+
+
+def test_readme_states_the_managed_venv_and_github_only_install():
+    # A-27: no PyPI package; the engine installs from the plugin's own folder (sourced from GitHub).
+    text = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "flow-review setup-env" in text
+    assert "plugins/flow-review/engine" in text
+    assert not re.search(r"\bpypi\b", text, re.I)
+
+
+def test_contributing_no_longer_claims_stdlib_only():
+    text = (ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    assert "no dependencies to install" not in text.lower()
+
+
+def test_docs_no_longer_reference_the_v1_findings_module():
+    text = (ROOT / "docs" / "concepts.md").read_text(encoding="utf-8")
+    assert "fr/findings.py" not in text

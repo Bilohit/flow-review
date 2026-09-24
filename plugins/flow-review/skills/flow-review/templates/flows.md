@@ -39,6 +39,10 @@ Applies even when the flow it named is deleted or fully rewritten; retire the id
 A prior run renumbered ids after a cleanup pass, and every finding filed against the old numbers silently pointed at the wrong flow in the next report.
 why: this file, the Row format section, field `id`
 
+This row format is unchanged from v1 -- only `config.json` migrates (v2 migration); an
+existing `.flow-review/flows.md` in a project already using flow-review needs no changes
+at all.
+
 ---
 
 ## Example: web signup -- replace this section with your own

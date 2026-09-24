@@ -20,22 +20,22 @@ takes are the ones that ship. A tool that "solves" this by dumping every finding
 creates a different failure: a report that opens with the same three lines every time teaches its
 reader to skip it, and a QA tool nobody reads has failed regardless of what it found. flow-review is
 built around both halves of that problem: it proves the launch commands it uses instead of guessing
-at them (`fr/prove.py`), reports structural drift instead of by feel (`fr/drift.py`), and demotes an
-unchanged finding to a count instead of repeating it verbatim (`fr/findings.py`).
+at them (`engine/flow_review/prove.py`), reports structural drift instead of by feel (`engine/flow_review/drift.py`), and collapses an unchanged finding to a count instead of repeating it verbatim (via the ledger's `ledger.reconcile`).
 
 ## See it
 
-Every run's findings pass through `fr.findings.demote_repeats` before they reach the report: a
-finding whose location and text are unchanged from the previous run is demoted to a repeat and
-folded into a count, rather than headlined again. A severity change is the one thing that promotes
-it straight back to the headline.
+The ledger collapses unchanged findings into a count instead of repeating them verbatim. When the
+ledger reconciles a run's findings against its prior history, a finding whose fingerprint and
+severity match an earlier entry stays open (if already triaged and suppressed, it remains
+suppressed), runs_seen increments, and the report shows a collapsed entry with the count instead
+of the full text. A severity change promotes it straight back to the headline.
 
 Before -- this run's raw findings:
 
 ```
-{"ts": "2026-08-22T09:14:02", "sev": "P0", "location": "web / checkout / w03", "text": "Submitting with a discount code applied throws a 500; the error banner never renders."}
-{"ts": "2026-08-22T09:14:55", "sev": "P1", "location": "cli / init / c01", "text": "--help documents --config but the flag is rejected with exit code 2 and no message."}
-{"ts": "2026-08-22T09:15:30", "sev": "P2", "location": "api / users / a04", "text": "GET /users and GET /users/:id disagree on field casing (userId vs user_id)."}
+{"surface_id": "web", "flow_id": "checkout", "rule": "e2e", "route": "web / checkout / w03", "locator": "css:.checkout-btn", "sev": "P0", "text": "Submitting with a discount code applied throws a 500; the error banner never renders.", "evidence": []}
+{"surface_id": "cli", "flow_id": "init", "rule": "e2e", "route": "cli / init / c01", "locator": "css:.help-text", "sev": "P1", "text": "--help documents --config but the flag is rejected with exit code 2 and no message.", "evidence": []}
+{"surface_id": "api", "flow_id": "users", "rule": "e2e", "route": "api / users / a04", "locator": "GET /users/:id", "sev": "P2", "text": "GET /users and GET /users/:id disagree on field casing (userId vs user_id).", "evidence": []}
 ```
 
 After -- compared against the previous run's findings:
@@ -46,20 +46,30 @@ P0  web / checkout / w03   Submitting with a discount code applied throws a 500;
                            banner never renders.
 
 Repeats -- 2 findings collapsed
-P1  cli / init / c01       runs_seen: 4   repeat_of: 2026-08-15T11:02:10
-P2  api / users / a04      runs_seen: 2   repeat_of: 2026-08-20T08:40:03
+P1  cli / init / c01       runs_seen: 4   first_run: 2026-08-15T11:02:10
+P2  api / users / a04      runs_seen: 2   first_run: 2026-08-20T08:40:03
 ```
 
 The P0 is new, so it headlines. The other two are unchanged since the previous run: same
-normalized location and text, same severity, so they collapse into two lines carrying a running
-count instead of repeating verbatim.
+fingerprint and severity, so they collapse into two lines carrying a running count instead of repeating verbatim.
 
 ## Install
+
+In Claude Code:
 
 ```
 /plugin marketplace add Bilohit/flow-review
 /plugin install flow-review
 ```
+
+Then, once per machine, install the engine and its browser from the same repository:
+
+```
+pip install "flow-review[web] @ git+https://github.com/Bilohit/flow-review#subdirectory=plugins/flow-review/engine"
+python -m playwright install chromium
+```
+
+Restart Claude Code and `/flow-review` is available in every project.
 
 ## First run
 
@@ -95,8 +105,8 @@ Once every candidate is resolved, flow-review writes `.flow-review/config.json` 
 
 ```
 .flow-review/
-+-- config.json   surfaces, drivers, lens sets, schema version (fr/config.py)
-+-- flows.md      the human-owned flow manifest -- hand edits survive a rerun (fr/manifest.py)
++-- config.json   surfaces, drivers, schema version (engine/flow_review/config.py)
++-- flows.md      the human-owned flow manifest -- hand edits survive a rerun (engine/flow_review/manifest.py)
 +-- runs/         one folder per run: events.jsonl plus shots/ -- gitignored
 ```
 
@@ -123,14 +133,12 @@ Once every candidate is resolved, flow-review writes `.flow-review/config.json` 
 
 ## Lenses
 
-A lens is a critique question plus the evidence it may answer from (`fr/lenses.py`). Lens sets are
-data, keyed by surface kind, and never universal.
+A lens is a critique question plus the evidence it may answer from (`references/lenses/ui.md`). Lens sets are
+data, keyed by surface kind, and never universal. API and CLI lenses return with M4.
 
 | Kind | Lenses |
 |---|---|
 | `ui` | identity (fast), first-time-user (fast), accessibility, hierarchy, craft, copy |
-| `cli` | discoverability (fast), error-message quality (fast), exit-code semantics, help usability |
-| `api` | contract consistency (fast), error shapes (fast), status codes, pagination, doc drift |
 | `library` | none -- QA only, and the report says so |
 
 A library called only from code has no human-facing edge, so its lens set is empty -- but the
@@ -140,15 +148,18 @@ directly rather than printing an empty critique section.
 
 ## Every run after
 
-Once `.flow-review/config.json` exists, the interview is skipped. `fr.drift.detect_drift` compares
+Once `.flow-review/config.json` exists, the interview is skipped. `drift.runnable_surfaces` compares
 the config against what the repo actually contains right now -- surface set and launch command
 only, never semantics -- and reports a one-line note at the gate if something moved: a new surface
 detected but not configured, a configured launch command that changed, or a configured surface whose
 evidence disappeared from the repo. The flows in `.flow-review/flows.md` are reconciled against the
-project's own state docs, never overwritten out from under a hand edit (`fr/manifest.py`), and driven
-through whichever lens set applies to each surface's kind. Findings pass through
-`fr.findings.demote_repeats` so a stale, unchanged finding collapses to a count instead of
-retraining you to skip the report.
+project's own state docs, never overwritten out from under a hand edit (`engine/flow_review/manifest.py`), and driven
+through whichever lens set applies to each surface's kind. Findings are reconciled into the ledger
+via `ledger.reconcile`, so a stale, unchanged finding collapses to a count instead of
+retraining you to skip the report. `flow-review replay` also carries a visual baseline per
+recorded flow: the first replay saves it, a later one diffs against it and files a P2
+`visual.changed` finding on a real change, and `flow-review replay --update-baselines` accepts
+the new screenshot instead.
 
 ## Going deeper
 
@@ -159,16 +170,17 @@ retraining you to skip the report.
 
 ## Requirements
 
-Python 3.10+. Standard library only -- no `pip install`, no third-party packages.
+Python 3.10+. Setup runs `flow-review setup-env`, which creates a managed venv (uv, pip fallback) and installs only what the detected surfaces need -- Playwright and Pillow for `[web]`, more per surface at M2+. The engine ships inside the plugin repository (`plugins/flow-review/engine`) and installs from GitHub with the `pip` line above; it is never published to a package index.
 
 ## Credits
 
-flow-review bundles no third-party code. `fr/`, the dashboard, the reference docs and the templates
-in this repository are all original work, released under the MIT license -- see `LICENSE`.
+The engine (`plugins/flow-review/engine/flow_review/`), the dashboard, the reference docs and the templates
+in this repository are all original work, released under the MIT license -- see `LICENSE`. The engine's
+optional dependencies for `[web]` surface testing (Playwright and Pillow) are third-party and are
+clearly marked as the engine's optional `[web]` extras in `plugins/flow-review/engine/pyproject.toml`.
 
-If that ever changes -- a dependency gets added, a file gets vendored, an algorithm gets lifted from
-somewhere else -- it is credited right here with an upstream URL and an author's name, never
-included silently.
+If another third-party file or algorithm is added to the engine code, it is credited right here with
+an upstream URL and an author's name, never included silently.
 
 ## Related
 

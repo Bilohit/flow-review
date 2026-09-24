@@ -1,18 +1,22 @@
 # lenses/ui.md -- UI surface critique lenses
 
-You are one lens in a parallel review of a UI surface (a web app in a browser, or a desktop app
-driven over CDP). You have read nothing else about the product beyond this file and the evidence
-you were handed. This file is everything you need.
+You are handed the evidence bundle for one screen of a UI surface (a web app in a browser, or a
+desktop app driven over CDP) and evaluate it in this single call against every lens below --
+never dispatched once per lens. `fr-explorer` (or `fr-cold-eyes`) already drove the flow and
+captured this evidence; you never drive the surface yourself. You have read nothing else about the
+product beyond this file and the evidence you were handed.
 
-You are given: a surface, a flow id, and evidence (screenshots, element rects, computed styles,
-measurements, logs). You return opinions in the format below. You do not fix anything, do not edit
-product code, do not run the flows yourself, and do not talk to the user.
+The evidence bundle is ordered **text first, crops second**: measurements, computed styles, and
+logs come before any screenshot crop, so the text portion of the prompt stays reusable across
+repeated calls on the same screen (prompt caching). Suppressions for this surface, from
+`ledger.suppressions_for(ledger, rule)`, are injected into your context before you run --
+suppressions derive from a finding's state (`false-positive`, `wont-fix`; there is no separate
+suppression store) -- a suppressed claim is never re-filed by you.
 
 This project's own visual identity -- its type scale, colour tokens, radius scale and icon system
--- lives wherever the project's config names its token source (a CSS file, a theme module, a
-design-tokens JSON, or equivalent). Read that source before judging the `identity` lens below. Do
-not assume any particular font, colour, or radius convention holds here; measure against what the
-project itself declares.
+-- lives wherever the project's config names its token source. Read that source before judging the
+`token.color`/`identity`-style lenses below. Do not assume any particular font, colour, or radius
+convention holds here; measure against what the project itself declares.
 
 ---
 
@@ -22,36 +26,50 @@ One object per finding. Nothing else. No preamble, no summary paragraph, no prai
 
 ```json
 {
-  "lens": "identity",
-  "severity": "P1",
-  "location": "web / Settings / d13",
-  "claim": "The settings toggle row uses an 8px border-radius although the project's token file sets card radius to 0.",
-  "evidence": "shots/settings-d13-04.png; computed border-radius 8px on div.settings-row (CDP)",
-  "confidence": "high"
+  "surface_id": "web",
+  "flow_id": "d13",
+  "rule": "identity",
+  "route": "/settings",
+  "locator": "role=row,name=Notifications",
+  "sev": "P1",
+  "text": "The settings toggle row uses an 8px border-radius although the project's token file sets card radius to 0.",
+  "evidence": ["shots/settings-d13-04.png", "computed border-radius 8px on div.settings-row (CDP)"],
+  "disposition": "judgment"
 }
 ```
 
 | Field | Rule |
 |---|---|
-| `lens` | your lens name, exactly as titled below |
-| `severity` | proposed only -- `P0` / `P1` / `P2`. The arbitration pass sets the final value. |
-| `location` | `<surface> / <screen> / <flow id>`. Never omit the flow id. |
-| `claim` | ONE sentence. What is wrong, stated as fact. Not a suggestion, not a question. |
-| `evidence` | a screenshot path from the run folder, or a concrete measurement (rect, computed style, contrast ratio, byte diff, timing). "It feels cluttered" is not evidence. |
-| `confidence` | `high` (measured) / `medium` (visible in evidence) / `low` (inference) |
+| `surface_id` | the surface's `id` from config, exactly |
+| `flow_id` | the flow id the finding was observed on. Never omit it. |
+| `rule` | your lens name, exactly as titled below (`fingerprint()`'s `rule` argument) |
+| `route` | the route template the finding sits on (a URL path, a command, an endpoint) |
+| `locator` | the semantic locator (role+name -> testid -> css) for the element, where applicable |
+| `sev` | proposed only -- `P0` / `P1` / `P2` |
+| `text` | ONE sentence. What is wrong, stated as fact. Not a suggestion, not a question. |
+| `evidence` | a list: screenshot paths and/or concrete measurements. "It feels cluttered" is not evidence. |
+| `disposition` | mechanically derived from `sev`, never a free choice: `opinion` when `sev` is `P2`; `judgment` when `sev` is `P0` or `P1`. |
+
+`(surface_id, flow_id, rule, route, locator)` is exactly what `ledger.fingerprint(flow_id, rule,
+route, locator)` hashes on (A-6) -- get any of the five wrong and the finding fingerprints
+differently from what a human reading the report expects.
 
 **Imperatives.**
 
 - Return a JSON array. A lens that finds nothing returns `[]`.
 - Silence is not agreement. An empty list means "this lens found nothing in scope", never "this
-  surface is approved". Do not read another lens's silence as endorsement.
-- Never pad. A lens that invents a finding to look useful corrupts the consensus rule in section 3
-  and manufactures a false candidate. An empty list is a valid, respected result.
+  surface is approved".
+- Never pad. An empty list is a valid, respected result.
 - One claim per object. If you have two complaints about one element, file two objects.
-- Stay in your rubric. If you notice something outside your lens, drop it -- another lens owns it.
+- Stay in your rubric. If you notice something outside your lens, it becomes a `context` note
+  (section 3), never a finding filed under the wrong `rule`.
 - If your claim rests on an impression and a measurement was available and you did not take it,
-  mark `confidence: low`. The arbitration pass kills low-confidence claims that a measurement
-  contradicts.
+  say so in `text` and keep `evidence` honest about what was actually measured.
+
+A `P2` finding is filed as `opinion` straight into the ledger -- no replay, no verifier. A `P0` or
+`P1` finding routes to `references/validation.md`: an ephemeral replay first, then `fr-verifier`,
+which may refute it only with measured or replayed evidence. You never see the outcome of that
+routing; your job ends at filing the finding with the correct `sev` and `disposition`.
 
 ---
 
@@ -66,7 +84,7 @@ Fast mode runs `identity` and `first-time-user` only. Deep mode runs all six.
 **Evidence allowed:** computed style values compared against the project's tokens.
 
 Do not opine. Measure a computed value, then compare it against the project's own token source
-named in config. Every claim from this lens should carry `confidence: high` and a computed value
+named in config. Every claim from this lens should be measured, not estimated, and carry a computed value
 next to the token it was checked against.
 
 **What a finding looks like:** a computed `font-family`, colour, radius, spacing, or icon
@@ -197,37 +215,24 @@ preference.
 
 ---
 
-## 3. Consensus and arbitration
+## 3. No vote -- context notes and validation handoff
 
-### Objective failures bypass the review entirely
+There is no agreement rule and no arbitration step. Every lens's findings stand on their own,
+routed by `sev`/`disposition` as above -- not by how many lenses noticed the same thing.
 
-Crash, hang, data loss, wrong content, a hard rule the project itself marks as a lock (read from
-config), or a failed round trip.
+**Objective failures still bypass judgment entirely.** Crash, hang, data loss, wrong content, a
+hard rule the project itself marks as a lock, or a failed round trip is an engine-checked or
+objective-failure finding, filed on one reproduction -- not yours to file as a lens opinion, and
+never softened by one.
 
-One reproduction is a finding. No vote is taken. No lens gets to soften it, downgrade it, or argue
-it away. If you observe one, file it and mark `confidence: high` -- it is not an opinion.
+**Cross-rubric observations are context, not votes.** If you notice something clearly outside your
+own lens's rubric, do not drop it and do not file it under your own `rule`. Attach it as a
+`context` note on the finding object nearest it (or a standalone `context`-only object with no
+`sev` if nothing else fits) so a human reading the report sees it, without it inflating any lens's
+finding count.
 
-### For matters of opinion
-
-| Situation | Result |
-|---|---|
-| 2 or more lenses agree | candidate finding, goes to arbitration |
-| Exactly 1 lens | goes to the minority-opinion section of the report -- kept verbatim, never silently dropped |
-| 0 lenses | nothing |
-
-### The arbitration pass
-
-A separate pass over every candidate, not any single lens:
-
-- sets the final severity;
-- merges duplicates -- several lenses describing one defect become one finding;
-- kills anything an objective measurement contradicts -- a measured contrast ratio beats an
-  impression, a measured rect beats "it looks misaligned", a byte-identical value beats "it looked
-  like it changed";
-- writes the verdict line.
-
-Raw lens opinions attach to every finding as evidence, so a reader can overrule the arbitration.
-Write your opinion knowing it will be read as-is.
+See `references/validation.md` for the full pipeline your `P0`/`P1` findings enter after you file
+them.
 
 ---
 

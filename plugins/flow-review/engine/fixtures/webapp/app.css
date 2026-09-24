@@ -1,0 +1,23 @@
+/* plugins/flow-review/engine/fixtures/webapp/app.css */
+body { font-family: sans-serif; margin: 2rem; background: #ffffff; color: #1a1a1a; }
+
+.muted { color: #999999; background: #ffffff; }
+
+#cta-button {
+  background: #1a57dc; /* one hex digit off tokens.json's color.primary #1a56db */
+  color: #ffffff;
+  border: none;
+  padding: 8px 16px;
+}
+
+.button-stack { position: relative; height: 80px; }
+
+#save-button, #cancel-button {
+  position: absolute;
+  top: 40px;
+  left: 20px;
+  width: 80px;
+  height: 30px;
+}
+
+#help-button, #load-button { margin-top: 12px; }

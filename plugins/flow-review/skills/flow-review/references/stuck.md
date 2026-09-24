@@ -78,7 +78,8 @@ At quarantine, the main thread classifies. This is a runtime fact, not a council
 - **HARNESS-stuck** -- tooling or environment: a transport dropped, a wedged emulator or
   simulator, a stale or missing build, a driver never proved attached, a dev server dead, a path
   or permission quirk. Not a product finding -- record it as an infra note, and **if the trap is
-  novel, append it to `testing.md`** so the next run does not rediscover it.
+  novel, append it to the project's `.flow-review/traps.md`** (never the plugin's own
+  `references/testing.md`) so the next run on this project does not rediscover it.
 - **UNKNOWN** -- evidence supports both readings. Log it both ways, tag it **NEEDS USER INPUT**.
   Do not resolve it.
 
