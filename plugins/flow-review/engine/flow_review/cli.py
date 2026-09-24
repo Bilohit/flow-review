@@ -18,7 +18,7 @@ from pathlib import Path
 # A5 ledger) replaces exactly one function here with real behaviour; the parser wiring does not
 # change.
 _STUB_VERBS = (
-    "prove", "serve", "triage", "ledger",
+    "prove", "serve", "ledger",
 )
 
 
@@ -196,11 +196,34 @@ def build_parser() -> argparse.ArgumentParser:
     model_parser.add_argument("role", choices=list(configmod.ROLES))
     model_parser.set_defaults(func=_run_model)
 
+    triage_parser = sub.add_parser("triage", parents=[project_after_verb])
+    triage_parser.add_argument("finding_id")
+    triage_parser.add_argument("state")
+    triage_parser.add_argument("--reason", default=None)
+    triage_parser.set_defaults(func=_run_triage)
+
     drive_parser = sub.add_parser("drive")
     drive_parser.add_argument("drive_args", nargs=argparse.REMAINDER)
     drive_parser.set_defaults(func=_run_drive)
 
     return parser
+
+
+def _run_triage(args: argparse.Namespace) -> int:
+    from flow_review import triage as triagemod
+    project_root = args.project_root
+    if project_root is None:
+        print("no .flow-review/ found; run /flow-review setup first, or pass --project",
+              file=sys.stderr)
+        return 3
+    ledger_path = Path(project_root) / ".flow-review" / "findings.json"
+    try:
+        entry = triagemod.apply(ledger_path, args.finding_id, args.state, reason=args.reason)
+    except (ValueError, KeyError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(f"{entry.id}: {entry.state}")
+    return 0
 
 
 def _run_model(args: argparse.Namespace) -> int:

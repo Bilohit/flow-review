@@ -19,10 +19,44 @@ def test_main_with_no_args_prints_usage_and_exits_nonzero(capsys):
 
 def test_main_dispatches_known_stub_subcommands():
     for verb in (
-        "prove", "serve", "triage", "ledger",
+        "prove", "serve", "ledger",
     ):
         code = cli.main([verb])
         assert code == 2, f"{verb} stub must report not-yet-implemented, not crash or succeed"
+
+
+def test_triage_cli_applies_the_state_via_flow_review_triage_apply(tmp_path, capsys):
+    from flow_review import ledger as ledger_mod
+    (tmp_path / ".flow-review").mkdir()
+    entry = ledger_mod.LedgerEntry(
+        id="f1", fingerprint="abc123", surface_id="web", flow_id="w03",
+        rule="identity", route="/settings", locator="role=row,name=Notifications",
+        sev="P1", text="border-radius diverges from the token", evidence=["computed 8px"],
+    )
+    ledger_mod.save(ledger_mod.Ledger(findings={"f1": entry}),
+                     tmp_path / ".flow-review" / "findings.json")
+
+    code = cli.main(["triage", "--project", str(tmp_path), "f1", "fixed"])
+    assert code == 0
+    assert "fixed" in capsys.readouterr().out
+
+    reloaded = ledger_mod.load(tmp_path / ".flow-review" / "findings.json")
+    assert reloaded.findings["f1"].state == "fixed"
+
+
+def test_triage_cli_rejects_refuted_without_a_reason(tmp_path, capsys):
+    from flow_review import ledger as ledger_mod
+    (tmp_path / ".flow-review").mkdir()
+    entry = ledger_mod.LedgerEntry(
+        id="f1", fingerprint="abc123", surface_id="web", flow_id="w03",
+        rule="identity", route="/settings", locator="role=row,name=Notifications",
+        sev="P1", text="border-radius diverges from the token", evidence=["computed 8px"],
+    )
+    ledger_mod.save(ledger_mod.Ledger(findings={"f1": entry}),
+                     tmp_path / ".flow-review" / "findings.json")
+
+    code = cli.main(["triage", "--project", str(tmp_path), "f1", "refuted"])
+    assert code == 1
 
 
 def test_model_prints_resolved_model_for_role(tmp_path, capsys):

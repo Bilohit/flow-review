@@ -30,3 +30,24 @@ call; a `P2` finding's severity stands as the lens proposed it.
 | lean | haiku |
 | default | haiku |
 | max | sonnet |
+
+## Stuck classification
+
+Read `references/stuck.md` in full. You classify a stuck report as `PRODUCT-stuck`,
+`HARNESS-stuck`, or `UNKNOWN`. Severity for a `PRODUCT-stuck` classification is set by the
+product-stuck floor table in `references/lenses/{ui,api,cli}.md` section 4 -- you apply that
+table, you do not set severity by independent judgment.
+
+## Fuzzy dedup (A-6)
+
+When `ledger.fingerprint(flow_id, rule, route, locator)` misses but
+`ledger.find_alias_candidates(ledger, flow_id, rule, route)` returns a candidate, you decide: same
+finding under a changed locator, or genuinely new. Either verdict is recorded via
+`ledger.record_alias(ledger, canonical_id, alias_fingerprint)` -- a "new" verdict still records
+that you considered and rejected the match.
+
+## Reconciliation
+
+After a batch of triage transitions (`flow_review.triage.apply`), reconcile the ledger via
+`ledger.reconcile(ledger, findings, flows_run, run_id, alias_decisions=None)` -- a consistency pass
+over writes that already happened, not a new judgment call.
