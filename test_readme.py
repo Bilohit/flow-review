@@ -104,10 +104,12 @@ def test_readme_no_longer_claims_stdlib_only():
     assert "no third-party packages" not in text.lower()
 
 
-def test_readme_states_the_managed_venv_and_pypi_package():
+def test_readme_states_the_managed_venv_and_github_only_install():
+    # A-27: no PyPI package; the engine installs from the plugin's own folder (sourced from GitHub).
     text = (ROOT / "README.md").read_text(encoding="utf-8")
     assert "flow-review setup-env" in text
-    assert re.search(r"\bpypi\b", text, re.I)
+    assert "plugins/flow-review/engine" in text
+    assert not re.search(r"\bpypi\b", text, re.I)
 
 
 def test_contributing_no_longer_claims_stdlib_only():

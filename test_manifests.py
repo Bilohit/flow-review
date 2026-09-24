@@ -41,4 +41,4 @@ def test_engine_package_data_ships_every_dashboard_asset():
     missing = [str(p.relative_to(dash)) for p in needed
                if not any(fnmatch.fnmatch(p.relative_to(dash).as_posix(), pat) for pat in patterns)]
     assert not missing, f"not packaged: {missing}"
-    assert cfg["project"].get("readme"), "PyPI page would be blank"
+    assert cfg["project"].get("readme"), "the package would have no description"

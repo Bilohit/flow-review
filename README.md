@@ -158,14 +158,14 @@ retraining you to skip the report.
 
 ## Requirements
 
-Python 3.10+. Setup runs `flow-review setup-env`, which creates a managed venv (uv, pip fallback) and installs only what the detected surfaces need -- Playwright and Pillow for `[web]`, more per surface at M2+. The engine itself is the `flow-review` PyPI package.
+Python 3.10+. Setup runs `flow-review setup-env`, which creates a managed venv (uv, pip fallback) and installs only what the detected surfaces need -- Playwright and Pillow for `[web]`, more per surface at M2+. The engine ships inside the plugin (`plugins/flow-review/engine`), so installing the plugin from GitHub is all you need: `setup-env` installs the engine from that folder. There is no separate package to install.
 
 ## Credits
 
 The engine (`plugins/flow-review/engine/flow_review/`), the dashboard, the reference docs and the templates
 in this repository are all original work, released under the MIT license -- see `LICENSE`. The engine's
 optional dependencies for `[web]` surface testing (Playwright and Pillow) are third-party and are
-clearly marked in the PyPI package extras.
+clearly marked as the engine's optional `[web]` extras in `plugins/flow-review/engine/pyproject.toml`.
 
 If another third-party file or algorithm is added to the engine code, it is credited right here with
 an upstream URL and an author's name, never included silently.

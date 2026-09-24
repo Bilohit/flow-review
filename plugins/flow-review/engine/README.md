@@ -4,8 +4,10 @@ The deterministic engine behind the [flow-review](https://github.com/Bilohit/flo
 
 It never calls an LLM API. All model work happens in Claude Code through the plugin's agents.
 
+It ships inside the plugin and is installed from GitHub, never from PyPI. Installing the plugin is enough: `flow-review setup-env` installs this folder into a managed venv. To install it on its own:
+
 ```bash
-pip install "flow-review[web]"
+pip install "flow-review[web] @ git+https://github.com/Bilohit/flow-review#subdirectory=plugins/flow-review/engine"
 python -m playwright install chromium
 flow-review --help
 ```
