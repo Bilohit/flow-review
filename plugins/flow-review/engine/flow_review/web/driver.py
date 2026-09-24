@@ -32,6 +32,8 @@ class WebDriver:
         self._console_errors: list[dict] = []
         self._network_log: list[dict] = []
         self._current_step: int | None = None
+        self._network_cursor = 0
+        self._console_cursor = 0
 
     def launch(self, base_url: str) -> None:
         self.base_url = base_url.rstrip("/")
@@ -106,6 +108,20 @@ class WebDriver:
 
     def network_log(self) -> list[dict]:
         return list(self._network_log)
+
+    def network_log_since_check(self) -> list[dict]:
+        """Network entries appended since the last call to this method. Advances the
+        cursor; a second call right after returns []."""
+        new_entries = self._network_log[self._network_cursor:]
+        self._network_cursor = len(self._network_log)
+        return new_entries
+
+    def console_errors_since_check(self) -> list[dict]:
+        """Console-error entries appended since the last call to this method. Advances
+        the cursor; a second call right after returns []."""
+        new_entries = self._console_errors[self._console_cursor:]
+        self._console_cursor = len(self._console_errors)
+        return new_entries
 
     def begin_step(self, step_index: int) -> None:
         self._current_step = step_index
