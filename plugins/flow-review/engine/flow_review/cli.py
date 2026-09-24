@@ -18,7 +18,7 @@ from pathlib import Path
 # A5 ledger) replaces exactly one function here with real behaviour; the parser wiring does not
 # change.
 _STUB_VERBS = (
-    "prove", "plan", "replay", "serve", "triage", "ledger",
+    "prove", "plan", "serve", "triage", "ledger",
     "budget", "model",
 )
 
@@ -65,6 +65,27 @@ def _run_event(args: argparse.Namespace) -> int:
     payload["type"] = args.type_
     eventsmod.append(Path(args.run_dir), payload)
     return 0
+
+
+def _run_replay(args: argparse.Namespace) -> int:
+    from flow_review import config as configmod
+    from flow_review.web import replay as replay_mod
+    project_root = args.project_root
+    if project_root is None:
+        print("no .flow-review/ found; run /flow-review setup first, or pass --project",
+              file=sys.stderr)
+        return 3
+    try:
+        cfg = configmod.load(Path(project_root) / ".flow-review" / "config.json")
+    except Exception as exc:  # noqa: BLE001 -- CLI boundary: config error -> exit 3
+        print(str(exc), file=sys.stderr)
+        return 3
+    if args.log is not None:
+        if args.run_dir is None:
+            print("--log requires --run DIR", file=sys.stderr)
+            return 3
+        return replay_mod.replay_log(cfg, Path(project_root), args.log, args.run_dir)
+    return replay_mod.replay(cfg, Path(project_root), args.surface, args.flow)
 
 
 def _run_setup_env(args: argparse.Namespace) -> int:
@@ -120,6 +141,16 @@ def build_parser() -> argparse.ArgumentParser:
     migrate_parser.add_argument("--path", default=None)
     migrate_parser.add_argument("--quiet", action="store_true")
     migrate_parser.set_defaults(func=_run_migrate)
+
+    replay_parser = sub.add_parser(
+        "replay", parents=[project_after_verb],
+        help="replay recorded flows and check for regressions/divergences",
+    )
+    replay_parser.add_argument("--surface", default=None)
+    replay_parser.add_argument("--flow", default=None)
+    replay_parser.add_argument("--log", type=Path, default=None)
+    replay_parser.add_argument("--run", dest="run_dir", type=Path, default=None)
+    replay_parser.set_defaults(func=_run_replay)
 
     event_parser = sub.add_parser("event", parents=[project_after_verb])
     event_parser.add_argument("--run", required=True, dest="run_dir")

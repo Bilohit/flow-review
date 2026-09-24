@@ -18,11 +18,30 @@ def test_main_with_no_args_prints_usage_and_exits_nonzero(capsys):
 
 def test_main_dispatches_known_stub_subcommands():
     for verb in (
-        "prove", "plan", "replay", "serve", "triage", "ledger",
+        "prove", "plan", "serve", "triage", "ledger",
         "budget", "model",
     ):
         code = cli.main([verb])
         assert code == 2, f"{verb} stub must report not-yet-implemented, not crash or succeed"
+
+
+def test_replay_without_project_exits_three(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["replay"]) == 3
+
+
+def test_replay_log_without_run_exits_three(tmp_path):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
+    assert cli.main(["replay", "--project", str(tmp_path), "--log", "x.json"]) == 3
+
+
+def test_replay_no_recordings_exits_zero(tmp_path):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
+    assert cli.main(["replay", "--project", str(tmp_path)]) == 0
 
 
 def test_event_subcommand_appends_via_events_module(tmp_path):
