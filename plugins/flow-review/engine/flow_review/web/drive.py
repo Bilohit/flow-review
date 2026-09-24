@@ -16,7 +16,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
-from flow_review import envsetup, events
+from flow_review import envsetup, events, ledger
 from flow_review.web import actionlog, faults, measure
 
 MAX_BODY = 64 * 1024  # an action POST is a few hundred bytes to a few KiB (a fill value)
@@ -36,11 +36,15 @@ class DriveSession:
         self.step_index = 0
         self._offline_active = False
         self._active_5xx_patterns: list[str] = []
+        self._seen_fingerprints: set[str] = set()
 
     def flow_begin(self, flow_id: str) -> dict:
         self.flow_id = flow_id
         self.log = actionlog.new_log(self.surface_id, flow_id)
         self.step_index = 0
+        # RC1: the fingerprint includes flow_id anyway, so a new flow must re-report a finding
+        # that looked identical in an earlier flow -- reset the seen-set here, not per-run.
+        self._seen_fingerprints = set()
         events.append(self.run_dir, {
             "type": "step", "surface_id": self.surface_id, "flow_id": flow_id,
             "step": "flow-begin",
@@ -166,6 +170,16 @@ class DriveSession:
         for finding in findings:
             if self._is_self_inflicted(finding):
                 continue
+            # RC1: measure.check_page returns every live finding on EVERY action, so an
+            # unfixed defect would otherwise be appended (and reported to the explorer as
+            # "new") on each subsequent action of the same flow. Skip a fingerprint already
+            # emitted this flow; the same fingerprint reconcile/the ledger use, so this stays
+            # exactly in step with what ledger.reconcile would dedup anyway.
+            fp = ledger.fingerprint(self.flow_id or "", finding.get("rule") or "",
+                                     finding.get("route") or "", finding.get("locator") or "")
+            if fp in self._seen_fingerprints:
+                continue
+            self._seen_fingerprints.add(fp)
             event = events.append(self.run_dir, {
                 "type": "finding", "surface_id": self.surface_id, "flow_id": self.flow_id,
                 **finding,

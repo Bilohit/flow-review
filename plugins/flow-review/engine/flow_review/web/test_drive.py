@@ -674,6 +674,81 @@ def test_fault_offline_suppresses_self_inflicted_console_error(
         driver.close()
 
 
+# --- R13 RC1: fingerprint-based dedup of re-emitted findings ----------------------------
+
+
+def test_unchanged_finding_emitted_once_across_two_actions(tmp_path, monkeypatch):
+    # measure.check_page runs on every action; an unfixed page defect (e.g. persistent low
+    # contrast) comes back on every call. drive must only append its first occurrence per flow.
+    run_dir, project_root = _dirs(tmp_path)
+    finding = {
+        "rule": "contrast.aa", "sev": "P1", "locator": "role:button[name=Pay]",
+        "route": "/checkout", "text": "low contrast", "evidence": [], "disposition": "engine",
+    }
+    monkeypatch.setattr(drive.measure, "check_page", lambda *a, **k: [dict(finding)])
+
+    driver = FakeDriver()
+    session = DriveSession(driver, "webapp", run_dir, project_root, record_enabled=False)
+    session.flow_begin("f1")
+    first = session.click({"testid": "a"})
+    second = session.click({"testid": "b"})
+
+    assert len(first["new_findings"]) == 1
+    assert second["new_findings"] == []
+    assert len(_findings(run_dir, "contrast.aa")) == 1
+
+
+def test_new_finding_on_second_action_still_emits(tmp_path, monkeypatch):
+    run_dir, project_root = _dirs(tmp_path)
+    repeated = {
+        "rule": "contrast.aa", "sev": "P1", "locator": "role:button[name=Pay]",
+        "route": "/checkout", "text": "low contrast", "evidence": [], "disposition": "engine",
+    }
+    fresh = {
+        "rule": "http.5xx", "sev": "P0", "locator": None,
+        "route": "/checkout", "text": "boom", "evidence": [], "disposition": "engine",
+    }
+    calls = {"n": 0}
+
+    def _fake_check_page(*a, **k):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return [dict(repeated)]
+        return [dict(repeated), dict(fresh)]
+
+    monkeypatch.setattr(drive.measure, "check_page", _fake_check_page)
+    driver = FakeDriver()
+    session = DriveSession(driver, "webapp", run_dir, project_root, record_enabled=False)
+    session.flow_begin("f1")
+    session.click({"testid": "a"})
+    second = session.click({"testid": "b"})
+
+    assert len(second["new_findings"]) == 1
+    assert len(_findings(run_dir, "contrast.aa")) == 1
+    assert len(_findings(run_dir, "http.5xx")) == 1
+
+
+def test_new_flow_re_reports_a_finding_seen_in_a_prior_flow(tmp_path, monkeypatch):
+    # flow_begin resets the seen-set: the fingerprint includes flow_id anyway, so a new flow
+    # must re-report a finding that looks the same as one already emitted this session.
+    run_dir, project_root = _dirs(tmp_path)
+    finding = {
+        "rule": "contrast.aa", "sev": "P1", "locator": "role:button[name=Pay]",
+        "route": "/checkout", "text": "low contrast", "evidence": [], "disposition": "engine",
+    }
+    monkeypatch.setattr(drive.measure, "check_page", lambda *a, **k: [dict(finding)])
+    driver = FakeDriver()
+    session = DriveSession(driver, "webapp", run_dir, project_root, record_enabled=False)
+    session.flow_begin("f1")
+    session.click({"testid": "a"})
+    session.flow_end("f1", "ok")
+    session.flow_begin("f2")
+    result = session.click({"testid": "a"})
+
+    assert len(result["new_findings"]) == 1
+    assert len(_findings(run_dir, "contrast.aa")) == 2
+
+
 def test_is_self_inflicted_matches_active_5xx_pattern_via_evidence_url(tmp_path):
     run_dir, project_root = _dirs(tmp_path)
     session = DriveSession(FakeDriver(), "webapp", run_dir, project_root, record_enabled=False)
