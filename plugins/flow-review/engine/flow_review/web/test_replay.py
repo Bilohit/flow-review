@@ -257,3 +257,38 @@ def test_replay_one_missing_env_raises_missing_env(monkeypatch):
     actionlog.record_step(log, "fill", locator={"css": "#pw", "secret": True}, from_env="RP_MISSING")
     with pytest.raises(replay_mod.MissingEnv):
         replay_mod.replay_one(_FakeDriver(), log)
+
+
+def _dead_port() -> int:
+    import socket
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    return port
+
+
+def test_replay_app_unreachable_exits_three_without_touching_ledger(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    actionlog.save(log, tmp_path, project_root, record_enabled=True)
+    launched = []
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: launched.append(s))
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface(f"http://127.0.0.1:{_dead_port()}",
+                                            health_path="/healthz")])
+    assert replay_mod.replay(cfg, project_root) == 3
+    assert launched == []
+    assert not (project_root / ".flow-review" / "findings.json").exists()
+
+
+def test_replay_log_app_unreachable_exits_three(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    log_path = actionlog.save(log, tmp_path, project_root, record_enabled=False)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: pytest.fail("launched"))
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface(f"http://127.0.0.1:{_dead_port()}")])
+    assert replay_mod.replay_log(cfg, project_root, log_path, tmp_path) == 3

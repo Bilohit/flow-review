@@ -123,6 +123,23 @@ def _measure_hook(tokens: dict[str, str] | None) -> MeasureHook:
     return hook
 
 
+def _health_ok(surface) -> bool:
+    """GET base_url+health_path. Any HTTP answer means the app is up; a refused/timed-out
+    connection means it is not -- an environment error (exit 3), never a finding."""
+    import urllib.error
+    import urllib.request
+
+    url = surface.options["base_url"].rstrip("/") + (surface.options.get("health_path") or "/")
+    timeout = surface.options.get("ready_timeout_s") or 5
+    try:
+        with urllib.request.urlopen(url, timeout=timeout):
+            return True
+    except urllib.error.HTTPError:
+        return True
+    except (urllib.error.URLError, OSError):
+        return False
+
+
 def _launch_driver(surface) -> WebDriver:
     viewport = (surface.options.get("viewport") or [None])[0]
     driver = WebDriver(headless=True, viewport=viewport)
@@ -160,6 +177,10 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
         if not flow_files:
             continue
 
+        if not _health_ok(surface):
+            print(f"app for surface {surface.id!r} is unreachable at "
+                  f"{surface.options['base_url']}; start it and re-run", file=sys.stderr)
+            return 3
         try:
             driver = _launch_driver(surface)
         except Exception as exc:
@@ -235,6 +256,10 @@ def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path) -> int:
         print(f"no playwright surface named {log['surface_id']!r} in config", file=sys.stderr)
         return 3
 
+    if not _health_ok(surfaces[0]):
+        print(f"app for surface {surfaces[0].id!r} is unreachable at "
+              f"{surfaces[0].options['base_url']}; start it and re-run", file=sys.stderr)
+        return 3
     try:
         driver = _launch_driver(surfaces[0])
     except Exception as exc:
