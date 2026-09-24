@@ -13,7 +13,7 @@ import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
-from flow_review import events
+from flow_review import envsetup, events
 from flow_review.web import actionlog, measure
 
 
@@ -63,15 +63,18 @@ class DriveSession:
     def fill(self, locator: dict, text: str | None = None, from_env: str | None = None) -> dict:
         is_secret = bool(self.driver.is_password(locator))
         if from_env is not None:
-            value = os.environ.get(from_env, "")
-            events.register_secret(value)
+            value = envsetup.resolve_env(from_env, self.project_root,
+                                         envsetup.project_secret_names(self.project_root))
+            if value is None:
+                raise ValueError(f"env var {from_env!r} is not set in the environment or "
+                                 f".flow-review/.env")
             is_secret = True
         else:
             value = text or ""
             if is_secret:
                 events.register_secret(value)
         return self._act("fill", lambda: self.driver.fill(locator, value),
-                          locator=locator, value=value, secret=is_secret)
+                          locator=locator, value=value, secret=is_secret, from_env=from_env)
 
     def press(self, key: str) -> dict:
         return self._act("press", lambda: self.driver.press(key), value=key)
@@ -89,7 +92,8 @@ class DriveSession:
             result["shot"] = str(path)
         return result
 
-    def _act(self, action, op, *, locator=None, value=None, secret=False, url_hint=None):
+    def _act(self, action, op, *, locator=None, value=None, secret=False, url_hint=None,
+             from_env=None):
         step = self.step_index
         self.step_index += 1
         self.driver.begin_step(step)
@@ -98,10 +102,10 @@ class DriveSession:
         finally:
             self.driver.end_step()
         return self._after(action, step_index=step, locator=locator, value=value,
-                            secret=secret, url_hint=url_hint)
+                            secret=secret, url_hint=url_hint, from_env=from_env)
 
     def _after(self, action, *, step_index, locator=None, value=None, secret=False,
-               url_hint=None, record=True):
+               url_hint=None, record=True, from_env=None):
         if record and self.log is not None:
             log_locator = dict(locator) if locator else None
             if log_locator is not None and secret:
@@ -109,7 +113,7 @@ class DriveSession:
             actionlog.record_step(
                 self.log, action, locator=log_locator,
                 value=value,  # record_step redacts (and registers) when locator["secret"]
-                url=url_hint or self._current_url(),
+                url=url_hint or self._current_url(), from_env=from_env,
             )
         new_ids = self._run_checks(step_index)
         return self._result(new_ids)

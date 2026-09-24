@@ -132,3 +132,29 @@ def load_dotenv(path: Path, environ: dict | None = None, secret_names=()) -> dic
             events.register_secret(value)
         target[key] = value
     return parsed
+
+
+def resolve_env(name: str, project_root: Path | None, secret_names=()) -> str | None:
+    """os.environ first, then <project_root>/.flow-review/.env (A-26). The resolved value is
+    registered as a secret -- it is only ever asked for to type into a credential field."""
+    from flow_review import events
+
+    value = os.environ.get(name)
+    if value is None and project_root is not None:
+        dotenv = load_dotenv(Path(project_root) / ".flow-review" / ".env", environ={},
+                             secret_names=set(secret_names) | {name})
+        value = dotenv.get(name)
+    if value:
+        events.register_secret(value)
+    return value
+
+
+def project_secret_names(project_root: Path | None) -> set[str]:
+    """secret_names() for the project's config, or empty when it has none/unreadable."""
+    if project_root is None:
+        return set()
+    try:
+        from flow_review import config as configmod
+        return secret_names(configmod.load(Path(project_root) / ".flow-review" / "config.json"))
+    except Exception:
+        return set()

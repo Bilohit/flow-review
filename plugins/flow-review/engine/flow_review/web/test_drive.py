@@ -380,3 +380,31 @@ def test_drive_e2e_sign_in_finds_low_contrast(tmp_path, webapp_server, monkeypat
     written = (run_dir / "events.jsonl").read_text(encoding="utf-8")
     assert "contrast.aa" in written
     assert look["new_findings"] or "contrast.aa" in written
+
+
+def test_fill_from_env_falls_back_to_dotenv_and_records_name_only(tmp_path, monkeypatch):
+    monkeypatch.delenv("CP2_PW", raising=False)
+    run_dir, project_root = _dirs(tmp_path)
+    (project_root / ".flow-review").mkdir(parents=True)
+    (project_root / ".flow-review" / ".env").write_text("CP2_PW=Zq7hunter\n", encoding="utf-8")
+    driver = FakeDriver()
+    session = DriveSession(driver, "webapp", run_dir, project_root, record_enabled=True)
+    session.flow_begin("login")
+    session.fill({"css": "#pw"}, from_env="CP2_PW")
+    result = session.flow_end("login", "ok")
+    assert driver.filled[0][1] == "Zq7hunter"
+    saved = actionlog.load(Path(result["log_path"]))
+    assert "Zq7hunter" not in json.dumps(saved)
+    assert saved["steps"][0]["from_env"] == "CP2_PW"
+    assert saved["steps"][0]["value"] is None
+    assert "Zq7hunter" not in json.dumps(events.redact("x Zq7hunter x"))
+
+
+def test_fill_from_env_missing_raises_and_never_types_empty(tmp_path, monkeypatch):
+    monkeypatch.delenv("NOPE_PW", raising=False)
+    run_dir, project_root = _dirs(tmp_path)
+    driver = FakeDriver()
+    session = DriveSession(driver, "webapp", run_dir, project_root, record_enabled=False)
+    with pytest.raises(Exception, match="NOPE_PW"):
+        session.fill({"css": "#pw"}, from_env="NOPE_PW")
+    assert driver.filled == []

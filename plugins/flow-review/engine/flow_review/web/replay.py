@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Callable, TypedDict
 from urllib.parse import urlparse
 
-from flow_review import drift, events, ledger
+from flow_review import drift, envsetup, events, ledger
 from flow_review.web import actionlog
 from flow_review.web import measure as measure_mod
 from flow_review.web.driver import LocatorNotFound, WebDriver
@@ -20,6 +20,11 @@ class ReplayResult(TypedDict):
     findings: list[dict]
 
 
+class MissingEnv(Exception):
+    """A recorded `from_env` fill whose variable is set neither in the environment nor in
+    .flow-review/.env: an environment error (exit 3), not a finding."""
+
+
 def _url_path(url: str | None) -> str:
     if not url:
         return "/"
@@ -30,7 +35,8 @@ def _current_path(driver) -> str:
     return _url_path(getattr(driver.page, "url", None))
 
 
-def replay_one(driver, log: dict, measure: MeasureHook | None = None) -> ReplayResult:
+def replay_one(driver, log: dict, measure: MeasureHook | None = None,
+               project_root: Path | None = None) -> ReplayResult:
     steps_run = 0
     findings: list[dict] = []
     surface_id, flow_id = log["surface_id"], log["flow_id"]
@@ -50,7 +56,15 @@ def replay_one(driver, log: dict, measure: MeasureHook | None = None) -> ReplayR
                         measure(driver, surface_id, flow_id, _current_path(driver), index)
                     )
             elif action == "fill":
-                driver.fill(step["locator"], step["value"] or "")
+                if step.get("from_env"):
+                    value = envsetup.resolve_env(step["from_env"], project_root,
+                                                 envsetup.project_secret_names(project_root))
+                    if value is None:
+                        raise MissingEnv(f"env var {step['from_env']!r} is not set in the "
+                                         f"environment or .flow-review/.env")
+                else:
+                    value = step["value"] or ""
+                driver.fill(step["locator"], value)
             elif action == "assert_url":
                 expected = _url_path(step["url"])
                 actual = _current_path(driver)
@@ -65,6 +79,8 @@ def replay_one(driver, log: dict, measure: MeasureHook | None = None) -> ReplayR
                         "disposition": "objective",
                     })
             steps_run += 1
+        except MissingEnv:
+            raise
         except LocatorNotFound:
             return ReplayResult(
                 flow_id=flow_id, status="divergence", steps_run=steps_run,
@@ -156,7 +172,11 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
                 found_any_recording = True
                 log = actionlog.load(flow_path)
                 flows_run.add(log["flow_id"])
-                result = replay_one(driver, log, measure=hook)
+                try:
+                    result = replay_one(driver, log, measure=hook, project_root=project_root)
+                except MissingEnv as exc:
+                    print(str(exc), file=sys.stderr)
+                    return 3
                 all_findings.extend(result["findings"])
                 if result["status"] == "divergence":
                     d = result["divergence"]
@@ -223,7 +243,10 @@ def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path) -> int:
 
     hook = _measure_hook(_load_tokens(surfaces[0], project_root))
     try:
-        result = replay_one(driver, log, measure=hook)
+        result = replay_one(driver, log, measure=hook, project_root=project_root)
+    except MissingEnv as exc:
+        print(str(exc), file=sys.stderr)
+        return 3
     finally:
         driver.close()
 

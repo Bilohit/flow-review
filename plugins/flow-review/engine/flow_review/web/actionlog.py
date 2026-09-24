@@ -28,7 +28,12 @@ def new_log(surface_id: str, flow_id: str) -> dict:
 
 def record_step(log: dict, action: str, locator: dict | None = None,
                 value: str | None = None, url: str | None = None,
-                checkpoint: str | None = None) -> dict:
+                checkpoint: str | None = None, from_env: str | None = None) -> dict:
+    step: dict = {}
+    if from_env is not None:
+        # store only the env-var NAME; replay resolves it again. Never the value (spec 9, CP2 I3).
+        value = None
+        step["from_env"] = from_env
     if locator is not None and locator.get("secret") and value is not None:
         events.register_secret(value)
         value = events.REDACTED
@@ -38,6 +43,7 @@ def record_step(log: dict, action: str, locator: dict | None = None,
         "locator": locator,
         "value": value,
         "checkpoint": checkpoint,
+        **step,
     })
     return log
 

@@ -235,3 +235,25 @@ def test_replay_log_mode_writes_result_json_and_never_touches_ledger(tmp_path, w
     assert not (project_root / ".flow-review" / "findings.json").exists()
     assert not (project_root / ".flow-review" / "divergences.json").exists()
 
+
+
+def test_replay_one_resolves_from_env_fill_and_registers_secret(monkeypatch):
+    from flow_review import events
+    monkeypatch.setenv("RP_PW", "Rp9secretvalue")
+    log = actionlog.new_log("webapp", "login")
+    actionlog.record_step(log, "fill", locator={"css": "#pw", "secret": True}, from_env="RP_PW")
+    filled = []
+    drv = _FakeDriver()
+    drv.fill = lambda loc, v: filled.append(v)
+    result = replay_mod.replay_one(drv, log)
+    assert result["status"] == "clean"
+    assert filled == ["Rp9secretvalue"]
+    assert "Rp9secretvalue" not in events.redact("Rp9secretvalue")
+
+
+def test_replay_one_missing_env_raises_missing_env(monkeypatch):
+    monkeypatch.delenv("RP_MISSING", raising=False)
+    log = actionlog.new_log("webapp", "login")
+    actionlog.record_step(log, "fill", locator={"css": "#pw", "secret": True}, from_env="RP_MISSING")
+    with pytest.raises(replay_mod.MissingEnv):
+        replay_mod.replay_one(_FakeDriver(), log)
