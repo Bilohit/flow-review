@@ -18,7 +18,7 @@ from pathlib import Path
 # A5 ledger) replaces exactly one function here with real behaviour; the parser wiring does not
 # change.
 _STUB_VERBS = (
-    "prove", "plan", "serve", "triage", "ledger",
+    "prove", "serve", "triage", "ledger",
     "model",
 )
 
@@ -177,6 +177,14 @@ def build_parser() -> argparse.ArgumentParser:
     budget_check_parser.add_argument("--surface", required=True)
     budget_check_parser.set_defaults(func=_run_budget_check)
 
+    plan_parser = sub.add_parser("plan", parents=[project_after_verb])
+    plan_parser.add_argument("--mode", required=True, choices=["goal", "auto", "full", "quick"])
+    plan_parser.add_argument("--goal")
+    plan_parser.add_argument("--record", action="store_true")
+    plan_parser.add_argument("--skip", action="append", default=[])
+    plan_parser.add_argument("--json", action="store_true")  # M1 always prints JSON; flag kept
+    plan_parser.set_defaults(func=_run_plan)
+
     event_parser = sub.add_parser("event", parents=[project_after_verb])
     event_parser.add_argument("--run", required=True, dest="run_dir")
     event_parser.add_argument("--type", required=True, dest="type_")
@@ -185,6 +193,23 @@ def build_parser() -> argparse.ArgumentParser:
     event_parser.set_defaults(func=_run_event)
 
     return parser
+
+
+def _run_plan(args: argparse.Namespace) -> int:
+    from flow_review import plan as plan_mod
+    project_root = args.project_root
+    if project_root is None:
+        print("no .flow-review/ found; run /flow-review setup first, or pass --project",
+              file=sys.stderr)
+        return 3
+    try:
+        result = plan_mod.plan(project_root, mode=args.mode, goal=args.goal,
+                                record=args.record, skip=args.skip)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    print(json.dumps(result))
+    return 0
 
 
 def _resolve_project_root(args: argparse.Namespace) -> None:

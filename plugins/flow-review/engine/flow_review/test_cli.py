@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -18,7 +19,7 @@ def test_main_with_no_args_prints_usage_and_exits_nonzero(capsys):
 
 def test_main_dispatches_known_stub_subcommands():
     for verb in (
-        "prove", "plan", "serve", "triage", "ledger",
+        "prove", "serve", "triage", "ledger",
         "model",
     ):
         code = cli.main([verb])
@@ -75,6 +76,30 @@ def test_replay_no_recordings_exits_zero(tmp_path):
     (tmp_path / ".flow-review" / "config.json").write_text(
         '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
     assert cli.main(["replay", "--project", str(tmp_path)]) == 0
+
+
+def test_plan_dispatches_and_prints_json(tmp_path, capsys):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
+    code = cli.main(["plan", "--project", str(tmp_path), "--mode", "auto"])
+    assert code == 0
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["mode"] == "auto"
+    assert payload["surfaces"] == []
+
+
+def test_plan_without_project_exits_three(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert cli.main(["plan", "--mode", "auto"]) == 3
+
+
+def test_plan_missing_goal_exits_two(tmp_path):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
+    assert cli.main(["plan", "--project", str(tmp_path), "--mode", "goal"]) == 2
 
 
 def test_event_subcommand_appends_via_events_module(tmp_path):
