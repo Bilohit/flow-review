@@ -51,3 +51,9 @@ def test_estimate_uses_history_median_after_three_runs(tmp_path):
     plan_units = [{"surface_id": "webapp", "role": "lens", "count": 2}]
     est = budget.estimate(plan_units, tmp_path)
     assert est["webapp"] == 2 * 2100
+
+
+def test_used_accepts_string_tokens_from_the_event_cli(tmp_path):
+    (tmp_path / budget.EVENTS_FILENAME).write_text(
+        '{"type": "usage", "tokens": "1200"}\n{"type": "usage", "tokens": 300}\n', encoding="utf-8")
+    assert budget.used(tmp_path) == 1500

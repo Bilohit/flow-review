@@ -55,7 +55,7 @@ def used(run_dir: Path) -> int:
             continue
         record = json.loads(line)
         if record.get("type") == "usage":
-            total += record.get("tokens", 0)
+            total += int(record.get("tokens", 0))  # event CLI k=v gives strings
     return total
 
 
