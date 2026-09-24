@@ -105,7 +105,10 @@ def fold(project_root: Path, run_dir: Path, cfg) -> dict:
             # is pre-reconcile only -- it rides along on the live dict, not on LedgerEntry.
             fid = ev.get("id")
             live_findings[fid] = {
-                "id": fid, "fingerprint": "", "state": "open", "sev": ev.get("sev"),
+                "id": fid, "state": "open", "sev": ev.get("sev"),
+                "fingerprint": ledger.fingerprint(
+                    ev.get("flow_id") or "", ev.get("rule") or "",
+                    ev.get("route") or "", ev.get("locator") or ""),
                 "rule": ev.get("rule"), "flow_id": ev.get("flow_id"),
                 "surface_id": ev.get("surface_id"), "route": ev.get("route", ""),
                 "locator": ev.get("locator", ""), "text": ev.get("text", ""),
@@ -172,9 +175,10 @@ def fold(project_root: Path, run_dir: Path, cfg) -> dict:
     # Canonical: Ledger.findings is dict[str, LedgerEntry] keyed by id -- iterate .values(),
     # never assume a list.
     ledger_findings = [dataclasses.asdict(e) for e in led.findings.values() if e.id not in withdrawn]
-    ledger_ids = {f["id"] for f in ledger_findings}
-    findings = ledger_findings + [f for fid, f in live_findings.items()
-                                   if fid not in ledger_ids and fid not in withdrawn]
+    # A live event already reconciled carries the ledger's id; a repeat of an older finding
+    # carries a fresh event id but the ledger's fingerprint -- either way the ledger has it.
+    ledger_keys = {f["id"] for f in ledger_findings} | {f["fingerprint"] for f in ledger_findings}
+    findings = ledger_findings + _unreconciled(live_findings, ledger_keys, withdrawn)
 
     counts = {s: 0 for s in SEVERITIES}
     for f in findings:
@@ -200,7 +204,7 @@ def fold(project_root: Path, run_dir: Path, cfg) -> dict:
         "header": {"sparkline": header_history, "surface_dots": [
             {"surface_id": l.surface_id, "status": _dot_status(l.state)} for l in lanes.values()
         ]},
-        "report": _build_report(_this_run_findings(ledger_findings, ledger_ids, live_findings,
+        "report": _build_report(_this_run_findings(ledger_findings, ledger_keys, live_findings,
                                                      withdrawn, run["id"]),
                                  goals, not_exercised) if run["finished"] else None,
         "findings": findings,
@@ -220,14 +224,20 @@ def _dot_status(lane_state: str) -> str:
     return "error" if lane_state in ("blocked", "error") else "ok"
 
 
-def _this_run_findings(ledger_findings: list[dict], ledger_ids: set[str],
+def _this_run_findings(ledger_findings: list[dict], ledger_keys: set[str],
                         live_findings: dict[str, dict], withdrawn: set[str], run_id: str) -> list[dict]:
     # CP3 minor finding 7: the report is scoped to *this run* -- a reconciled ledger entry
     # whose last_run isn't this run's id (a different surface/flow this run didn't touch)
     # stays out of it, while any live, not-yet-reconciled finding from this run always shows.
-    return [f for f in ledger_findings if f.get("last_run") == run_id] + [
-        f for fid, f in live_findings.items() if fid not in ledger_ids and fid not in withdrawn
-    ]
+    return ([f for f in ledger_findings if f.get("last_run") == run_id]
+            + _unreconciled(live_findings, ledger_keys, withdrawn))
+
+
+def _unreconciled(live_findings: dict[str, dict], ledger_keys: set[str],
+                  withdrawn: set[str]) -> list[dict]:
+    return [f for fid, f in live_findings.items()
+            if fid not in ledger_keys and f["fingerprint"] not in ledger_keys
+            and fid not in withdrawn]
 
 
 def _is_opinion(f: dict) -> bool:

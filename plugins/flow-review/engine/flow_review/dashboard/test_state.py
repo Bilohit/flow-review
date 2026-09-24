@@ -231,3 +231,25 @@ def test_ledger_findings_pass_through_with_canonical_field_names(tmp_path, monke
     assert body["findings"][0]["rule"] == "contrast"
     assert body["findings"][0]["text"] == "Submit button fails WCAG AA"
     assert body["badge"]["counts"]["P1"] == 1
+
+
+def test_repeat_finding_matching_a_ledger_fingerprint_is_counted_once(tmp_path, monkeypatch):
+    # R12 run 2: a finding the ledger already holds (id from its first run) re-appears as a live
+    # event with a fresh id; the badge and the report must count it once, by fingerprint.
+    from flow_review.ledger import fingerprint
+    fp = fingerprint("w01", "contrast.aa", "/", "css:#muted")
+    _patch_common(monkeypatch, findings=[_Entry(
+        id="first-run-id", fingerprint=fp, flow_id="w01", rule="contrast.aa", route="/",
+        locator="css:#muted", sev="P1", last_run="run")])
+    run_dir = tmp_path / "run"
+    _write_events(run_dir, [
+        {"ts": "2026-09-23T10:00:00.000Z", "id": "fresh-id", "type": "finding",
+         "surface_id": "web", "flow_id": "w01", "rule": "contrast.aa", "route": "/",
+         "locator": "css:#muted", "sev": "P1", "text": "low contrast"},
+        {"ts": "2026-09-23T10:00:01.000Z", "id": "e2", "type": "run", "state": "done"},
+    ])
+    body = fold(tmp_path, run_dir, _FakeCfg())
+    assert body["badge"]["total"] == 1
+    report_ids = [f["id"] for group in body["report"].values() if isinstance(group, list)
+                  for f in group if isinstance(f, dict)]
+    assert report_ids.count("fresh-id") == 0
