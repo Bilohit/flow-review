@@ -28,6 +28,9 @@ class FakePage:
     def title(self):
         return "Fake Page"
 
+    def unroute_all(self):
+        pass
+
 
 class FakeDriver:
     def __init__(self):
@@ -594,6 +597,25 @@ def test_fault_bad_args_rejected_with_json_error_style():
         drive.cmd_fault(_ns(kind="offline", clear=True))
 
 
+def test_dispatch_rejects_bad_fault_args_with_json_error_never_installing_a_handler(tmp_path):
+    # m2: the drive server's own `_dispatch` must re-validate a `fault` verb's args the way
+    # `cmd_fault` does client-side -- a malformed request must come back as a JSON error, never
+    # reach `session.fault` and install a broken/partial fault handler.
+    run_dir, project_root = _dirs(tmp_path)
+    session = DriveSession(FakeDriver(), "webapp", run_dir, project_root, record_enabled=False)
+    bound_cls = type("_BoundActionHandler", (drive._ActionHandler,), {"session": session})
+    handler = object.__new__(bound_cls)  # skip BaseHTTPRequestHandler.__init__ (no real socket)
+    with pytest.raises(ValueError, match="fault kind"):
+        handler._dispatch("fault", {"kind": "bogus"})
+    with pytest.raises(ValueError, match="pattern"):
+        handler._dispatch("fault", {"kind": "5xx"})
+    with pytest.raises(ValueError, match="delay_ms"):
+        handler._dispatch("fault", {"kind": "slow", "pattern": "**/api/*"})
+    with pytest.raises(ValueError, match="delay_ms"):
+        handler._dispatch("fault", {"kind": "slow", "pattern": "**/api/*", "delay_ms": -5})
+    assert session._active_5xx_patterns == []  # no partial fault ever got installed
+
+
 def _findings(run_dir, rule=None):
     lines = (run_dir / "events.jsonl").read_text(encoding="utf-8").splitlines()
     out = [json.loads(line) for line in lines if json.loads(line).get("type") == "finding"]
@@ -674,7 +696,7 @@ def test_fault_offline_suppresses_self_inflicted_console_error(
         driver.close()
 
 
-# --- R13 RC1: fingerprint-based dedup of re-emitted findings ----------------------------
+# --- fingerprint-based dedup of re-emitted findings --------------------------------------
 
 
 def test_unchanged_finding_emitted_once_across_two_actions(tmp_path, monkeypatch):
@@ -726,6 +748,65 @@ def test_new_finding_on_second_action_still_emits(tmp_path, monkeypatch):
     assert len(second["new_findings"]) == 1
     assert len(_findings(run_dir, "contrast.aa")) == 1
     assert len(_findings(run_dir, "http.5xx")) == 1
+
+
+def test_p2_then_p1_console_error_on_same_route_both_emit(tmp_path, monkeypatch):
+    # I1: console.error/http.5xx carry an empty locator, so the fingerprint alone (which does
+    # not include sev/text) would collapse two genuinely distinct errors on the same route --
+    # and would drop a later, more severe P1 as if it were an already-seen repeat.
+    run_dir, project_root = _dirs(tmp_path)
+    low = {"rule": "console.error", "sev": "P2", "locator": "", "route": "/checkout",
+           "text": "warning: deprecated API", "evidence": [], "disposition": "engine"}
+    high = {"rule": "console.error", "sev": "P1", "locator": "", "route": "/checkout",
+            "text": "Uncaught TypeError: boom", "evidence": [], "disposition": "engine"}
+    calls = {"n": 0}
+
+    def _fake_check_page(*a, **k):
+        calls["n"] += 1
+        return [dict(low)] if calls["n"] == 1 else [dict(low), dict(high)]
+
+    monkeypatch.setattr(drive.measure, "check_page", _fake_check_page)
+    driver = FakeDriver()
+    session = DriveSession(driver, "webapp", run_dir, project_root, record_enabled=False)
+    session.flow_begin("f1")
+    first = session.click({"testid": "a"})
+    second = session.click({"testid": "b"})
+
+    assert len(first["new_findings"]) == 1
+    assert len(second["new_findings"]) == 1
+    assert len(_findings(run_dir, "console.error")) == 2
+    sevs = {f["sev"] for f in _findings(run_dir, "console.error")}
+    assert sevs == {"P1", "P2"}
+
+
+def test_identical_console_error_repeat_still_emitted_once(tmp_path, monkeypatch):
+    run_dir, project_root = _dirs(tmp_path)
+    finding = {"rule": "console.error", "sev": "P1", "locator": "", "route": "/checkout",
+               "text": "Uncaught TypeError: boom", "evidence": [], "disposition": "engine"}
+    monkeypatch.setattr(drive.measure, "check_page", lambda *a, **k: [dict(finding)])
+    driver = FakeDriver()
+    session = DriveSession(driver, "webapp", run_dir, project_root, record_enabled=False)
+    session.flow_begin("f1")
+    first = session.click({"testid": "a"})
+    second = session.click({"testid": "b"})
+
+    assert len(first["new_findings"]) == 1
+    assert second["new_findings"] == []
+    assert len(_findings(run_dir, "console.error")) == 1
+
+
+def test_flow_begin_clears_faults_from_an_earlier_flow(tmp_path):
+    # m1: a fault set during one flow must not outlive it into the next flow.
+    run_dir, project_root = _dirs(tmp_path)
+    session = DriveSession(FakeDriver(), "webapp", run_dir, project_root, record_enabled=False)
+    session.flow_begin("f1")
+    session._offline_active = True
+    session._active_5xx_patterns = ["**/api/broken"]
+
+    session.flow_begin("f2")
+
+    assert session._offline_active is False
+    assert session._active_5xx_patterns == []
 
 
 def test_new_flow_re_reports_a_finding_seen_in_a_prior_flow(tmp_path, monkeypatch):

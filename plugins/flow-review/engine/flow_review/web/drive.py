@@ -42,9 +42,11 @@ class DriveSession:
         self.flow_id = flow_id
         self.log = actionlog.new_log(self.surface_id, flow_id)
         self.step_index = 0
-        # RC1: the fingerprint includes flow_id anyway, so a new flow must re-report a finding
-        # that looked identical in an earlier flow -- reset the seen-set here, not per-run.
+        # The fingerprint includes flow_id anyway, so a new flow must re-report a finding that
+        # looked identical in an earlier flow -- reset the seen-set here, not per-run.
         self._seen_fingerprints = set()
+        # A fault injected during an earlier flow must not leak into this one.
+        self.clear_faults()
         events.append(self.run_dir, {
             "type": "step", "surface_id": self.surface_id, "flow_id": flow_id,
             "step": "flow-begin",
@@ -175,11 +177,18 @@ class DriveSession:
             # "new") on each subsequent action of the same flow. Skip a fingerprint already
             # emitted this flow; the same fingerprint reconcile/the ledger use, so this stays
             # exactly in step with what ledger.reconcile would dedup anyway.
+            # measure.check_page returns every live finding on EVERY action, so an unfixed defect
+            # would otherwise be appended (and reported to the explorer as "new") on each
+            # subsequent action of the same flow. Skip only an EXACT repeat (fingerprint, sev,
+            # text): console.error/http.5xx carry an empty locator, so the fingerprint alone
+            # would collapse two distinct errors on the same route into one, and would drop a
+            # later, more severe repeat (e.g. a P1 after an earlier P2) as if already seen.
             fp = ledger.fingerprint(self.flow_id or "", finding.get("rule") or "",
                                      finding.get("route") or "", finding.get("locator") or "")
-            if fp in self._seen_fingerprints:
+            seen_key = (fp, finding.get("sev"), finding.get("text"))
+            if seen_key in self._seen_fingerprints:
                 continue
-            self._seen_fingerprints.add(fp)
+            self._seen_fingerprints.add(seen_key)
             event = events.append(self.run_dir, {
                 "type": "finding", "surface_id": self.surface_id, "flow_id": self.flow_id,
                 **finding,
@@ -299,8 +308,18 @@ class _ActionHandler(BaseHTTPRequestHandler):
         if verb == "fault":
             if args.get("clear"):
                 return session.clear_faults()
-            return session.fault(args["kind"], pattern=args.get("pattern"),
-                                  delay_ms=args.get("delay_ms"))
+            kind = args.get("kind")
+            pattern = args.get("pattern")
+            delay_ms = args.get("delay_ms")
+            if kind not in ("offline", "5xx", "slow"):
+                raise ValueError(f"unknown fault kind {kind!r}")
+            if kind in ("5xx", "slow") and not pattern:
+                raise ValueError(f"pattern is required for fault kind {kind!r}")
+            if kind == "slow" and not (
+                isinstance(delay_ms, int) and not isinstance(delay_ms, bool) and delay_ms > 0
+            ):
+                raise ValueError("delay_ms must be a positive int for fault kind 'slow'")
+            return session.fault(kind, pattern=pattern, delay_ms=delay_ms)
         if verb == "flow-begin":
             return session.flow_begin(args["flow"])
         if verb == "flow-end":
