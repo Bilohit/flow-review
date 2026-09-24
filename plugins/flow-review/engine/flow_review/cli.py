@@ -67,6 +67,10 @@ def _run_replay(args: argparse.Namespace) -> int:
         if args.run_dir is None:
             print("--log requires --run DIR", file=sys.stderr)
             return 3
+        if args.update_baselines:
+            print("--update-baselines cannot be combined with --log (A-32: baselines are "
+                  "recorded-flow only, never an ephemeral --log replay)", file=sys.stderr)
+            return 3
         return replay_mod.replay_log(cfg, Path(project_root), args.log, args.run_dir,
                                       variants=args.variants, mode=args.mode)
     return replay_mod.replay(cfg, Path(project_root), args.surface, args.flow,
@@ -121,7 +125,11 @@ def find_project_root(start: Path) -> Path | None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="flow-review", description=__doc__)
+    parser = argparse.ArgumentParser(
+        prog="flow-review",
+        description="flow-review engine: drive, replay, measure and report on your app's user "
+                     "flows. Normally run by the /flow-review Claude Code skill.",
+    )
     parser.add_argument(
         "--project", default=None,
         help="project root; defaults to walking up from cwd to the nearest .flow-review/",

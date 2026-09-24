@@ -17,6 +17,30 @@ def test_main_with_no_args_prints_usage_and_exits_nonzero(capsys):
     assert "flow-review" in (captured.out + captured.err)
 
 
+def test_top_level_parser_has_a_user_facing_description_not_the_module_docstring():
+    # m6: argparse's --help text was the module's internal build-notes docstring; give it a
+    # one-sentence user-facing description instead, while keeping the docstring for readers of
+    # the source itself.
+    parser = cli.build_parser()
+    assert parser.description != cli.__doc__
+    assert "flow-review" in parser.description
+    assert "/flow-review" in parser.description  # names the Claude Code skill that runs it
+
+
+def test_replay_update_baselines_with_log_is_rejected(tmp_path):
+    # m3: --update-baselines only applies to the recorded-flow path (A-32); combined with --log
+    # (an ephemeral, never-persisted replay -- A-3) it must be a clear usage error, matching the
+    # exit code other CLI usage errors in this command use.
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
+    code = cli.main([
+        "replay", "--project", str(tmp_path), "--log", "x.json", "--run", str(tmp_path),
+        "--update-baselines",
+    ])
+    assert code == 3
+
+
 def test_triage_cli_applies_the_state_via_flow_review_triage_apply(tmp_path, capsys):
     from flow_review import ledger as ledger_mod
     (tmp_path / ".flow-review").mkdir()
@@ -471,6 +495,24 @@ def test_ledger_reconcile_folds_run_findings_keeping_event_ids(tmp_path):
     led = ledger_mod.load(tmp_path / ".flow-review" / "findings.json")
     assert list(led.findings) == [kept["id"]]
     assert led.findings[kept["id"]].last_run == "run"
+
+
+def test_ledger_reconcile_flow_begin_for_variant_tagged_flow_marks_it_fixed(tmp_path):
+    # I4: `replay_log` now emits a step/flow-begin event for a variant's tagged flow id (e.g.
+    # "login@color-scheme:dark") the same way `drive` emits one for a base flow id -- confirm
+    # the reconcile CLI's flows_run builder (cli.py's `_run_ledger_reconcile`) folds that
+    # variant-tagged id in just like any other flow id, so a stale variant finding turns fixed.
+    from flow_review import events as ev, ledger as ledger_mod
+    run = _ledger_project(tmp_path)
+    path = tmp_path / ".flow-review" / "findings.json"
+    stale = _finding_event(flow_id="login@color-scheme:dark", rule="contrast.aa")
+    led = ledger_mod.reconcile(ledger_mod.Ledger(), [stale], {"login@color-scheme:dark"}, "r0")
+    ledger_mod.save(led, path)
+    ev.append(run, {"type": "step", "surface_id": "web", "flow_id": "login@color-scheme:dark",
+                     "step": "flow-begin"})
+    assert cli.main(["--project", str(tmp_path), "ledger", "reconcile", "--run", str(run)]) == 0
+    entry = next(iter(ledger_mod.load(path).findings.values()))
+    assert entry.state == "fixed"
 
 
 def test_ledger_reconcile_marks_unseen_finding_fixed_only_for_flows_run(tmp_path):
