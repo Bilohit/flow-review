@@ -220,7 +220,13 @@ def build_parser() -> argparse.ArgumentParser:
     ledger_sub = ledger_parser.add_subparsers(dest="ledger_cmd", required=True)
     p = ledger_sub.add_parser("reconcile", parents=[project_after_verb])
     p.add_argument("--run", required=True, dest="run_dir", type=Path)
+    p.add_argument("--alias", action="append", default=[], metavar="FINGERPRINT=ID")
     p.set_defaults(func=_run_ledger_reconcile)
+    p = ledger_sub.add_parser("alias-candidates", parents=[project_after_verb])
+    p.add_argument("--flow", required=True)
+    p.add_argument("--rule", required=True)
+    p.add_argument("--route", required=True)
+    p.set_defaults(func=_run_ledger_alias_candidates)
     p = ledger_sub.add_parser("record-miss", parents=[project_after_verb])
     p.add_argument("--function", required=True)
     p.add_argument("--run", required=True, dest="run_dir", type=Path)
@@ -270,9 +276,21 @@ def _run_ledger_reconcile(args: argparse.Namespace) -> int:
             elif event.get("type") == "step" and event.get("step") == "flow-begin":
                 flows_run.add(event["flow_id"])
     findings = [f for f in findings if f.get("id") not in withdrawn]
+    aliases = dict(a.split("=", 1) for a in args.alias if "=" in a)
     ledger_ = ledgermod.reconcile(ledgermod.load(path), findings, flows_run,
-                                  Path(args.run_dir).name)
+                                  Path(args.run_dir).name, alias_decisions=aliases)
     ledgermod.save(ledger_, path)
+    return 0
+
+
+def _run_ledger_alias_candidates(args: argparse.Namespace) -> int:
+    from dataclasses import asdict
+    from flow_review import ledger as ledgermod
+    path = _ledger_path(args)
+    if path is None:
+        return 3
+    cands = ledgermod.find_alias_candidates(ledgermod.load(path), args.flow, args.rule, args.route)
+    print(json.dumps([asdict(c) for c in cands]))
     return 0
 
 

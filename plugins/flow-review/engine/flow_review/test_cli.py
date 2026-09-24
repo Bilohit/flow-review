@@ -388,8 +388,8 @@ def _ledger_project(tmp_path):
 
 
 def _finding_event(flow_id="login", rule="ui.clarity", **kw):
-    return dict(type="finding", surface_id="web", flow_id=flow_id, rule=rule, route="/",
-                locator="#go", sev="P1", text="unclear", **kw)
+    return {**dict(type="finding", surface_id="web", flow_id=flow_id, rule=rule, route="/",
+                   locator="#go", sev="P1", text="unclear"), **kw}
 
 
 def test_ledger_reconcile_folds_run_findings_keeping_event_ids(tmp_path):
@@ -450,3 +450,22 @@ def test_manifest_apply_learnings_prints_new_hash(tmp_path, capsys):
     assert code == 0
     new = capsys.readouterr().out.strip()
     assert new != h and "login needs 2FA" in flows.read_text(encoding="utf-8")
+
+
+def test_ledger_alias_candidates_and_reconcile_alias(tmp_path, capsys):
+    from flow_review import events as ev, ledger as ledger_mod
+    run = _ledger_project(tmp_path)
+    path = tmp_path / ".flow-review" / "findings.json"
+    ledger_mod.save(ledger_mod.reconcile(ledger_mod.Ledger(), [_finding_event()], {"login"}, "r0"), path)
+    assert cli.main(["--project", str(tmp_path), "ledger", "alias-candidates", "--flow", "login",
+                     "--rule", "ui.clarity", "--route", "/"]) == 0
+    cands = json.loads(capsys.readouterr().out)
+    assert len(cands) == 1
+    canonical = cands[0]["id"]
+    moved = ev.append(run, _finding_event(locator="#renamed"))
+    fp = ledger_mod.fingerprint("login", "ui.clarity", "/", "#renamed")
+    assert cli.main(["--project", str(tmp_path), "ledger", "reconcile", "--run", str(run),
+                     "--alias", f"{fp}={canonical}"]) == 0
+    led = ledger_mod.load(path)
+    assert list(led.findings) == [canonical] and fp in led.findings[canonical].aliases
+    assert moved["id"] not in led.findings
