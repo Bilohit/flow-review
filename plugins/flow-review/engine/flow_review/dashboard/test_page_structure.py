@@ -47,8 +47,41 @@ def test_report_section_renders_needs_attention_and_collapsed_groups(page):
     assert any("repeats" in s for s in summaries)
     assert any("refuted" in s for s in summaries)
     assert any("not-exercised" in s for s in summaries)
+    assert any("triaged" in s for s in summaries)
     for details in report.locator("details").all()[1:]:
         assert details.get_attribute("open") is None
+
+
+@pytest.mark.web
+def test_triaged_finding_shows_in_its_own_collapsed_group_not_vanished(page):
+    # A-15: a false-positive/wont-fix/accepted finding stays in the report, collapsed, never
+    # silently dropped -- CP3 finding 3.
+    report = page.locator('[data-role="report"]')
+    triaged_details = None
+    for details in report.locator("details").all():
+        if "triaged" in details.locator("summary").inner_text():
+            triaged_details = details
+            break
+    assert triaged_details is not None
+    assert triaged_details.locator(".finding-row").count() >= 1
+
+
+@pytest.mark.web
+def test_goal_card_shows_status_icon_ratio_and_from_docs_marker(page):
+    # CP3 finding 4 / spec §11: reached/blocked, actions vs shortest path (A-9), from-docs (A-8).
+    card = page.locator('.goal-card').first
+    assert card.count() == 1
+    status_icon = card.locator('.goal-status')
+    assert status_icon.count() == 1
+    assert status_icon.get_attribute('aria-label') == 'reached'
+    assert status_icon.get_attribute('role') == 'img'
+    ratio = card.locator('.goal-ratio')
+    assert ratio.inner_text().strip() == '3/2'
+    docs_marker = card.locator('.goal-from-docs')
+    assert docs_marker.count() == 1
+    assert docs_marker.get_attribute('aria-label') == 'from docs'
+    # no subheading/description text anywhere in the card.
+    assert card.locator("h2, h3, h4, h5, h6, p").count() == 0
 
 
 @pytest.mark.web

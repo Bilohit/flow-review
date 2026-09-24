@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from PIL import Image
 
-from flow_review import events
+from flow_review import events, ledger
 from flow_review.dashboard.serve import make_server
 
 SEVS = ["P0", "P1", "P2"]
@@ -63,8 +63,22 @@ def _seed_run(project_root: Path, run_dir: Path, lane_count: int) -> None:
             "sev": sev, "text": f"{sid}: low contrast on the pay button",
             "evidence": [], "disposition": "engine",
         })
+    events.append(run_dir, {
+        "type": "goal", "flow_id": "checkout", "text": "reach checkout",
+        "reached": True, "actions": 3, "shortest": 2, "from_docs": True,
+    })
     events.append(run_dir, {"type": "status", "state": "done"})
     events.append(run_dir, {"type": "run", "mode": "goal", "state": "done", "surfaces": []})
+
+    # A triaged (false-positive) entry, already reconciled into this run -- must show in the
+    # report's own "triaged" collapsed group (A-15), not vanish.
+    triaged = ledger.LedgerEntry(
+        id="f_triaged1", fingerprint="fp1", surface_id=surface_ids[0], flow_id="checkout",
+        rule="contrast.aa", route="/checkout", locator="role:button[name=Pay]", sev="P2",
+        text="triaged: flagged as a false positive", state="false-positive", runs_seen=2,
+        last_run=run_dir.name,
+    )
+    ledger.save(ledger.Ledger(findings={triaged.id: triaged}), project_root / ".flow-review" / "findings.json")
 
 
 @pytest.fixture

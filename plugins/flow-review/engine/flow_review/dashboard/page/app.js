@@ -96,6 +96,51 @@ function _findingSection(title, findings, open) {
   return details;
 }
 
+// Icon + accessible name only -- no visible label text (no subheadings/descriptions rule).
+function _goalIcon(iconId, label, extraClass) {
+  const wrap = document.createElement('span');
+  wrap.className = extraClass ? `goal-icon ${extraClass}` : 'goal-icon';
+  wrap.setAttribute('role', 'img');
+  wrap.setAttribute('aria-label', label);
+  wrap.title = label;
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  const use = document.createElementNS('http://www.w3.org/2000/svg', 'use');
+  use.setAttribute('href', _iconHref(iconId));
+  svg.appendChild(use);
+  wrap.appendChild(svg);
+  return wrap;
+}
+
+// Spec §11 goal card: reached/blocked (icon only), actions vs shortest path (A-9, a metric
+// only -- mono, numbers), and the "from docs" marker (A-8) when the goal event carries it.
+function _goalCard(goal) {
+  const card = document.createElement('div');
+  card.className = 'goal-card';
+
+  const label = document.createElement('span');
+  label.textContent = goal.text || goal.flow_id || '';
+  card.appendChild(label);
+
+  if (goal.reached !== undefined && goal.reached !== null) {
+    card.appendChild(_goalIcon(goal.reached ? 'check' : 'x', goal.reached ? 'reached' : 'blocked',
+      'goal-status'));
+  }
+
+  if (goal.actions != null && goal.shortest != null) {
+    const ratio = document.createElement('span');
+    ratio.className = 'mono goal-ratio';
+    ratio.textContent = `${goal.actions}/${goal.shortest}`;
+    ratio.title = 'actions taken vs shortest known route';
+    card.appendChild(ratio);
+  }
+
+  if (goal.from_docs) {
+    card.appendChild(_goalIcon('flag', 'from docs', 'goal-from-docs'));
+  }
+
+  return card;
+}
+
 function renderReport(report) {
   const root = document.querySelector('[data-role="report"]');
   if (!report) { root.hidden = true; return; }
@@ -105,16 +150,14 @@ function renderReport(report) {
   root.appendChild(_findingSection('needs attention', report.needs_attention, true));
 
   for (const goal of report.goal_cards) {
-    const card = document.createElement('div');
-    card.className = 'goal-card';
-    card.textContent = goal.text || goal.flow_id || '';
-    root.appendChild(card);
+    root.appendChild(_goalCard(goal));
   }
 
   const collapsed = report.collapsed || {};
   root.appendChild(_findingSection('opinions', collapsed.opinions || [], false));
   root.appendChild(_findingSection('repeats', collapsed.repeats || [], false));
   root.appendChild(_findingSection('refuted', collapsed.refuted || [], false));
+  root.appendChild(_findingSection('triaged', collapsed.triaged || [], false));
 
   const notExercised = document.createElement('details');
   const neSummary = document.createElement('summary');

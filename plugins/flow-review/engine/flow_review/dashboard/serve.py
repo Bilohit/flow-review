@@ -159,7 +159,9 @@ def make_server(project_root: Path, run_dir: Path, cfg, port: int = 0) -> Thread
 def serve(project_root: Path, run_dir: Path, cfg, port: int = 0) -> None:
     server = make_server(project_root, run_dir, cfg, port)
     _, bound_port = server.server_address
-    print(f"flow-review dashboard: http://127.0.0.1:{bound_port}/")
+    # CP3 finding 5: flush=True -- stdout is often piped (background launch per SKILL.md
+    # step 3), and an unflushed print can sit buffered indefinitely, so the URL never appears.
+    print(f"flow-review dashboard: http://127.0.0.1:{bound_port}/", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

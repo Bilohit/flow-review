@@ -131,6 +131,49 @@ def test_budget_used_comes_from_budget_module_not_summed_locally(tmp_path, monke
     assert body["budget"]["cap_tokens"] == 200000
 
 
+def test_triaged_findings_get_their_own_collapsed_group():
+    # A-15: false-positive/wont-fix/accepted are sticky and stay visible in the report,
+    # each in the same collapsed-group shape as opinions/repeats/refuted -- never dropped.
+    from flow_review.dashboard.state import _build_report
+    fp = {"id": "a", "state": "false-positive", "runs_seen": 2, "sev": "P1", "disposition": "engine"}
+    wf = {"id": "b", "state": "wont-fix", "runs_seen": 3, "sev": "P2", "disposition": "engine"}
+    acc = {"id": "c", "state": "accepted", "runs_seen": 1, "sev": "P1", "disposition": "engine"}
+    report = _build_report([fp, wf, acc], {}, [])
+    triaged_ids = {f["id"] for f in report["collapsed"]["triaged"]}
+    assert triaged_ids == {"a", "b", "c"}
+    # never silently vanish: not counted as needs-attention, not dropped from the report entirely.
+    assert report["needs_attention"] == []
+
+
+def test_report_only_includes_findings_seen_this_run(tmp_path, monkeypatch):
+    # CP3 minor finding 7: state.py:162 must scope the *report* to this run's findings --
+    # a ledger entry last touched by an older run (different surface/flow this run didn't
+    # exercise) stays out of the report, while a live (not-yet-reconciled) finding from this
+    # run is always included.
+    run_dir = tmp_path / "run"
+    this_run_entry = _Entry(id="f_this", sev="P1", rule="contrast", surface_id="web-app",
+                             flow_id="checkout", text="this run's reconciled finding",
+                             state="open", last_run=run_dir.name)
+    other_run_entry = _Entry(id="f_other", sev="P1", rule="contrast", surface_id="web-app",
+                              flow_id="signup", text="stale finding from an older run",
+                              state="open", last_run="some-other-run-id")
+    _patch_common(monkeypatch, findings=[this_run_entry, other_run_entry])
+    _write_events(run_dir, [
+        {"ts": "2026-09-23T10:00:00.000Z", "id": "e1", "type": "run", "mode": "goal",
+         "surfaces": [], "state": "done"},
+        {"ts": "2026-09-23T10:00:01.000Z", "id": "f_live", "type": "finding", "disposition": "engine",
+         "sev": "P1", "surface_id": "web-app", "flow_id": "cart", "text": "live, not yet reconciled"},
+    ])
+    body = fold(tmp_path, run_dir, _FakeCfg())
+    report_ids = {f["id"] for f in body["report"]["needs_attention"]}
+    assert "f_this" in report_ids
+    assert "f_live" in report_ids
+    assert "f_other" not in report_ids
+    # the top-level findings list (badge/drawer) is unaffected -- still carries every open entry.
+    all_ids = {f["id"] for f in body["findings"]}
+    assert {"f_this", "f_other", "f_live"} <= all_ids
+
+
 def test_ledger_findings_pass_through_with_canonical_field_names(tmp_path, monkeypatch):
     entry = _Entry(id="f_a1b2", sev="P1", rule="contrast", surface_id="web-app",
                     flow_id="checkout", text="Submit button fails WCAG AA", state="open")
