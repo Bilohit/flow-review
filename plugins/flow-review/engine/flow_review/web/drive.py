@@ -18,6 +18,8 @@ from urllib.parse import urlparse
 from flow_review import envsetup, events
 from flow_review.web import actionlog, measure
 
+MAX_BODY = 64 * 1024  # an action POST is a few hundred bytes to a few KiB (a fill value)
+
 
 class DriveSession:
     def __init__(self, driver, surface_id: str, run_dir, project_root, record_enabled: bool,
@@ -174,8 +176,19 @@ class _ActionHandler(BaseHTTPRequestHandler):
         pass  # request bodies may carry secrets; never let BaseHTTPRequestHandler log them
 
     def do_POST(self) -> None:
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length) if length else b"{}"
+        length = int(self.headers.get("Content-Length", 0) or 0)
+        if length > MAX_BODY:
+            self.close_connection = True
+            self._respond(413, {"error": "body too large"})
+            return
+        body = self.rfile.read(length) if length else b"{}"  # drain first: replying mid-upload
+                                                               # aborts the socket on Windows
+        # CSRF: reject any request carrying an Origin header. Browser pages (including
+        # third-party script inside the app under test in the Playwright browser) always send
+        # one; the thin CLI client (urllib) never does, so this never blocks a legitimate call.
+        if self.headers.get("Origin") is not None:
+            self._respond(403, {"error": "forbidden origin"})
+            return
         try:
             payload = json.loads(body.decode("utf-8"))
         except ValueError:

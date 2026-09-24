@@ -4,6 +4,8 @@ import json
 import os
 import threading
 import time
+import urllib.error
+import urllib.request
 from pathlib import Path
 
 import pytest
@@ -432,3 +434,44 @@ def test_client_post_surfaces_server_json_error_body(tmp_path):
             drive._post(httpd.server_address[1], "bogus", {})
     finally:
         httpd.shutdown()
+
+
+def _raw_post(port, body_bytes, headers):
+    req = urllib.request.Request(
+        f"http://127.0.0.1:{port}/action", data=body_bytes,
+        headers=headers, method="POST",
+    )
+    return urllib.request.urlopen(req, timeout=5)
+
+
+def test_server_rejects_any_request_carrying_an_origin_header(tmp_path):
+    run_dir, project_root, state = _start_fake_server(tmp_path)
+    body = json.dumps({"verb": "look", "args": {}}).encode("utf-8")
+    try:
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            _raw_post(state["port"], body, {
+                "Content-Type": "application/json",
+                "Origin": "http://127.0.0.1:9",  # even a same-host Origin: CLI never sends one
+            })
+        assert exc_info.value.code == 403
+    finally:
+        drive._post(state["port"], "stop", {})
+
+
+def test_server_accepts_request_with_no_origin_header(tmp_path):
+    run_dir, project_root, state = _start_fake_server(tmp_path)
+    body = json.dumps({"verb": "look", "args": {}}).encode("utf-8")
+    resp = _raw_post(state["port"], body, {"Content-Type": "application/json"})
+    assert resp.status == 200
+    drive._post(state["port"], "stop", {})
+
+
+def test_server_rejects_oversized_body(tmp_path):
+    run_dir, project_root, state = _start_fake_server(tmp_path)
+    oversized = b"x" * (drive.MAX_BODY + 1)
+    try:
+        with pytest.raises(urllib.error.HTTPError) as exc_info:
+            _raw_post(state["port"], oversized, {"Content-Type": "application/json"})
+        assert exc_info.value.code == 413
+    finally:
+        drive._post(state["port"], "stop", {})
