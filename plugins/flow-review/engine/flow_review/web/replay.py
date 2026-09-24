@@ -5,6 +5,8 @@ from pathlib import Path
 from typing import Callable, TypedDict
 from urllib.parse import urlparse
 
+from PIL import Image
+
 from flow_review import drift, envsetup, events, ledger
 from flow_review.web import actionlog
 from flow_review.web import measure as measure_mod
@@ -185,6 +187,56 @@ def _measure_hook(tokens: dict[str, str] | None) -> MeasureHook:
     return hook
 
 
+def _visual_baseline_check(driver, surface_dir: Path, flow_slug: str, surface_id: str,
+                           flow_id: str, route: str, update_baselines: bool) -> dict | None:
+    """A-32: baseline policy for a recorded flow's base replay (never a variant, never a
+    --log ephemeral replay -- A-3). The end-of-flow screenshot is saved as
+    `<flow>.baseline.png` on the first replay (files nothing). A later replay diffs the new
+    screenshot against it; `--update-baselines` accepts the new screenshot as the baseline
+    instead of diffing, either way filing nothing. `driver.screenshot()` is the same masked
+    path every other screenshot goes through (A-9: secrets never appear).
+
+    A size mismatch between baseline and current (a changed viewport) makes visual.diff's own
+    pixel comparison meaningless -- Image.resize would silently paper over it -- so it is
+    caught here and reported as "changed, whole image" rather than diffed or allowed to crash.
+    """
+    from flow_review.web import visual
+
+    baseline_path = surface_dir / f"{flow_slug}.baseline.png"
+    current_path = surface_dir / f"{flow_slug}.current.png"
+    driver.screenshot(current_path)
+
+    if update_baselines or not baseline_path.exists():
+        current_path.replace(baseline_path)
+        return None
+
+    with Image.open(baseline_path) as base_img, Image.open(current_path) as cur_img:
+        base_size, cur_size = base_img.size, cur_img.size
+    if base_size != cur_size:
+        result = {
+            "changed": True, "diff_ratio": 1.0,
+            "regions": [{"x": 0, "y": 0, "w": cur_size[0], "h": cur_size[1]}],
+        }
+    else:
+        result = visual.diff(baseline_path, current_path)
+
+    if not result["changed"]:
+        current_path.unlink(missing_ok=True)
+        return None
+
+    crops_dir = surface_dir / f"{flow_slug}.diff"
+    crop_paths = visual.crop_regions(current_path, result["regions"], crops_dir)
+    current_path.unlink(missing_ok=True)
+    return {
+        "surface_id": surface_id, "flow_id": flow_id,
+        "rule": "visual.changed", "route": route, "locator": "",
+        "sev": "P2",
+        "text": f"visual diff: {result['diff_ratio']:.2%} of the page changed since the baseline",
+        "evidence": [str(p) for p in crop_paths],
+        "disposition": "engine",
+    }
+
+
 def _health_ok(surface) -> bool:
     """GET base_url+health_path. Any HTTP answer means the app is up; a refused/timed-out
     connection means it is not -- an environment error (exit 3), never a finding."""
@@ -217,7 +269,8 @@ def _playwright_surfaces(cfg, surface_id: str | None):
 
 
 def replay(cfg, project_root: Path, surface_id: str | None = None,
-           flow_id: str | None = None, variants: bool = False, mode: str = "goal") -> int:
+           flow_id: str | None = None, variants: bool = False, mode: str = "goal",
+           update_baselines: bool = False) -> int:
     surfaces = _playwright_surfaces(cfg, surface_id)
     if surface_id is not None and not surfaces:
         print(f"no playwright surface named {surface_id!r} in config", file=sys.stderr)
@@ -264,6 +317,14 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
                     # a diverged flow never reached its later steps: its unseen findings are
                     # unknown, not fixed (CP2 I6)
                     flows_run.add(log["flow_id"])
+                    # A-28/A-32: baselines are the base flow only, never a variant -- taken here,
+                    # before any variant run, on the same driver session the base flow just left.
+                    visual_finding = _visual_baseline_check(
+                        driver, surface_dir, flow_path.stem, surface.id, log["flow_id"],
+                        _current_path(driver), update_baselines,
+                    )
+                    if visual_finding is not None:
+                        all_findings.append(visual_finding)
                     if variants:
                         storage_state_dir = (
                             project_root / ".flow-review" / "variants" / surface.id

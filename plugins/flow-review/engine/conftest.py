@@ -13,7 +13,7 @@ _CONTENT_TYPES = {
 }
 
 
-def _make_handler(requests_log: list[dict]):
+def _make_handler(requests_log: list[dict], webapp_dir: Path = WEBAPP_DIR):
     class FixtureHandler(BaseHTTPRequestHandler):
         def log_message(self, *args):  # silence stdlib access log
             pass
@@ -31,7 +31,7 @@ def _make_handler(requests_log: list[dict]):
                 self.end_headers()
                 self.wfile.write(body)
                 return
-            fs_path = WEBAPP_DIR / (path.lstrip("/") or "index.html")
+            fs_path = webapp_dir / (path.lstrip("/") or "index.html")
             if fs_path.is_file():
                 data = fs_path.read_bytes()
                 ctype = _CONTENT_TYPES.get(fs_path.suffix, "application/octet-stream")
@@ -62,6 +62,25 @@ def webapp_server():
     thread.start()
     try:
         yield f"http://127.0.0.1:{port}", requests_log
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+
+
+@pytest.fixture
+def webapp_dir_and_url(tmp_path):
+    """Same server as webapp_server, but serving a throwaway copy of the fixture app so a test
+    can plant a change (e.g. edit app.css) without touching the real fixture under fixtures/."""
+    import shutil
+    webapp_copy = tmp_path / "webapp_copy"
+    shutil.copytree(WEBAPP_DIR, webapp_copy)
+    requests_log: list[dict] = []
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _make_handler(requests_log, webapp_copy))
+    port = server.server_address[1]
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{port}", webapp_copy
     finally:
         server.shutdown()
         thread.join(timeout=5)

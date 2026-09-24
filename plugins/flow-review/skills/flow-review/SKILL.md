@@ -92,6 +92,11 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
    - **Replay repair.** Where a recorded action log exists and `flow-review replay` reports a
      divergence, `fr-replay-repair` runs once at Haiku, escalating to Sonnet only on a real
      escalation report.
+   - **Visual baselines.** A recorded flow's first `flow-review replay` saves its end-of-flow
+     screenshot as the baseline and files nothing; a later replay diffs against it and files a
+     P2 `visual.changed` finding with crops as evidence on a real change, and
+     `flow-review replay --update-baselines` accepts the change instead (A-32; never for a
+     `--log` ephemeral replay).
    - **Variant replay.** Once a flow finishes (goal/auto/full mode; never `quick`, A-12), replay
      its action log through the device/persona variant set: `flow-review replay --log LOG_PATH
      --run DIR --variants --mode MODE` (`LOG_PATH` is the `log_path` `drive flow-end` returned,

@@ -128,15 +128,17 @@ def test_replay_variants_default_mode_is_goal_and_off_by_default(tmp_path, monke
         '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
     captured = {}
 
-    def fake_replay(cfg, project_root, surface_id, flow_id, variants=False, mode="goal"):
+    def fake_replay(cfg, project_root, surface_id, flow_id, variants=False, mode="goal",
+                    update_baselines=False):
         captured["variants"] = variants
         captured["mode"] = mode
+        captured["update_baselines"] = update_baselines
         return 0
 
     monkeypatch.setattr("flow_review.web.replay.replay", fake_replay)
     code = cli.main(["replay", "--project", str(tmp_path)])
     assert code == 0
-    assert captured == {"variants": False, "mode": "goal"}
+    assert captured == {"variants": False, "mode": "goal", "update_baselines": False}
 
 
 def test_replay_variants_and_mode_flags_thread_through_log_path(tmp_path, monkeypatch):
@@ -165,15 +167,34 @@ def test_replay_variants_flag_threads_through_surface_flow_path(tmp_path, monkey
         '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
     captured = {}
 
-    def fake_replay(cfg, project_root, surface_id, flow_id, variants=False, mode="goal"):
+    def fake_replay(cfg, project_root, surface_id, flow_id, variants=False, mode="goal",
+                    update_baselines=False):
         captured["variants"] = variants
         captured["mode"] = mode
+        captured["update_baselines"] = update_baselines
         return 0
 
     monkeypatch.setattr("flow_review.web.replay.replay", fake_replay)
     code = cli.main(["replay", "--project", str(tmp_path), "--variants"])
     assert code == 0
-    assert captured == {"variants": True, "mode": "goal"}
+    assert captured == {"variants": True, "mode": "goal", "update_baselines": False}
+
+
+def test_replay_update_baselines_flag_threads_through(tmp_path, monkeypatch):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
+    captured = {}
+
+    def fake_replay(cfg, project_root, surface_id, flow_id, variants=False, mode="goal",
+                    update_baselines=False):
+        captured["update_baselines"] = update_baselines
+        return 0
+
+    monkeypatch.setattr("flow_review.web.replay.replay", fake_replay)
+    code = cli.main(["replay", "--project", str(tmp_path), "--update-baselines"])
+    assert code == 0
+    assert captured == {"update_baselines": True}
 
 
 def test_plan_dispatches_and_prints_json(tmp_path, capsys):

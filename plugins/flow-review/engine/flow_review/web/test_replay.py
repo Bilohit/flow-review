@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 import pytest
 pytest.importorskip("playwright")
+from PIL import Image
 
 from flow_review import config
 from flow_review.web import actionlog, replay as replay_mod
@@ -48,6 +49,9 @@ class _FakeDriver:
 
     def end_step(self) -> None:
         pass
+
+    def screenshot(self, path) -> None:
+        Image.new("RGB", (10, 10), (255, 255, 255)).save(path)
 
 
 def test_replay_one_clean_flow_calls_measure_after_goto_and_click():
@@ -640,3 +644,195 @@ def test_replay_one_opens_a_step_window_per_step():
     drv.end_step = lambda: seen.append(("end",))
     replay_mod.replay_one(drv, log, measure=lambda *a: seen.append(("measure",)) or [])
     assert seen == [("begin", 0), ("end",), ("measure",), ("begin", 1), ("end",), ("measure",)]
+
+
+# ---------- visual baselines (A-28/A-32): fake driver, no browser ----------
+
+class _FakeScreenshotDriver:
+    """Writes a solid-color PNG of a given size on each screenshot() call, in the order given,
+    simulating the masked screenshot WebDriver.screenshot() would take."""
+
+    def __init__(self, images: list[tuple[tuple[int, int, int], tuple[int, int]]]):
+        self._images = list(images)
+        self.calls = 0
+
+    def screenshot(self, path):
+        color, size = self._images[self.calls]
+        self.calls += 1
+        Image.new("RGB", size, color).save(path)
+        return path
+
+
+def test_visual_baseline_first_replay_saves_baseline_and_files_nothing(tmp_path):
+    drv = _FakeScreenshotDriver([((255, 255, 255), (100, 100))])
+    finding = replay_mod._visual_baseline_check(
+        drv, tmp_path, "home", "webapp", "home", "/", update_baselines=False,
+    )
+    assert finding is None
+    baseline = tmp_path / "home.baseline.png"
+    assert baseline.exists()
+    with Image.open(baseline) as img:
+        assert img.size == (100, 100)
+
+
+def test_visual_baseline_unchanged_app_files_nothing(tmp_path):
+    drv = _FakeScreenshotDriver([
+        ((255, 255, 255), (100, 100)),
+        ((255, 255, 255), (100, 100)),
+    ])
+    replay_mod._visual_baseline_check(drv, tmp_path, "home", "webapp", "home", "/",
+                                      update_baselines=False)
+    finding = replay_mod._visual_baseline_check(drv, tmp_path, "home", "webapp", "home", "/",
+                                                update_baselines=False)
+    assert finding is None
+    # the "current" screenshot must not linger next to the baseline
+    assert not (tmp_path / "home.current.png").exists()
+
+
+def test_visual_baseline_changed_app_files_p2_with_crop_evidence(tmp_path):
+    drv = _FakeScreenshotDriver([
+        ((255, 255, 255), (100, 100)),
+    ])
+    replay_mod._visual_baseline_check(drv, tmp_path, "home", "webapp", "home", "/",
+                                      update_baselines=False)
+
+    changed_img = Image.new("RGB", (100, 100), (255, 255, 255))
+    for x in range(10, 60):
+        for y in range(10, 60):
+            changed_img.putpixel((x, y), (255, 0, 0))
+    drv2 = SimpleNamespace(screenshot=lambda path: changed_img.save(path))
+
+    finding = replay_mod._visual_baseline_check(drv2, tmp_path, "home", "webapp", "home", "/dash",
+                                                update_baselines=False)
+    assert finding is not None
+    assert finding["rule"] == "visual.changed"
+    assert finding["sev"] == "P2"
+    assert finding["disposition"] == "engine"
+    assert finding["surface_id"] == "webapp"
+    assert finding["flow_id"] == "home"
+    assert finding["route"] == "/dash"
+    assert finding["locator"] == ""
+    assert finding["evidence"], "expected at least one crop path as evidence"
+    for crop in finding["evidence"]:
+        assert __import__("pathlib").Path(crop).exists()
+    # the baseline itself is untouched by a plain (non-update) diff
+    with Image.open(tmp_path / "home.baseline.png") as img:
+        assert img.getpixel((0, 0)) == (255, 255, 255)
+
+
+def test_visual_baseline_update_baselines_overwrites_and_files_nothing(tmp_path):
+    drv = _FakeScreenshotDriver([
+        ((255, 255, 255), (100, 100)),
+    ])
+    replay_mod._visual_baseline_check(drv, tmp_path, "home", "webapp", "home", "/",
+                                      update_baselines=False)
+
+    changed_img = Image.new("RGB", (100, 100), (0, 0, 0))
+    drv2 = SimpleNamespace(screenshot=lambda path: changed_img.save(path))
+    finding = replay_mod._visual_baseline_check(drv2, tmp_path, "home", "webapp", "home", "/",
+                                                update_baselines=True)
+    assert finding is None
+    with Image.open(tmp_path / "home.baseline.png") as img:
+        assert img.getpixel((0, 0)) == (0, 0, 0)
+
+
+def test_visual_baseline_size_mismatch_treated_as_changed_without_crashing(tmp_path):
+    drv = _FakeScreenshotDriver([
+        ((255, 255, 255), (100, 100)),
+    ])
+    replay_mod._visual_baseline_check(drv, tmp_path, "home", "webapp", "home", "/",
+                                      update_baselines=False)
+
+    # same solid color, different size: an implicit resize-then-diff would see no change at all,
+    # so this only passes if the size mismatch is treated as "changed" explicitly.
+    small_img = Image.new("RGB", (50, 50), (255, 255, 255))
+    drv2 = SimpleNamespace(screenshot=lambda path: small_img.save(path))
+    finding = replay_mod._visual_baseline_check(drv2, tmp_path, "home", "webapp", "home", "/",
+                                                update_baselines=False)
+    assert finding is not None
+    assert finding["rule"] == "visual.changed"
+    assert finding["evidence"]
+
+
+# ---------- --log replays never write baselines (A-3) ----------
+
+def test_replay_log_never_writes_a_baseline(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    run_dir = tmp_path / "runs" / "run1"
+    run_dir.mkdir(parents=True)
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    log_path = actionlog.save(log, run_dir, project_root, record_enabled=False)
+
+    drv = _FakeDriver(click_target="/")
+    drv.close = lambda: None
+    drv.screenshot = lambda path: pytest.fail("--log replay must never take a baseline screenshot")
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+
+    code = replay_mod.replay_log(cfg, project_root, log_path, run_dir)
+    assert code == 0
+    assert not any(
+        p.name.endswith(".baseline.png")
+        for p in (project_root / ".flow-review").rglob("*.png") if (project_root / ".flow-review").exists()
+    )
+
+
+# ---------- e2e against a throwaway copy of the B0 fixture (real browser) ----------
+
+@pytest.mark.web
+def test_replay_e2e_visual_baseline_saved_then_diffed_after_css_change(tmp_path,
+                                                                        webapp_dir_and_url):
+    from flow_review import ledger
+
+    base_url, webapp_dir = webapp_dir_and_url
+    project_root = tmp_path / "project"
+    run_dir = tmp_path / "runs" / "run1"
+    run_dir.mkdir(parents=True)
+
+    log = actionlog.new_log("webapp", "home")
+    actionlog.record_step(log, "goto", url="/")
+    actionlog.save(log, run_dir, project_root, record_enabled=True)
+
+    cfg = config.Config(schema_version=2, generator_version="test", surfaces=[_surface(base_url)])
+    ledger_path = project_root / ".flow-review" / "findings.json"
+    baseline_path = project_root / ".flow-review" / "recordings" / "webapp" / "home.baseline.png"
+
+    # first replay: saves the baseline, files nothing
+    replay_mod.replay(cfg, project_root)
+    assert baseline_path.exists()
+    assert not any(e.rule == "visual.changed" for e in ledger.load(ledger_path).findings.values())
+    first_mtime = baseline_path.stat().st_mtime_ns
+
+    # second replay: unchanged app, files nothing, baseline untouched
+    replay_mod.replay(cfg, project_root)
+    assert not any(e.rule == "visual.changed" for e in ledger.load(ledger_path).findings.values())
+    assert baseline_path.stat().st_mtime_ns == first_mtime
+
+    # plant a CSS change in the throwaway copy, never the real fixture
+    css_path = webapp_dir / "app.css"
+    css_path.write_text(
+        css_path.read_text(encoding="utf-8").replace(
+            "background: #ffffff; color: #1a1a1a;",
+            "background: #ff0000; color: #1a1a1a;",
+        ),
+        encoding="utf-8",
+    )
+
+    replay_mod.replay(cfg, project_root)
+    ledger_ = ledger.load(ledger_path)
+    entry = next(e for e in ledger_.findings.values() if e.rule == "visual.changed")
+    assert entry.sev == "P2"
+    assert entry.state == "open"
+    assert entry.evidence
+    for crop in entry.evidence:
+        assert (project_root / crop).exists() or __import__("pathlib").Path(crop).exists()
+
+    # --update-baselines accepts the change and files nothing more
+    replay_mod.replay(cfg, project_root, update_baselines=True)
+    ledger_ = ledger.load(ledger_path)
+    entry2 = ledger_.findings[entry.id]
+    assert entry2.state == "fixed"

@@ -70,7 +70,8 @@ def _run_replay(args: argparse.Namespace) -> int:
         return replay_mod.replay_log(cfg, Path(project_root), args.log, args.run_dir,
                                       variants=args.variants, mode=args.mode)
     return replay_mod.replay(cfg, Path(project_root), args.surface, args.flow,
-                              variants=args.variants, mode=args.mode)
+                              variants=args.variants, mode=args.mode,
+                              update_baselines=args.update_baselines)
 
 
 def _run_budget_check(args: argparse.Namespace) -> int:
@@ -154,6 +155,10 @@ def build_parser() -> argparse.ArgumentParser:
     replay_parser.add_argument("--mode", default="goal",
                                 choices=["goal", "auto", "full", "quick"],
                                 help="variant mode; quick runs no variants (A-12)")
+    replay_parser.add_argument("--update-baselines", action="store_true",
+                                dest="update_baselines",
+                                help="accept current screenshots as the new visual baseline "
+                                     "(A-32; recorded flows only, never --log)")
     replay_parser.set_defaults(func=_run_replay)
 
     budget_parser = sub.add_parser("budget", parents=[project_after_verb])

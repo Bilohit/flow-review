@@ -145,7 +145,10 @@ evidence disappeared from the repo. The flows in `.flow-review/flows.md` are rec
 project's own state docs, never overwritten out from under a hand edit (`engine/flow_review/manifest.py`), and driven
 through whichever lens set applies to each surface's kind. Findings are reconciled into the ledger
 via `ledger.reconcile`, so a stale, unchanged finding collapses to a count instead of
-retraining you to skip the report.
+retraining you to skip the report. `flow-review replay` also carries a visual baseline per
+recorded flow: the first replay saves it, a later one diffs against it and files a P2
+`visual.changed` finding on a real change, and `flow-review replay --update-baselines` accepts
+the new screenshot instead.
 
 ## Going deeper
 
