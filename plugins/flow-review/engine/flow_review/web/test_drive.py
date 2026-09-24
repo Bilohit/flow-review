@@ -420,3 +420,15 @@ def test_check_page_route_is_url_path_without_scheme_host_port(tmp_path, monkeyp
     session = DriveSession(driver, "webapp", run_dir, project_root, record_enabled=False)
     session.goto("/dash?x=1")
     assert routes == ["/dash"]
+
+
+def test_client_post_surfaces_server_json_error_body(tmp_path):
+    session = DriveSession(FakeDriver(), "webapp", *_dirs(tmp_path), record_enabled=False)
+    httpd = drive.make_server("127.0.0.1", 0, session)
+    t = threading.Thread(target=httpd.serve_forever, daemon=True)
+    t.start()
+    try:
+        with pytest.raises(Exception, match="unknown verb 'bogus'"):
+            drive._post(httpd.server_address[1], "bogus", {})
+    finally:
+        httpd.shutdown()

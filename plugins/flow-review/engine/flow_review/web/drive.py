@@ -9,6 +9,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -298,8 +299,15 @@ def _post(port: int, verb: str, args: dict) -> dict:
         f"http://127.0.0.1:{port}/action", data=body,
         headers={"Content-Type": "application/json"}, method="POST",
     )
-    with urllib.request.urlopen(req, timeout=30) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    try:
+        with urllib.request.urlopen(req, timeout=30) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    except urllib.error.HTTPError as exc:
+        try:
+            message = json.loads(exc.read().decode("utf-8")).get("error") or str(exc)
+        except ValueError:
+            message = str(exc)
+        raise RuntimeError(message) from None
 
 
 def _client_call(args: argparse.Namespace, verb: str, payload: dict) -> dict:

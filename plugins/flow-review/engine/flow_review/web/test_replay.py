@@ -43,6 +43,12 @@ class _FakeDriver:
     def fill(self, locator: dict, value: str) -> None:
         pass
 
+    def begin_step(self, index: int) -> None:
+        pass
+
+    def end_step(self) -> None:
+        pass
+
 
 def test_replay_one_clean_flow_calls_measure_after_goto_and_click():
     log = actionlog.new_log("webapp", "load-and-click")
@@ -319,3 +325,15 @@ def test_diverged_flow_does_not_mark_unseen_findings_fixed(tmp_path, monkeypatch
     assert replay_mod.replay(cfg, project_root) == 2
     states = {e.state for e in ledger.load(ledger_path).findings.values()}
     assert states == {"open"}
+
+
+def test_replay_one_opens_a_step_window_per_step():
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    actionlog.record_step(log, "click", locator={"testid": "b"}, url="/")
+    drv = _FakeDriver(click_target="/")
+    seen = []
+    drv.begin_step = lambda i: seen.append(("begin", i))
+    drv.end_step = lambda: seen.append(("end",))
+    replay_mod.replay_one(drv, log, measure=lambda *a: seen.append(("measure",)) or [])
+    assert seen == [("begin", 0), ("end",), ("measure",), ("begin", 1), ("end",), ("measure",)]

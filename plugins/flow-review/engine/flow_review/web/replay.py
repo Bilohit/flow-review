@@ -1,5 +1,6 @@
 import json
 import sys
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, TypedDict
 from urllib.parse import urlparse
@@ -35,6 +36,16 @@ def _current_path(driver) -> str:
     return _url_path(getattr(driver.page, "url", None))
 
 
+@contextmanager
+def _step_window(driver, index: int):
+    """A-17: console errors raised while the step's action runs are stamped with its index."""
+    driver.begin_step(index)
+    try:
+        yield
+    finally:
+        driver.end_step()
+
+
 def replay_one(driver, log: dict, measure: MeasureHook | None = None,
                project_root: Path | None = None) -> ReplayResult:
     steps_run = 0
@@ -45,12 +56,14 @@ def replay_one(driver, log: dict, measure: MeasureHook | None = None,
         action = step["action"]
         try:
             if action == "goto":
-                driver.goto(step["url"])
+                with _step_window(driver, index):
+                    driver.goto(step["url"])
                 if measure is not None:
                     route = _current_path(driver) or _url_path(step["url"])
                     findings.extend(measure(driver, surface_id, flow_id, route, index))
             elif action == "click":
-                driver.click(step["locator"])
+                with _step_window(driver, index):
+                    driver.click(step["locator"])
                 if measure is not None:
                     findings.extend(
                         measure(driver, surface_id, flow_id, _current_path(driver), index)
@@ -64,7 +77,8 @@ def replay_one(driver, log: dict, measure: MeasureHook | None = None,
                                          f"environment or .flow-review/.env")
                 else:
                     value = step["value"] or ""
-                driver.fill(step["locator"], value)
+                with _step_window(driver, index):
+                    driver.fill(step["locator"], value)
             elif action == "assert_url":
                 expected = _url_path(step["url"])
                 actual = _current_path(driver)
@@ -233,7 +247,7 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
         }
         div_path = project_root / ".flow-review" / "divergences.json"
         div_path.parent.mkdir(parents=True, exist_ok=True)
-        div_path.write_text(json.dumps(out, ensure_ascii=False, indent=2))
+        div_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # Only entries that reproduced in THIS replay count; a stale regression from an earlier
     # run stays visible in the ledger but does not fail today's exit code.
@@ -279,7 +293,8 @@ def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path) -> int:
         driver.close()
 
     result_path = log_path.with_name(log_path.name + ".result.json")
-    result_path.write_text(json.dumps(dict(result), ensure_ascii=False, indent=2))
+    result_path.write_text(json.dumps(dict(result), ensure_ascii=False, indent=2),
+                           encoding="utf-8")
 
     if result["status"] == "divergence":
         return 2
