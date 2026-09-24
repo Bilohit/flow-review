@@ -231,7 +231,7 @@ Task blocks in dependency order. The Canonical Interfaces section above wins ove
     (the separate `dashboard` pythonpath entry is dropped -- `dashboard` is now the subpackage
     `flow_review.dashboard`, imported by its full dotted path everywhere.)
 
-- [ ] **Step 1: Write the failing test (full pytest code).**
+- [x] **Step 1: Write the failing test (full pytest code).**
 
 Create `plugins/flow-review/engine/flow_review/test_cli.py`:
 
@@ -312,10 +312,10 @@ def test_project_option_resolves_project_root_on_args(tmp_path):
     assert args.project_root == tmp_path.resolve()
 ```
 
-- [ ] **Step 2: Run it; expected FAIL.** `python -m pytest plugins/flow-review/engine/flow_review/test_cli.py -q`
+- [x] **Step 2: Run it; expected FAIL.** `python -m pytest plugins/flow-review/engine/flow_review/test_cli.py -q`
 fails with `ModuleNotFoundError: No module named 'flow_review'` (package does not exist yet).
 
-- [ ] **Step 3: Minimal implementation.**
+- [x] **Step 3: Minimal implementation.**
 
 `plugins/flow-review/engine/pyproject.toml`:
 
@@ -495,19 +495,19 @@ Then, mechanically:
    it as-is in A1 (it will fail once A4 changes `evidence.md`'s wording, which is A4's job to fix
    together with the test).
 
-- [ ] **Step 4: Run; expected PASS.**
+- [x] **Step 4: Run; expected PASS.**
 `python -m pytest -q` from repo root -> all 131 pre-existing tests plus the new `test_cli.py`
 tests pass (131 + 9 = 140, modulo any renumbering from the `test_references.py` rewrite, which
 nets to the same count: one test removed, two added).
 
-- [ ] **Step 5: Verify.**
+- [x] **Step 5: Verify.**
 ```
 python -m pytest -q
 ```
 Expected: all green, no `ModuleNotFoundError`, no leftover `fr` package anywhere
 (`grep -rn "from fr" plugins/flow-review` returns nothing outside historical docs/plan prose).
 
-- [ ] **Commit:**
+- [x] **Commit:**
 ```
 git add plugins/flow-review/engine plugins/flow-review/skills/flow-review/fr plugins/flow-review/skills/flow-review/dashboard plugins/flow-review/skills/flow-review/test_references.py pytest.ini
 git commit -m "refactor(engine): move fr/ and dashboard/ to engine/flow_review, add flow-review console script"
@@ -636,7 +636,7 @@ caller) and owns the *runtime* precondition-related prove.py fixes (H3/H4/M3) th
 teardown, exit-vs-precondition semantics, api reachability. A8 does not change
 `validate_preconditions()`'s shape or location.
 
-- [ ] **Step 1: Write the failing test (full pytest code).**
+- [x] **Step 1: Write the failing test (full pytest code).**
 
 Replace `plugins/flow-review/engine/flow_review/test_config.py` in full:
 
@@ -840,12 +840,12 @@ def test_saved_json_is_stable_and_human_editable(tmp_path):
     assert '  "schema_version"' in text
 ```
 
-- [ ] **Step 2: Run it; expected FAIL.**
+- [x] **Step 2: Run it; expected FAIL.**
 `python -m pytest plugins/flow-review/engine/flow_review/test_config.py -q` fails: v1 `Surface`
 has no `id`/`options`/`state`/... fields, `Config` has no `model_profile`, `ConfigKeyError` does
 not exist.
 
-- [ ] **Step 3: Minimal implementation.**
+- [x] **Step 3: Minimal implementation.**
 
 Replace `plugins/flow-review/engine/flow_review/config.py` in full:
 
@@ -1053,10 +1053,10 @@ def save(cfg: Config, path: Path) -> None:
     Path(path).write_text(text, encoding="utf-8")
 ```
 
-- [ ] **Step 4: Run; expected PASS.**
+- [x] **Step 4: Run; expected PASS.**
 `python -m pytest plugins/flow-review/engine/flow_review/test_config.py -q` -- all green.
 
-- [ ] **Step 5: Fix the fan-out.** `config.Surface`'s constructor signature changed (`name` no longer
+- [x] **Step 5: Fix the fan-out.** `config.Surface`'s constructor signature changed (`name` no longer
 first positional-required-only, `id` is new and required). Every other moved module that builds a
 `Surface` directly in its own tests (`test_drift.py`, `test_audit.py`'s `VALID_KINDS` import is
 fine, unaffected) breaks. This task does NOT fix `drift.py`/`prove.py`/`audit.py`/`lenses.py`
@@ -1065,13 +1065,13 @@ callers -- that is A7/A8/A9's job in wave 3, since they depend on A2 and run aft
 wave immediately after, not a later one; A2's own verify step (Step 6) scopes the green
 requirement to files this task owns.
 
-- [ ] **Step 6: Verify.**
+- [x] **Step 6: Verify.**
 ```
 python -m pytest plugins/flow-review/engine/flow_review/test_config.py plugins/flow-review/engine/flow_review/test_cli.py -q
 ```
 Expected: green. (Full-suite green is CP1's job, once A7/A8/A9 land in wave 3.)
 
-- [ ] **Commit:**
+- [x] **Commit:**
 ```
 git add plugins/flow-review/engine/flow_review/config.py plugins/flow-review/engine/flow_review/test_config.py
 git commit -m "feat(config): v2 schema with surface id, typed web options, model routing, friendly unknown-key errors"
@@ -1140,7 +1140,7 @@ git commit -m "feat(config): v2 schema with surface id, typed web options, model
     whether or not a migration happened (idempotent: running it twice is a no-op the second
     time), exits 1 on any exception with the exception message on stderr.
 
-- [ ] **Step 1: Write the failing test (full pytest code).**
+- [x] **Step 1: Write the failing test (full pytest code).**
 
 Create `plugins/flow-review/engine/flow_review/test_migrate.py`:
 
@@ -1269,9 +1269,9 @@ def test_migrate_file_prints_the_summary_when_not_quiet(tmp_path, capsys):
     assert "migrated config from schema v1 to v2" in capsys.readouterr().out
 ```
 
-- [ ] **Step 2: Run it; expected FAIL.** `ModuleNotFoundError: No module named 'flow_review.migrate'`.
+- [x] **Step 2: Run it; expected FAIL.** `ModuleNotFoundError: No module named 'flow_review.migrate'`.
 
-- [ ] **Step 3: Minimal implementation.**
+- [x] **Step 3: Minimal implementation.**
 
 `plugins/flow-review/engine/flow_review/migrate.py`:
 
@@ -1426,16 +1426,16 @@ def _run_migrate(args: argparse.Namespace) -> int:
 ```
 (remove `"migrate"` from `_STUB_VERBS`.)
 
-- [ ] **Step 4: Run; expected PASS.**
+- [x] **Step 4: Run; expected PASS.**
 `python -m pytest plugins/flow-review/engine/flow_review/test_migrate.py plugins/flow-review/engine/flow_review/test_cli.py -q`
 
-- [ ] **Step 5: Verify.**
+- [x] **Step 5: Verify.**
 ```
 python -m pytest -q
 ```
 Expected: green (A3 does not touch any file A2 left red -- `test_drift.py` etc. are still A7/A8/A9's job).
 
-- [ ] **Commit:**
+- [x] **Commit:**
 ```
 git add plugins/flow-review/engine/flow_review/migrate.py plugins/flow-review/engine/flow_review/test_migrate.py plugins/flow-review/engine/flow_review/cli.py
 git commit -m "feat(migrate): auto-migrate v1 config to v2 with backup and one-screen summary"
@@ -1501,7 +1501,7 @@ git commit -m "feat(migrate): auto-migrate v1 config to v2 with backup and one-s
     on success (exit 0); a malformed `--json` or a `key=value` argument with no `=` exits 2 with
     a one-line message on stderr.
 
-- [ ] **Step 1: Write the failing test (full pytest code).**
+- [x] **Step 1: Write the failing test (full pytest code).**
 
 Create `plugins/flow-review/engine/flow_review/test_events.py`:
 
@@ -1603,9 +1603,9 @@ def test_multiple_appends_are_all_present_and_line_delimited(tmp_path):
     assert [json.loads(l)["n"] for l in lines] == [1, 2]
 ```
 
-- [ ] **Step 2: Run it; expected FAIL.** `ModuleNotFoundError: No module named 'flow_review.events'`.
+- [x] **Step 2: Run it; expected FAIL.** `ModuleNotFoundError: No module named 'flow_review.events'`.
 
-- [ ] **Step 3: Minimal implementation.**
+- [x] **Step 3: Minimal implementation.**
 
 `plugins/flow-review/engine/flow_review/events.py`:
 
@@ -1711,10 +1711,10 @@ def _run_event(args: argparse.Namespace) -> int:
 ```
 (add `import json` at the top of `cli.py`; remove `"event"` from `_STUB_VERBS`.)
 
-- [ ] **Step 4: Run; expected PASS.**
+- [x] **Step 4: Run; expected PASS.**
 `python -m pytest plugins/flow-review/engine/flow_review/test_events.py plugins/flow-review/engine/flow_review/test_cli.py -q`
 
-- [ ] **Step 5: Update the reference doc.** Replace lines 33-46 of
+- [x] **Step 5: Update the reference doc.** Replace lines 33-46 of
 `plugins/flow-review/skills/flow-review/references/evidence.md` (the `### The append idiom`
 section) with:
 
@@ -1752,17 +1752,17 @@ def test_evidence_file_keeps_the_append_idiom_rules():
     assert "printf" not in text
 ```
 
-- [ ] **Step 6: Run; expected PASS.**
+- [x] **Step 6: Run; expected PASS.**
 `python -m pytest plugins/flow-review/skills/flow-review/test_references.py -q`
 
-- [ ] **Step 7: Verify.**
+- [x] **Step 7: Verify.**
 ```
 python -m pytest -q
 ```
 Expected: green (scoped the same way A2/A3 are -- the drift/prove/audit/lenses fan-out from A2
 is still owned by A7/A8/A9, unaffected by A4).
 
-- [ ] **Commit:**
+- [x] **Commit:**
 ```
 git add plugins/flow-review/engine/flow_review/events.py plugins/flow-review/engine/flow_review/test_events.py plugins/flow-review/engine/flow_review/cli.py plugins/flow-review/skills/flow-review/references/evidence.md plugins/flow-review/skills/flow-review/test_references.py
 git commit -m "feat(events): JSON-safe event writer with ms timestamps, finding ids, secret redaction; retire the printf idiom"
@@ -1909,7 +1909,7 @@ git commit -m "feat(events): JSON-safe event writer with ms timestamps, finding 
     the threshold check; C4 (explorer/goals) is the caller that turns a `True` here into an
     actual P2 finding, never P1, never Opus-verified, per A-8).
 
-- [ ] **Step 1: Write the failing test (full pytest code).**
+- [x] **Step 1: Write the failing test (full pytest code).**
 
 Create `plugins/flow-review/engine/flow_review/test_ledger.py`:
 
@@ -2083,9 +2083,9 @@ def test_record_miss_counts_distinct_runs_not_calls():
     assert ledger.missed_twice(led, "export-csv") is True
 ```
 
-- [ ] **Step 2: Run it; expected FAIL.** `ModuleNotFoundError: No module named 'flow_review.ledger'`.
+- [x] **Step 2: Run it; expected FAIL.** `ModuleNotFoundError: No module named 'flow_review.ledger'`.
 
-- [ ] **Step 3: Minimal implementation.**
+- [x] **Step 3: Minimal implementation.**
 
 `plugins/flow-review/engine/flow_review/ledger.py`:
 
@@ -2251,10 +2251,10 @@ Delete the v1 module and its tests:
 git rm plugins/flow-review/engine/flow_review/findings.py plugins/flow-review/engine/flow_review/test_findings.py
 ```
 
-- [ ] **Step 4: Run; expected PASS.**
+- [x] **Step 4: Run; expected PASS.**
 `python -m pytest plugins/flow-review/engine/flow_review/test_ledger.py -q`
 
-- [ ] **Step 5: Verify.**
+- [x] **Step 5: Verify.**
 ```
 python -m pytest -q
 ```
@@ -2263,7 +2263,7 @@ Expected: green. `test_references.py`'s rules-audit `SCANNED`/binding-rule scan 
 of the scan the same way -- no manual list edit needed there, confirm `grep -rn
 "fr.findings\|flow_review.findings\|demote_repeats" plugins/flow-review` is empty afterward.
 
-- [ ] **Commit:**
+- [x] **Commit:**
 ```
 git add plugins/flow-review/engine/flow_review/ledger.py plugins/flow-review/engine/flow_review/test_ledger.py
 git rm plugins/flow-review/engine/flow_review/findings.py plugins/flow-review/engine/flow_review/test_findings.py
@@ -2298,7 +2298,7 @@ git commit -m "feat(ledger): findings.json with sha1 fingerprint, state transiti
   never touched (that guarantee predates this task and is not being changed, only extended to
   cover the previously-bare-append case too).
 
-- [ ] **Step 1: Write the failing test (full pytest code).**
+- [x] **Step 1: Write the failing test (full pytest code).**
 
 Replace lines 27-35 of `plugins/flow-review/engine/flow_review/test_manifest.py` (the
 `test_learnings_rewrite_in_place_when_untouched` test) with:
@@ -2346,12 +2346,12 @@ def test_a_second_run_on_an_untouched_file_replaces_the_block_rather_than_growin
 already exercise the block path or the no-op path and are unaffected by this change; leave them
 as-is.)
 
-- [ ] **Step 2: Run it; expected FAIL.** The new
+- [x] **Step 2: Run it; expected FAIL.** The new
 `test_learnings_always_use_the_annotation_block_even_when_the_file_is_untouched` fails: today's
 `apply_learnings` takes the bare-append branch for an untouched file, so
 `manifest.ANNOTATION_HEADER in text` is `False`.
 
-- [ ] **Step 3: Minimal implementation.**
+- [x] **Step 3: Minimal implementation.**
 
 In `plugins/flow-review/engine/flow_review/manifest.py`, replace `apply_learnings` (the current
 lines 92-119) with:
@@ -2389,16 +2389,16 @@ tested function -- callers such as the SKILL's write-back step may still want to
 whether the file was human-edited, it simply no longer gates which code path `apply_learnings`
 takes).
 
-- [ ] **Step 4: Run; expected PASS.**
+- [x] **Step 4: Run; expected PASS.**
 `python -m pytest plugins/flow-review/engine/flow_review/test_manifest.py -q`
 
-- [ ] **Step 5: Verify.**
+- [x] **Step 5: Verify.**
 ```
 python -m pytest -q
 ```
 Expected: green.
 
-- [ ] **Commit:**
+- [x] **Commit:**
 ```
 git add plugins/flow-review/engine/flow_review/manifest.py plugins/flow-review/engine/flow_review/test_manifest.py
 git commit -m "fix(manifest): always replace the annotation block in place, retiring the unbounded bare-bullet append (audit C5)"
@@ -2450,7 +2450,7 @@ git commit -m "fix(manifest): always replace the annotation block in place, reti
   - The old `DECLINED_PROVENANCE_KEY`/`DECLINED_PROVENANCE_VALUE` constants are DELETED (declined
     is now `Surface.declined: bool`, set by A2; nothing reads the provenance-dict marker anymore).
 
-- [ ] **Step 1: Write the failing test (full pytest code).**
+- [x] **Step 1: Write the failing test (full pytest code).**
 
 Replace `plugins/flow-review/engine/flow_review/test_drift.py` in full:
 
@@ -2551,11 +2551,11 @@ def test_runnable_surfaces_keeps_config_order():
     assert [s.id for s in drift.runnable_surfaces(cfg)] == ["z", "a"]
 ```
 
-- [ ] **Step 2: Run it; expected FAIL.** `TypeError: Surface.__init__() missing 1 required positional
+- [x] **Step 2: Run it; expected FAIL.** `TypeError: Surface.__init__() missing 1 required positional
 argument: 'id'` (the current file's `_web`/`_cfg` fixtures predate A2), and
 `drift.runnable_surfaces` does not exist yet.
 
-- [ ] **Step 3: Minimal implementation.**
+- [x] **Step 3: Minimal implementation.**
 
 Replace `plugins/flow-review/engine/flow_review/drift.py` in full:
 
@@ -2632,17 +2632,17 @@ def runnable_surfaces(cfg: Config) -> list[Surface]:
     return [s for s in cfg.surfaces if not s.declined and s.driver != _PENDING_DRIVER]
 ```
 
-- [ ] **Step 4: Run; expected PASS.**
+- [x] **Step 4: Run; expected PASS.**
 `python -m pytest plugins/flow-review/engine/flow_review/test_drift.py -q`
 
-- [ ] **Step 5: Verify.**
+- [x] **Step 5: Verify.**
 ```
 python -m pytest -q
 ```
 Expected: green (this is the task that clears `test_drift.py` out of the red state A2 left it
 in).
 
-- [ ] **Commit:**
+- [x] **Commit:**
 ```
 git add plugins/flow-review/engine/flow_review/drift.py plugins/flow-review/engine/flow_review/test_drift.py
 git commit -m "fix(drift): match candidates to surfaces by id not name, exclude declined/pending-driver from the run plan"
@@ -2694,7 +2694,7 @@ git commit -m "fix(drift): match candidates to surfaces by id not name, exclude 
     spec Section 6 ("API: HTTP with reachability-only proving") and is the only kind-aware branch
     in this module; every other kind keeps the existing launch-and-observe behavior.
 
-- [ ] **Step 1: Write the failing test (full pytest code).**
+- [x] **Step 1: Write the failing test (full pytest code).**
 
 Add to `plugins/flow-review/engine/flow_review/test_prove.py` (append; keep every existing test
 except the one named below):
@@ -2814,14 +2814,14 @@ to
 (`_kill_tree` now returns `(signal_succeeded: bool, descendants_observed: set[int])` instead of a
 bare bool -- see Step 3. No other existing test touches `_kill_tree` directly.)
 
-- [ ] **Step 2: Run it; expected FAIL.** The four new M3 tests fail with `AssertionError` (an api
+- [x] **Step 2: Run it; expected FAIL.** The four new M3 tests fail with `AssertionError` (an api
 candidate with blank launch currently returns `"no launch command to prove"` regardless of
 kind). The two H4 tests fail (`test_a_clean_exit_before_any_precondition_passes_is_not_proven`
 gets `EXITED_CLEAN`, not `NOT_PROVEN`). The H3 test is flaky-to-failing on the current code (the
 orphan sometimes survives, since `_teardown` returns `True` the instant `cmd.exe`/the launched
 python process itself exits, without ever looking for what it spawned).
 
-- [ ] **Step 3: Minimal implementation.**
+- [x] **Step 3: Minimal implementation.**
 
 In `plugins/flow-review/engine/flow_review/prove.py`:
 
@@ -2980,16 +2980,16 @@ def _teardown(process: subprocess.Popen) -> bool:
                 break
    ```
 
-- [ ] **Step 4: Run; expected PASS.**
+- [x] **Step 4: Run; expected PASS.**
 `python -m pytest plugins/flow-review/engine/flow_review/test_prove.py -q`
 
-- [ ] **Step 5: Verify.**
+- [x] **Step 5: Verify.**
 ```
 python -m pytest -q
 ```
 Expected: green.
 
-- [ ] **Commit:**
+- [x] **Commit:**
 ```
 git add plugins/flow-review/engine/flow_review/prove.py plugins/flow-review/engine/flow_review/test_prove.py
 git commit -m "fix(prove): honest tree teardown past an early direct-child exit, preconditions over exit code, api reachability-only proving (H3/H4/M3)"
@@ -3068,7 +3068,7 @@ git commit -m "fix(prove): honest tree teardown past an early direct-child exit,
     interview (`references/setup.md`, unchanged by this task) is what tells the user these are
     shown but not tested until M2/M3, per A-14.
 
-- [ ] **Step 1: Write the failing test (full pytest code).**
+- [x] **Step 1: Write the failing test (full pytest code).**
 
 Append to `plugins/flow-review/engine/flow_review/test_audit.py` (keep all existing tests; update
 only where noted):
@@ -3191,12 +3191,12 @@ def test_pending_driver_is_valid_per_config():
     assert "pending" in VALID_DRIVERS
 ```
 
-- [ ] **Step 2: Run it; expected FAIL.** `test_web_candidate_driver_is_playwright_not_cdp` fails
+- [x] **Step 2: Run it; expected FAIL.** `test_web_candidate_driver_is_playwright_not_cdp` fails
 (`driver == "cdp"` today); every new-finder test fails with `AssertionError` (nothing detected)
 or the module has no `default_port`/`WORKSPACE_FRAMEWORK_PORTS`; `test_pending_driver_is_valid_per_config`
 fails (`"pending" not in VALID_DRIVERS`).
 
-- [ ] **Step 3: Minimal implementation.**
+- [x] **Step 3: Minimal implementation.**
 
 In `plugins/flow-review/engine/flow_review/config.py`, change:
 ```python
@@ -3440,10 +3440,10 @@ def detect(root: Path) -> list[Candidate]:
     return found
 ```
 
-- [ ] **Step 4: Run; expected PASS.**
+- [x] **Step 4: Run; expected PASS.**
 `python -m pytest plugins/flow-review/engine/flow_review/test_audit.py plugins/flow-review/engine/flow_review/test_config.py -q`
 
-- [ ] **Step 5: Verify.**
+- [x] **Step 5: Verify.**
 ```
 python -m pytest -q
 ```
@@ -3452,7 +3452,7 @@ Expected: green -- this is also the task that finally closes the loop on `test_d
 that `detect()`'s shape has changed; re-run the full suite, not just `test_audit.py`, to confirm
 A7's drift tests still pass unchanged against the new `detect()`.
 
-- [ ] **Commit:**
+- [x] **Commit:**
 ```
 git add plugins/flow-review/engine/flow_review/audit.py plugins/flow-review/engine/flow_review/test_audit.py plugins/flow-review/engine/flow_review/config.py
 git commit -m "feat(audit): detect workspaces, Poetry, web-framework ports, and Tauri/Expo/Electron as pending-driver (A-14)"
@@ -3519,7 +3519,7 @@ git commit -m "feat(audit): detect workspaces, Poetry, web-framework ports, and 
     exception is caught at the CLI boundary and reported on stderr with exit 1 (same pattern as
     `_run_migrate` in A3).
 
-- [ ] **Step 1: Write the failing test (full pytest code).**
+- [x] **Step 1: Write the failing test (full pytest code).**
 
 Create `plugins/flow-review/engine/flow_review/test_envsetup.py`:
 
@@ -3654,9 +3654,9 @@ def test_load_dotenv_defaults_to_os_environ_when_none_given(tmp_path, monkeypatc
     assert os.environ["SOME_VAR"] == "abc"
 ```
 
-- [ ] **Step 2: Run it; expected FAIL.** `ModuleNotFoundError: No module named 'flow_review.envsetup'`.
+- [x] **Step 2: Run it; expected FAIL.** `ModuleNotFoundError: No module named 'flow_review.envsetup'`.
 
-- [ ] **Step 3: Minimal implementation.**
+- [x] **Step 3: Minimal implementation.**
 
 `plugins/flow-review/engine/flow_review/envsetup.py`:
 
@@ -3812,10 +3812,10 @@ def _run_setup_env(args: argparse.Namespace) -> int:
 ```
 (remove `"setup-env"` from `_STUB_VERBS`.)
 
-- [ ] **Step 4: Run; expected PASS.**
+- [x] **Step 4: Run; expected PASS.**
 `python -m pytest plugins/flow-review/engine/flow_review/test_envsetup.py plugins/flow-review/engine/flow_review/test_cli.py -q`
 
-- [ ] **Step 5: Verify.**
+- [x] **Step 5: Verify.**
 ```
 python -m pytest -q
 ```
@@ -3828,7 +3828,7 @@ python -m pytest plugins/flow-review/engine/flow_review/test_envsetup.py -q -p n
 file itself -- every test constructs a `runner`/`which` fake and never calls the real
 `subprocess.run`/`shutil.which` defaults.)
 
-- [ ] **Commit:**
+- [x] **Commit:**
 ```
 git add plugins/flow-review/engine/flow_review/envsetup.py plugins/flow-review/engine/flow_review/test_envsetup.py plugins/flow-review/engine/flow_review/cli.py
 git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitignore, dependency-free .env loader wired to redaction"
@@ -3878,7 +3878,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
     8. Sign-in flow: `#login-form` submit handler shows `#signin-status` when both fields are
        non-empty — the flow B1/B2/B3 record and replay against.
 
-- [ ] **Step 1: failing test.** Create `plugins/flow-review/engine/conftest.py` with the
+- [x] **Step 1: failing test.** Create `plugins/flow-review/engine/conftest.py` with the
   fixture stubbed to raise, then write the test:
   ```python
   # plugins/flow-review/engine/fixtures/webapp/test_fixture.py
@@ -3927,10 +3927,10 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   def webapp_server():
       raise NotImplementedError
   ```
-- [ ] **Step 2: run, expect FAIL.**
+- [x] **Step 2: run, expect FAIL.**
   `pytest plugins/flow-review/engine/fixtures/webapp/test_fixture.py -x`
   Expected: `NotImplementedError` from the stub fixture.
-- [ ] **Step 3: implementation.** Write the five fixture files:
+- [x] **Step 3: implementation.** Write the five fixture files:
   ```html
   <!-- plugins/flow-review/engine/fixtures/webapp/index.html -->
   <!doctype html>
@@ -4138,7 +4138,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
           server.shutdown()
           thread.join(timeout=5)
   ```
-- [ ] **Step 4: run, expect PASS.**
+- [x] **Step 4: run, expect PASS.**
   `pytest plugins/flow-review/engine/fixtures/webapp/test_fixture.py -x`
 - **Verify:** `pytest plugins/flow-review/engine/fixtures/webapp/test_fixture.py -v`
 - **Commit:** `git add pytest.ini plugins/flow-review/engine/conftest.py plugins/flow-review/engine/fixtures/webapp/` then
@@ -4198,7 +4198,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   `{"width": int, "height": int}` dict — the caller picks one entry out of
   `Surface.options["viewport"]` (a list) before constructing `WebDriver`.
 
-- [ ] **Step 1: failing test.**
+- [x] **Step 1: failing test.**
   ```python
   # plugins/flow-review/engine/flow_review/web/test_driver.py
   import pytest
@@ -4261,10 +4261,10 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       assert tagged["inside step 3"] == 3
       assert tagged["outside again"] is None
   ```
-- [ ] **Step 2: run, expect FAIL.**
+- [x] **Step 2: run, expect FAIL.**
   `pytest plugins/flow-review/engine/flow_review/web/test_driver.py -m web -x`
   Expected: `ModuleNotFoundError: flow_review.web.driver`.
-- [ ] **Step 3: implementation.**
+- [x] **Step 3: implementation.**
   ```python
   # plugins/flow-review/engine/flow_review/web/driver.py
   from pathlib import Path
@@ -4372,7 +4372,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   ```python
   # plugins/flow-review/engine/flow_review/web/__init__.py
   ```
-- [ ] **Step 4: run, expect PASS.**
+- [x] **Step 4: run, expect PASS.**
   `pytest plugins/flow-review/engine/flow_review/web/test_driver.py -m web -v`
 - **Verify:** `pytest plugins/flow-review/engine/flow_review/web/test_driver.py -m web -v`
 - **Commit:** `git add plugins/flow-review/engine/flow_review/web/__init__.py plugins/flow-review/engine/flow_review/web/driver.py plugins/flow-review/engine/flow_review/web/test_driver.py` then
@@ -4438,7 +4438,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   }
   ```
 
-- [ ] **Step 1: failing test.**
+- [x] **Step 1: failing test.**
   ```python
   # plugins/flow-review/engine/flow_review/web/test_actionlog.py
   from flow_review.web import actionlog
@@ -4481,10 +4481,10 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       assert loaded["schema_version"] == 1
       assert loaded["surface_id"] == "webapp"
   ```
-- [ ] **Step 2: run, expect FAIL.**
+- [x] **Step 2: run, expect FAIL.**
   `pytest plugins/flow-review/engine/flow_review/web/test_actionlog.py -x`
   Expected: `ModuleNotFoundError: flow_review.web.actionlog`.
-- [ ] **Step 3: implementation.**
+- [x] **Step 3: implementation.**
   ```python
   # plugins/flow-review/engine/flow_review/web/actionlog.py
   import json
@@ -4545,7 +4545,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   def load(path: Path) -> dict:
       return json.loads(path.read_text())
   ```
-- [ ] **Step 4: run, expect PASS.**
+- [x] **Step 4: run, expect PASS.**
   `pytest plugins/flow-review/engine/flow_review/web/test_actionlog.py -v`
 - **Verify:** `pytest plugins/flow-review/engine/flow_review/web/test_actionlog.py -v`
 - **Commit:** `git add plugins/flow-review/engine/flow_review/web/actionlog.py plugins/flow-review/engine/flow_review/web/test_actionlog.py` then
@@ -4649,7 +4649,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   after a checkpoint mismatch — it is not fatal like `LocatorNotFound` or an unexpected
   exception, both of which stop the flow immediately per the existing per-step try/except).
 
-- [ ] **Step 1: failing test.**
+- [x] **Step 1: failing test.**
   ```python
   # plugins/flow-review/engine/flow_review/web/test_replay.py
   import json
@@ -4887,10 +4887,10 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       assert not (project_root / ".flow-review" / "findings.json").exists()
       assert not (project_root / ".flow-review" / "divergences.json").exists()
   ```
-- [ ] **Step 2: run, expect FAIL.**
+- [x] **Step 2: run, expect FAIL.**
   `pytest plugins/flow-review/engine/flow_review/web/test_replay.py -x`
   Expected: `ModuleNotFoundError: flow_review.web.replay`.
-- [ ] **Step 3: implementation.**
+- [x] **Step 3: implementation.**
   ```python
   # plugins/flow-review/engine/flow_review/web/replay.py
   import json
@@ -5162,7 +5162,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
           sys.exit(replay_mod.replay_log(cfg, project_root, args.log, args.run_dir))
       sys.exit(replay_mod.replay(cfg, project_root, args.surface, args.flow))
   ```
-- [ ] **Step 4: run, expect PASS.**
+- [x] **Step 4: run, expect PASS.**
   `pytest plugins/flow-review/engine/flow_review/web/test_replay.py -v`
 - **Verify:** `pytest plugins/flow-review/engine/flow_review/web/test_replay.py -v -m "web or not web"`
 - **Commit:** `git add plugins/flow-review/engine/flow_review/web/replay.py plugins/flow-review/engine/flow_review/web/test_replay.py plugins/flow-review/engine/flow_review/cli.py` then
@@ -5278,7 +5278,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   | `console.error` | a `console.error` entry: `step_index is not None` (fired inside a user action's step window) | P1 |
   | `console.error` | a `console.error` entry: `step_index is None` (on load / in the background) | P2 |
 
-- [ ] **Step 1: failing test — CIEDE2000 reference pair and pure checks.**
+- [x] **Step 1: failing test — CIEDE2000 reference pair and pure checks.**
   ```python
   # plugins/flow-review/engine/flow_review/web/test_measure.py
   from flow_review.web import measure
@@ -5468,10 +5468,10 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       payloads = measure.check_page(driver, "webapp", "flow", "/", None, None)
       assert payloads == []
   ```
-- [ ] **Step 2: run, expect FAIL.**
+- [x] **Step 2: run, expect FAIL.**
   `pytest plugins/flow-review/engine/flow_review/web/test_measure.py -x`
   Expected: `ModuleNotFoundError: flow_review.web.measure`.
-- [ ] **Step 3: implementation.**
+- [x] **Step 3: implementation.**
   ```python
   # plugins/flow-review/engine/flow_review/web/measure.py
   import json
@@ -5896,10 +5896,10 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   #         self._console_cursor = len(self._console_errors)
   #         return new_entries
   ```
-- [ ] **Step 4: run, expect PASS.** `pytest plugins/flow-review/engine/flow_review/web/test_measure.py -x`
+- [x] **Step 4: run, expect PASS.** `pytest plugins/flow-review/engine/flow_review/web/test_measure.py -x`
   (this covers the pure per-rule tests, the CIEDE2000 reference-pair test, and the fake-driver
   `check_page` tests — none of them need a browser.)
-- [ ] **Step 5: web-marked cycle — the fixture's planted contrast bug end to end.** Add and run:
+- [x] **Step 5: web-marked cycle — the fixture's planted contrast bug end to end.** Add and run:
   ```python
   # appended to test_measure.py
   import pytest
@@ -5943,7 +5943,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
           assert f["disposition"] == "engine"
   ```
   Run: `pytest plugins/flow-review/engine/flow_review/web/test_measure.py -m web -x` → PASS.
-- [ ] **Step 6: red — token file loading (A-25).** Append to `test_measure.py` and run `pytest plugins/flow-review/engine/flow_review/web/test_measure.py -k load_tokens -x` → FAIL (`AttributeError: load_tokens`):
+- [x] **Step 6: red — token file loading (A-25).** Append to `test_measure.py` and run `pytest plugins/flow-review/engine/flow_review/web/test_measure.py -k load_tokens -x` → FAIL (`AttributeError: load_tokens`):
   ```python
   def test_load_tokens_reads_css_custom_properties(tmp_path):
       p = tmp_path / "tokens.css"
@@ -5968,7 +5968,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       with pytest.raises(ValueError):
           measure.load_tokens(p)
   ```
-- [ ] **Step 7: green — add to `measure.py`** (with `import json` and `import re` at the top of the module if not already present):
+- [x] **Step 7: green — add to `measure.py`** (with `import json` and `import re` at the top of the module if not already present):
   ```python
   _CSS_COMMENT = re.compile(r"/\*.*?\*/", re.S)
   _CSS_VAR = re.compile(r"(--[\w-]+)\s*:\s*([^;{}]+)")
@@ -6041,7 +6041,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   — under `recordings/`, so (per A-1/A-2) they exist only when recording is on; `diff()` never
   creates a baseline itself, only compares against one the caller passes.
 
-- [ ] **Step 1: failing test.**
+- [x] **Step 1: failing test.**
   ```python
   # plugins/flow-review/engine/flow_review/web/test_visual.py
   from PIL import Image
@@ -6089,8 +6089,8 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       with Image.open(paths[0]) as cropped:
           assert max(cropped.size) <= 200
   ```
-- [ ] **Step 2: run.** `pytest plugins/flow-review/engine/flow_review/web/test_visual.py -v` → FAIL (`ModuleNotFoundError` / `AttributeError`, `visual.py` does not exist yet).
-- [ ] **Step 3: implementation.**
+- [x] **Step 2: run.** `pytest plugins/flow-review/engine/flow_review/web/test_visual.py -v` → FAIL (`ModuleNotFoundError` / `AttributeError`, `visual.py` does not exist yet).
+- [x] **Step 3: implementation.**
   ```python
   # plugins/flow-review/engine/flow_review/web/visual.py
   from pathlib import Path
@@ -6205,9 +6205,9 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
               paths.append(out_path)
       return paths
   ```
-- [ ] **Step 4: run.** `pytest plugins/flow-review/engine/flow_review/web/test_visual.py -v` → PASS.
-- [ ] **Step 5: verify.** `python -m pytest -q` from the repo root → all pass, no new skips.
-- [ ] **Step 6: commit.**
+- [x] **Step 4: run.** `pytest plugins/flow-review/engine/flow_review/web/test_visual.py -v` → PASS.
+- [x] **Step 5: verify.** `python -m pytest -q` from the repo root → all pass, no new skips.
+- [x] **Step 6: commit.**
   `git add plugins/flow-review/engine/flow_review/web/visual.py plugins/flow-review/engine/flow_review/web/test_visual.py`
   `git commit -m "feat(web): pixel diff with changed-region bounding boxes and crop/downscale"`
 
@@ -6235,7 +6235,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   def clear_faults(page) -> None: ...                                    # page.unroute_all()
   ```
 
-- [ ] **Step 1: failing test.**
+- [x] **Step 1: failing test.**
   ```python
   # plugins/flow-review/engine/flow_review/web/test_faults.py
   from flow_review.web import faults
@@ -6321,8 +6321,8 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       faults.clear_faults(page)
       assert page.unrouted is True
   ```
-- [ ] **Step 2: run.** `pytest plugins/flow-review/engine/flow_review/web/test_faults.py -v` → FAIL.
-- [ ] **Step 3: implementation.**
+- [x] **Step 2: run.** `pytest plugins/flow-review/engine/flow_review/web/test_faults.py -v` → FAIL.
+- [x] **Step 3: implementation.**
   ```python
   # plugins/flow-review/engine/flow_review/web/faults.py
   import fnmatch
@@ -6359,8 +6359,8 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   def clear_faults(page) -> None:
       page.unroute_all()
   ```
-- [ ] **Step 4: run.** `pytest plugins/flow-review/engine/flow_review/web/test_faults.py -v` → PASS.
-- [ ] **Step 5: browser-backed check (`web` marker).**
+- [x] **Step 4: run.** `pytest plugins/flow-review/engine/flow_review/web/test_faults.py -v` → PASS.
+- [x] **Step 5: browser-backed check (`web` marker).**
   ```python
   # appended to plugins/flow-review/engine/flow_review/web/test_faults.py
   import pytest
@@ -6382,8 +6382,8 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   ```
   Run: `pytest plugins/flow-review/engine/flow_review/web/test_faults.py -v -m web` (needs
   `python -m playwright install chromium` and the `webapp_server` fixture from B0/B1) → PASS.
-- [ ] **Step 6: verify.** `python -m pytest -q -m "not web"` from the repo root → all pass.
-- [ ] **Step 7: commit.**
+- [x] **Step 6: verify.** `python -m pytest -q -m "not web"` from the repo root → all pass.
+- [x] **Step 7: commit.**
   `git add plugins/flow-review/engine/flow_review/web/faults.py plugins/flow-review/engine/flow_review/web/test_faults.py`
   `git commit -m "feat(web): network fault injection (offline/5xx/slow) via page.route"`
 
@@ -6429,7 +6429,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   the first focused element; a target never focused within the cap is recorded as an
   `unreachable_control` divergence.
 
-- [ ] **Step 1: failing test, pure half.**
+- [x] **Step 1: failing test, pure half.**
   ```python
   # plugins/flow-review/engine/flow_review/web/test_variants.py
   from flow_review.web import variants
@@ -6463,8 +6463,8 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       for mode in ("goal", "auto", "full"):
           assert len(variants.plan_variants(surface, mode)) == 6
   ```
-- [ ] **Step 2: run.** `pytest plugins/flow-review/engine/flow_review/web/test_variants.py -v` → FAIL.
-- [ ] **Step 3: implementation.**
+- [x] **Step 2: run.** `pytest plugins/flow-review/engine/flow_review/web/test_variants.py -v` → FAIL.
+- [x] **Step 3: implementation.**
   ```python
   # plugins/flow-review/engine/flow_review/web/variants.py
   from __future__ import annotations
@@ -6606,8 +6606,8 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
           results.append((variant, result))
       return results
   ```
-- [ ] **Step 4: run.** `pytest plugins/flow-review/engine/flow_review/web/test_variants.py -v` → PASS.
-- [ ] **Step 5: browser-backed check (`web` marker).**
+- [x] **Step 4: run.** `pytest plugins/flow-review/engine/flow_review/web/test_variants.py -v` → PASS.
+- [x] **Step 5: browser-backed check (`web` marker).**
   ```python
   # appended to plugins/flow-review/engine/flow_review/web/test_variants.py
   import pytest
@@ -6627,8 +6627,8 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       assert result["findings"] == [] and result["status"] == "clean"
   ```
   Run: `pytest plugins/flow-review/engine/flow_review/web/test_variants.py -v -m web` → PASS.
-- [ ] **Step 6: verify.** `python -m pytest -q -m "not web"` from the repo root → all pass.
-- [ ] **Step 7: commit.**
+- [x] **Step 6: verify.** `python -m pytest -q -m "not web"` from the repo root → all pass.
+- [x] **Step 7: commit.**
   `git add plugins/flow-review/engine/flow_review/web/variants.py plugins/flow-review/engine/flow_review/web/test_variants.py`
   `git commit -m "feat(web): variant runner (viewport/theme/keyboard/reduced-motion/storage-state)"`
 
@@ -6702,7 +6702,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   is accepted (matches the required CLI shape) but not used inside `check()` itself, since the
   Canonical Budget bullet's cap test (`used + prior(ROLE) > cap`) has no per-surface term.
 
-- [ ] **Step 1: failing test.**
+- [x] **Step 1: failing test.**
   ```python
   # plugins/flow-review/engine/flow_review/test_budget.py
   from flow_review import budget
@@ -6759,8 +6759,8 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       est = budget.estimate(plan_units, tmp_path)
       assert est["webapp"] == 2 * 2100
   ```
-- [ ] **Step 2: run.** `pytest plugins/flow-review/engine/flow_review/test_budget.py -v` → FAIL.
-- [ ] **Step 3: implementation.**
+- [x] **Step 2: run.** `pytest plugins/flow-review/engine/flow_review/test_budget.py -v` → FAIL.
+- [x] **Step 3: implementation.**
   ```python
   # plugins/flow-review/engine/flow_review/budget.py
   from __future__ import annotations
@@ -6925,9 +6925,9 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       cap = cfg.budget.get("cap_tokens")
       sys.exit(budget.check(project_root, args.run, args.next_role, cap))
   ```
-- [ ] **Step 4: run.** `pytest plugins/flow-review/engine/flow_review/test_budget.py -v` → PASS.
-- [ ] **Step 5: verify.** `python -m pytest -q` from the repo root → all pass.
-- [ ] **Step 6: commit.**
+- [x] **Step 4: run.** `pytest plugins/flow-review/engine/flow_review/test_budget.py -v` → PASS.
+- [x] **Step 5: verify.** `python -m pytest -q` from the repo root → all pass.
+- [x] **Step 6: commit.**
   `git add plugins/flow-review/engine/flow_review/budget.py plugins/flow-review/engine/flow_review/test_budget.py plugins/flow-review/engine/flow_review/cli.py`
   `git commit -m "feat: budget priors, usage log, history medians, cap gate (A-7)"`
 
@@ -7015,7 +7015,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       print(_json.dumps(result))
   ```
 
-- [ ] **Step 1: failing test.**
+- [x] **Step 1: failing test.**
   ```python
   # plugins/flow-review/engine/flow_review/test_plan.py
   import json
@@ -7099,8 +7099,8 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       result = plan_mod.plan(project_root, mode="full")
       assert result["gaps"] == []
   ```
-- [ ] **Step 2: run.** `pytest plugins/flow-review/engine/flow_review/test_plan.py -v` → FAIL.
-- [ ] **Step 3: implementation.**
+- [x] **Step 2: run.** `pytest plugins/flow-review/engine/flow_review/test_plan.py -v` → FAIL.
+- [x] **Step 3: implementation.**
   ```python
   # plugins/flow-review/engine/flow_review/plan.py
   from __future__ import annotations
@@ -7195,9 +7195,9 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       }
   ```
   (CLI wiring is shown in the Interfaces block above.)
-- [ ] **Step 4: run.** `pytest plugins/flow-review/engine/flow_review/test_plan.py -v` → PASS.
-- [ ] **Step 5: verify.** `python -m pytest -q` from the repo root → all pass.
-- [ ] **Step 6: commit.**
+- [x] **Step 4: run.** `pytest plugins/flow-review/engine/flow_review/test_plan.py -v` → PASS.
+- [x] **Step 5: verify.** `python -m pytest -q` from the repo root → all pass.
+- [x] **Step 6: commit.**
   `git add plugins/flow-review/engine/flow_review/plan.py plugins/flow-review/engine/flow_review/test_plan.py plugins/flow-review/engine/flow_review/cli.py`
   `git commit -m "feat: GO-gate plan (flow-review plan --mode goal|auto|full|quick, A-19/A-20)"`
 
@@ -7273,7 +7273,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   **Route**: always `driver.page.url` at the moment the check runs (fall back to `"/"` before the
   first `goto`).
 
-- [ ] **Step 1: failing test — B1 addendum, `is_password`.**
+- [x] **Step 1: failing test — B1 addendum, `is_password`.**
   ```python
   # appended to plugins/flow-review/engine/flow_review/web/test_driver.py
   @pytest.mark.web
@@ -7296,15 +7296,15 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       assert d.is_password({"testid": "does-not-exist"}) is False
       d.close()
   ```
-- [ ] **Step 2: run, expect FAIL.**
+- [x] **Step 2: run, expect FAIL.**
   `pytest plugins/flow-review/engine/flow_review/web/test_driver.py -m web -k is_password -x`
   Expected: `AttributeError: 'WebDriver' object has no attribute 'is_password'`.
-- [ ] **Step 3: implementation.** Add the `is_password` method shown in the B1 addendum above to
+- [x] **Step 3: implementation.** Add the `is_password` method shown in the B1 addendum above to
   `WebDriver` in `driver.py` (after `snapshot`, before `console_errors`).
-- [ ] **Step 4: run, expect PASS.**
+- [x] **Step 4: run, expect PASS.**
   `pytest plugins/flow-review/engine/flow_review/web/test_driver.py -m web -k is_password -v`
 
-- [ ] **Step 5: failing test — `DriveSession`, pure logic, FAKE driver, no browser.**
+- [x] **Step 5: failing test — `DriveSession`, pure logic, FAKE driver, no browser.**
   ```python
   # plugins/flow-review/engine/flow_review/web/test_drive.py
   import argparse
@@ -7515,10 +7515,10 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       assert set(result) == {"url", "title", "snapshot", "shot", "new_findings", "console_errors"}
       assert driver.page.pressed == "Enter"
   ```
-- [ ] **Step 6: run, expect FAIL.**
+- [x] **Step 6: run, expect FAIL.**
   `pytest plugins/flow-review/engine/flow_review/web/test_drive.py -x`
   Expected: `ModuleNotFoundError: flow_review.web.drive`.
-- [ ] **Step 7: implementation — `DriveSession` (drive.py, part 1).**
+- [x] **Step 7: implementation — `DriveSession` (drive.py, part 1).**
   ```python
   # plugins/flow-review/engine/flow_review/web/drive.py
   import argparse
@@ -7667,10 +7667,10 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
               "console_errors": len(self.driver.console_errors()),
           }
   ```
-- [ ] **Step 8: run, expect PASS.**
+- [x] **Step 8: run, expect PASS.**
   `pytest plugins/flow-review/engine/flow_review/web/test_drive.py -v`
 
-- [ ] **Step 9: failing test — server + thin CLI client, in-process, FAKE driver factory (no browser, no subprocess).**
+- [x] **Step 9: failing test — server + thin CLI client, in-process, FAKE driver factory (no browser, no subprocess).**
   ```python
   # appended to plugins/flow-review/engine/flow_review/web/test_drive.py
 
@@ -7798,10 +7798,10 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       assert "--record" in captured["cmd"]  # from surface.record, not args.record
       assert "--viewport-width" in captured["cmd"]
   ```
-- [ ] **Step 10: run, expect FAIL.**
+- [x] **Step 10: run, expect FAIL.**
   `pytest plugins/flow-review/engine/flow_review/web/test_drive.py -k "server or cli_client or start_" -x`
   Expected: `AttributeError: module 'flow_review.web.drive' has no attribute '_post'` (and siblings).
-- [ ] **Step 11: implementation — server + thin client (drive.py, part 2, appended to the same file).**
+- [x] **Step 11: implementation — server + thin client (drive.py, part 2, appended to the same file).**
   ```python
   # plugins/flow-review/engine/flow_review/web/drive.py (continued)
 
@@ -8154,10 +8154,10 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   if __name__ == "__main__":
       raise SystemExit(main())
   ```
-- [ ] **Step 12: run, expect PASS.**
+- [x] **Step 12: run, expect PASS.**
   `pytest plugins/flow-review/engine/flow_review/web/test_drive.py -v`
 
-- [ ] **Step 13: failing test — `cli.py` wires the `drive` verb.**
+- [x] **Step 13: failing test — `cli.py` wires the `drive` verb.**
   ```python
   # appended to plugins/flow-review/engine/flow_review/test_cli.py
   def test_drive_verb_delegates_to_web_drive_main(monkeypatch, tmp_path):
@@ -8177,11 +8177,11 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
       assert captured["argv"] == ["goto", "--surface", "webapp", "--run", str(tmp_path), "/"]
       assert captured["project_root"] == tmp_path.resolve()
   ```
-- [ ] **Step 14: run, expect FAIL.**
+- [x] **Step 14: run, expect FAIL.**
   `pytest plugins/flow-review/engine/flow_review/test_cli.py -k drive -x`
   Expected: `SystemExit: 2` (argparse rejects the unknown `drive` verb) or a KeyError on
   `_stub("drive")`, since `"drive"` is not in `_STUB_VERBS`.
-- [ ] **Step 15: implementation — wire `drive` in `cli.py`.**
+- [x] **Step 15: implementation — wire `drive` in `cli.py`.**
   In `plugins/flow-review/engine/flow_review/cli.py`, remove `"drive"` from nowhere (it was
   never in `_STUB_VERBS` — leave that tuple as-is) and add, next to the other explicit verb
   wiring (alongside `event_parser` from A4):
@@ -8198,10 +8198,10 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   ```
   (`args.project_root` is already set by `_resolve_project_root` before `args.func(args)` runs,
   per A1's `main()`.)
-- [ ] **Step 16: run, expect PASS.**
+- [x] **Step 16: run, expect PASS.**
   `pytest plugins/flow-review/engine/flow_review/test_cli.py -k drive -v`
 
-- [ ] **Step 17: web-marked end-to-end cycle against the B0 fixture — sign-in reveals the low-contrast note.**
+- [x] **Step 17: web-marked end-to-end cycle against the B0 fixture — sign-in reveals the low-contrast note.**
   ```python
   # appended to plugins/flow-review/engine/flow_review/web/test_drive.py
   import pytest
@@ -8282,7 +8282,7 @@ git commit -m "feat(envsetup): managed venv setup (uv/pip), .flow-review/.gitign
   it. **The Python dict is the single source of truth; every agent file's Markdown table is a
   mirror of it, never the other way round.**
 
-- [ ] **Step 1: failing test first -- `test_config_profiles.py`:**
+- [x] **Step 1: failing test first -- `test_config_profiles.py`:**
 
 ```python
 from __future__ import annotations
@@ -8351,7 +8351,7 @@ def test_resolve_model_never_returns_inherit():
   Step 2: run `python -m pytest plugins/flow-review/engine/flow_review/test_config_profiles.py -q`
   -> FAIL (`PROFILES`/`ROLES`/`resolve_model` do not exist in `config.py` yet).
 
-- [ ] **Step 3: the content.**
+- [x] **Step 3: the content.**
 
   Append to `plugins/flow-review/engine/flow_review/config.py` (after `Config` and `Surface` land
   from A2; this is additive, never touching A2's own definitions):
@@ -8810,11 +8810,11 @@ def test_explorer_and_cold_eyes_never_name_an_mcp_or_direct_browser_tool(role):
         assert banned not in body_lower, f"{ROLE_TO_FILE[role]} body names {banned!r}"
 ```
 
-- [ ] **Step 4: run all three new test files -> PASS.**
-- [ ] **Step 5 (verify): `python -m pytest plugins/flow-review/engine/flow_review/test_config_profiles.py plugins/flow-review/test_agents.py -q`; also `flow-review model verifier` on a config with no override prints `opus`, and with `role_overrides={"verifier":"sonnet"}` prints `sonnet` (manual smoke check, not a unit test, since it exercises the CLI end to end).**
-- [ ] **Step 6 (commit): `feat(config,agents): add PROFILES/resolve_model and pinned-model agent definitions that mirror it`.**
+- [x] **Step 4: run all three new test files -> PASS.**
+- [x] **Step 5 (verify): `python -m pytest plugins/flow-review/engine/flow_review/test_config_profiles.py plugins/flow-review/test_agents.py -q`; also `flow-review model verifier` on a config with no override prints `opus`, and with `role_overrides={"verifier":"sonnet"}` prints `sonnet` (manual smoke check, not a unit test, since it exercises the CLI end to end).**
+- [x] **Step 6 (commit): `feat(config,agents): add PROFILES/resolve_model and pinned-model agent definitions that mirror it`.**
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   ```bash
   git add plugins/flow-review/engine/flow_review/config.py plugins/flow-review/engine/flow_review/test_config_profiles.py plugins/flow-review/engine/flow_review/cli.py plugins/flow-review/agents/fr-explorer.md plugins/flow-review/agents/fr-cold-eyes.md plugins/flow-review/agents/fr-lens.md plugins/flow-review/agents/fr-replay-repair.md plugins/flow-review/agents/fr-triage.md plugins/flow-review/agents/fr-verifier.md plugins/flow-review/test_agents.py
   git commit -m "feat(plugin): model routing in config.py + agent definitions that mirror i (C1)"
@@ -8843,7 +8843,7 @@ def test_explorer_and_cold_eyes_never_name_an_mcp_or_direct_browser_tool(role):
   pipeline (C5); A-20's destructive-opt-in question shape.
 - Produces: the orchestrator's run procedure and end-of-run report shape.
 
-- [ ] **Step 1: failing test first, full replacement of `test_skill.py`:**
+- [x] **Step 1: failing test first, full replacement of `test_skill.py`:**
 
 ```python
 from __future__ import annotations
@@ -8985,7 +8985,7 @@ def test_skill_report_names_the_hybrid_sections():
 
   Step 2: run `python -m pytest plugins/flow-review/skills/flow-review/test_skill.py -q` -> FAIL.
 
-- [ ] **Step 3: the content. Full replacement of**
+- [x] **Step 3: the content. Full replacement of**
   `plugins/flow-review/skills/flow-review/SKILL.md`:
 
 ````markdown
@@ -9138,11 +9138,11 @@ is not this tool's report:
 - nothing is faked to keep a surface alive.
 ````
 
-- [ ] **Step 4: re-run both test files -> PASS.**
-- [ ] **Step 5 (verify): `python -m pytest plugins/flow-review/skills/flow-review/test_skill.py -q`; grep SKILL.md for every CLI subcommand and Python name it cites (`flow-review plan`, `flow-review serve`, `flow-review budget check`, `flow-review model`, `flow-review event --type usage`, `ledger.suppressions_for`, `ledger.find_alias_candidates`, `ledger.record_alias`, `ledger.reconcile`, `manifest.apply_learnings`) against the Canonical Interfaces block to confirm none drifted while writing.**
-- [ ] **Step 6 (commit): `feat(skill): rewrite SKILL.md orchestrator for v2 modes, plan/serve/budget/model, and the hybrid report`.**
+- [x] **Step 4: re-run both test files -> PASS.**
+- [x] **Step 5 (verify): `python -m pytest plugins/flow-review/skills/flow-review/test_skill.py -q`; grep SKILL.md for every CLI subcommand and Python name it cites (`flow-review plan`, `flow-review serve`, `flow-review budget check`, `flow-review model`, `flow-review event --type usage`, `ledger.suppressions_for`, `ledger.find_alias_candidates`, `ledger.record_alias`, `ledger.reconcile`, `manifest.apply_learnings`) against the Canonical Interfaces block to confirm none drifted while writing.**
+- [x] **Step 6 (commit): `feat(skill): rewrite SKILL.md orchestrator for v2 modes, plan/serve/budget/model, and the hybrid report`.**
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   ```bash
   git add plugins/flow-review/skills/flow-review/SKILL.md plugins/flow-review/skills/flow-review/test_skill.py
   git commit -m "docs(plugin): skill.md orchestrator rewrite (C2)"
@@ -9166,7 +9166,7 @@ is not this tool's report:
 - Produces: the rubric `fr-lens` (C1) reads; the canonical finding shape
   `{surface_id, flow_id, rule, route, locator, sev, text, evidence, disposition}`.
 
-- [ ] **Step 1: failing test first -- add to `test_references.py`:**
+- [x] **Step 1: failing test first -- add to `test_references.py`:**
 
 ```python
 def test_no_lens_file_claims_it_runs_alone_or_never_drives_the_flow():
@@ -9216,7 +9216,7 @@ def test_every_lens_file_points_at_validation_not_arbitration():
   Step 2: run `python -m pytest plugins/flow-review/skills/flow-review/test_references.py -q` ->
   FAIL.
 
-- [ ] **Step 3: the content. Exact section replacements in all three lens files.**
+- [x] **Step 3: the content. Exact section replacements in all three lens files.**
 
   **`lenses/ui.md`, replace lines 1-9 (the opening) with:**
 
@@ -9328,11 +9328,11 @@ them.
   `locator` is empty or the field path; CLI: `route` is the subcommand invoked, `locator` is empty
   or the flag name). The section-3 text is identical across all three files -- copy it verbatim.
 
-- [ ] **Step 4: re-run `python -m pytest plugins/flow-review/skills/flow-review/test_references.py -q` -> PASS.**
-- [ ] **Step 5 (verify): also re-run the pre-existing lens-registry-parity tests in the same file (`test_every_lens_in_the_registry_declares_a_rubric_in_its_reference_file`, `test_a_rubric_declares_no_lens_the_registry_does_not_have`) to confirm the section edits did not touch any `### Lens -- \`name\`` heading.**
-- [ ] **Step 6 (commit): `docs(lenses): drop the consensus vote, adopt the canonical finding shape and disposition routing`.**
+- [x] **Step 4: re-run `python -m pytest plugins/flow-review/skills/flow-review/test_references.py -q` -> PASS.**
+- [x] **Step 5 (verify): also re-run the pre-existing lens-registry-parity tests in the same file (`test_every_lens_in_the_registry_declares_a_rubric_in_its_reference_file`, `test_a_rubric_declares_no_lens_the_registry_does_not_have`) to confirm the section edits did not touch any `### Lens -- \`name\`` heading.**
+- [x] **Step 6 (commit): `docs(lenses): drop the consensus vote, adopt the canonical finding shape and disposition routing`.**
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   ```bash
   git add plugins/flow-review/skills/flow-review/references/lenses/ui.md plugins/flow-review/skills/flow-review/references/lenses/api.md plugins/flow-review/skills/flow-review/references/lenses/cli.md plugins/flow-review/skills/flow-review/test_references.py
   git commit -m "docs(plugin): lens references rewrite (drop the consensus vote, one call p (C3)"
@@ -9364,7 +9364,7 @@ them.
   Playwright or MCP browser tools directly (A-24) -- `drive` is the only browser interface named
   in this file.
 
-- [ ] **Step 1: failing test first -- extend `test_references.py`:**
+- [x] **Step 1: failing test first -- extend `test_references.py`:**
 
 ```python
 def test_goals_reference_exists_and_is_required():
@@ -9423,7 +9423,7 @@ def test_goals_file_never_claims_the_explorer_writes_its_own_action_log_or_step_
   Step 2: run `python -m pytest plugins/flow-review/skills/flow-review/test_references.py -q` ->
   FAIL.
 
-- [ ] **Step 3: the content.**
+- [x] **Step 3: the content.**
 
   First, edit `test_references.py`'s `REQUIRED` list (owned jointly with C3's and C5's edits to
   the same file -- whichever of C3/C4/C5 merges last rebases onto the others' additions rather
@@ -9569,11 +9569,11 @@ file the finding honestly and let triage sort out whether it is new.
   password fields are masked in every screenshot by the driver.
 ````
 
-- [ ] **Step 4: re-run `python -m pytest plugins/flow-review/skills/flow-review/test_references.py -q` -> PASS.**
-- [ ] **Step 5 (verify): confirm `goals.md` is > 400 chars and has no emoji/BOM (existing `REQUIRED`-file tests already cover this once it's in the list).**
-- [ ] **Step 6 (commit): `docs(goals): add the goal-around set, cold-eyes/docs passes, and A-8/A-9 metrics via the canonical ledger functions`.**
+- [x] **Step 4: re-run `python -m pytest plugins/flow-review/skills/flow-review/test_references.py -q` -> PASS.**
+- [x] **Step 5 (verify): confirm `goals.md` is > 400 chars and has no emoji/BOM (existing `REQUIRED`-file tests already cover this once it's in the list).**
+- [x] **Step 6 (commit): `docs(goals): add the goal-around set, cold-eyes/docs passes, and A-8/A-9 metrics via the canonical ledger functions`.**
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   ```bash
   git add plugins/flow-review/skills/flow-review/references/goals.md plugins/flow-review/skills/flow-review/test_references.py
   git commit -m "docs(plugin): explorer + goals reference (C4)"
@@ -9599,7 +9599,7 @@ file the finding honestly and let triage sort out whether it is new.
   orchestrator (C2) and used by `fr-verifier` (C1) as its brief's mechanism;
   `references/validation.md`, the human-readable mirror.
 
-- [ ] **Step 1: failing test first, `plugins/flow-review/engine/flow_review/test_validate.py`:**
+- [x] **Step 1: failing test first, `plugins/flow-review/engine/flow_review/test_validate.py`:**
 
 ```python
 from __future__ import annotations
@@ -9757,7 +9757,7 @@ def test_orchestrator_catches_a_bad_refutation_and_the_finding_stands(tmp_path):
   Step 2: run `python -m pytest plugins/flow-review/engine/flow_review/test_validate.py -q` ->
   FAIL.
 
-- [ ] **Step 3: the content.**
+- [x] **Step 3: the content.**
 
   `plugins/flow-review/engine/flow_review/validate.py`:
 
@@ -9931,11 +9931,11 @@ Severity (`sev`) is set by the lens that filed the finding, or by the product-st
 filed finding survives, and how.
 ````
 
-- [ ] **Step 4: re-run `python -m pytest plugins/flow-review/engine/flow_review/test_validate.py -q` -> PASS.**
-- [ ] **Step 5 (verify): `python -m pytest plugins/flow-review/engine/flow_review/test_validate.py -q` plus `plugins/flow-review/skills/flow-review/test_references.py -q` (once C4's `REQUIRED` edit has landed, `validation.md`'s presence and stub-guard are covered there too).**
-- [ ] **Step 6 (commit): `feat(validate): add the P0/P1 replay-then-verify state machine and its reference doc`.**
+- [x] **Step 4: re-run `python -m pytest plugins/flow-review/engine/flow_review/test_validate.py -q` -> PASS.**
+- [x] **Step 5 (verify): `python -m pytest plugins/flow-review/engine/flow_review/test_validate.py -q` plus `plugins/flow-review/skills/flow-review/test_references.py -q` (once C4's `REQUIRED` edit has landed, `validation.md`'s presence and stub-guard are covered there too).**
+- [x] **Step 6 (commit): `feat(validate): add the P0/P1 replay-then-verify state machine and its reference doc`.**
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   ```bash
   git add plugins/flow-review/engine/flow_review/validate.py plugins/flow-review/engine/flow_review/test_validate.py plugins/flow-review/skills/flow-review/references/validation.md
   git commit -m "feat(plugin): validation pipeline (C5)"
@@ -9964,7 +9964,7 @@ filed finding survives, and how.
   call `apply` directly -- there is exactly one triage code path. Reopen = `apply(..., "open")`
   (A-15).
 
-- [ ] **Step 1: failing test first, `plugins/flow-review/engine/flow_review/test_triage.py`:**
+- [x] **Step 1: failing test first, `plugins/flow-review/engine/flow_review/test_triage.py`:**
 
 ```python
 from __future__ import annotations
@@ -10081,7 +10081,7 @@ def test_build_fix_brief_is_report_content_only(ledger_path):
 
   Step 2: run `python -m pytest plugins/flow-review/engine/flow_review/test_triage.py -q` -> FAIL.
 
-- [ ] **Step 3: the content.**
+- [x] **Step 3: the content.**
 
   `plugins/flow-review/engine/flow_review/triage.py`:
 
@@ -10173,11 +10173,11 @@ After a batch of triage transitions (`flow_review.triage.apply`), reconcile the 
 over writes that already happened, not a new judgment call.
 ````
 
-- [ ] **Step 4: re-run `python -m pytest plugins/flow-review/engine/flow_review/test_triage.py -q` -> PASS.**
-- [ ] **Step 5 (verify): `python -m pytest plugins/flow-review/engine/flow_review/test_triage.py -q`; grep `dashboard/serve.py` (E1, owned by D4) for `POST /triage` and confirm it imports and calls `flow_review.triage.apply` directly rather than shelling out to the CLI -- flag at merge if E1's draft does otherwise, since the Canonical Interfaces line is explicit that both callers hit the same function.**
-- [ ] **Step 6 (commit): `feat(triage): add the shared apply() transition, reason-required refutation, and the fix brief`.**
+- [x] **Step 4: re-run `python -m pytest plugins/flow-review/engine/flow_review/test_triage.py -q` -> PASS.**
+- [x] **Step 5 (verify): `python -m pytest plugins/flow-review/engine/flow_review/test_triage.py -q`; grep `dashboard/serve.py` (E1, owned by D4) for `POST /triage` and confirm it imports and calls `flow_review.triage.apply` directly rather than shelling out to the CLI -- flag at merge if E1's draft does otherwise, since the Canonical Interfaces line is explicit that both callers hit the same function.**
+- [x] **Step 6 (commit): `feat(triage): add the shared apply() transition, reason-required refutation, and the fix brief`.**
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   ```bash
   git add plugins/flow-review/engine/flow_review/triage.py plugins/flow-review/engine/flow_review/test_triage.py plugins/flow-review/agents/fr-triage.md
   git commit -m "feat(plugin): triage + fix briefs (C6)"
@@ -10209,7 +10209,7 @@ the four top-level docs, because their accurate final prose depends on module lo
 names from A1-C6 that settle only once those tasks are merged -- the haiku executor runs this task
 last (wave 11) specifically so it can grep the real merged files rather than a drafted guess.
 
-- [ ] **Step 1: failing test first -- edit `test_readme.py`:**
+- [x] **Step 1: failing test first -- edit `test_readme.py`:**
 
 ```python
 def test_readme_no_longer_claims_stdlib_only():
@@ -10247,15 +10247,15 @@ def test_docs_reference_the_ledger_not_the_v1_findings_module():
   Step 2: run `python -m pytest test_readme.py -q` -> FAIL (README/CONTRIBUTING/concepts.md still
   carry v1 facts).
 
-- [ ] **Step 3: the checklist. Each box is one fact to change; do them in order, each with a
+- [x] **Step 3: the checklist. Each box is one fact to change; do them in order, each with a
   verify grep run immediately after.**
 
-  - [ ] **3a. `README.md` -- drop the stdlib-only claim.**
+  - [x] **3a. `README.md` -- drop the stdlib-only claim.**
     - Old: `## Requirements\n\nPython 3.10+. Standard library only -- no \`pip install\`, no third-party packages.`
     - New: `## Requirements\n\nPython 3.10+. Setup runs \`flow-review setup-env\`, which creates a managed venv (uv, pip fallback) and installs only what the detected surfaces need -- Playwright and Pillow for \`[web]\`, more per surface at M2+. The engine itself is the \`flow-review\` PyPI package.`
     - Verify: `grep -n "Standard library only" README.md` -> no output.
 
-  - [ ] **3b. `README.md` -- fix the module path in "See it" / "What it writes".**
+  - [x] **3b. `README.md` -- fix the module path in "See it" / "What it writes".**
     - Old: any occurrence of `fr/findings.py`, `fr/prove.py`, `fr/drift.py`, `fr/config.py`,
       `fr/manifest.py`, `fr/lenses.py`.
     - New: `engine/flow_review/{ledger,prove,drift,config,manifest,lenses}.py` respectively
@@ -10266,11 +10266,11 @@ def test_docs_reference_the_ledger_not_the_v1_findings_module():
       event shape `{"ts", "sev", "location", "text"}`, update it to the canonical
       `{surface_id, flow_id, rule, route, locator, sev, text, evidence}` shape too).
 
-  - [ ] **3c. `README.md` -- Install section stays as-is** (the two `/plugin` commands are
+  - [x] **3c. `README.md` -- Install section stays as-is** (the two `/plugin` commands are
     unchanged by v2); no edit, but verify: `grep -n "/plugin marketplace add Bilohit/flow-review" README.md`
     still present.
 
-  - [ ] **3d. `docs/concepts.md` -- Surface entry drops v1-only fields.**
+  - [x] **3d. `docs/concepts.md` -- Surface entry drops v1-only fields.**
     - Old: ``name`, `kind`, `driver`, `launch`, `preconditions`, `destructive`, `provenance`.``
     - New: ``id`, `name`, `kind`, `driver`, `launch`, `cwd`, `env`, `options`, `preconditions`,
       `state`, `reset`, `creds`, `record`, `provenance` (A-4/A-5 -- `destructive: true` migrates to
@@ -10278,7 +10278,7 @@ def test_docs_reference_the_ledger_not_the_v1_findings_module():
     - Verify: `grep -n '"destructive"' docs/concepts.md` -> no output (except inside a sentence
       explicitly describing the v1-to-v2 migration, if kept for context).
 
-  - [ ] **3e. `docs/concepts.md` -- add `Ledger`, `Fingerprint`, `Budget`, `Validation` entries.**
+  - [x] **3e. `docs/concepts.md` -- add `Ledger`, `Fingerprint`, `Budget`, `Validation` entries.**
     - New paragraphs, each one sentence plus a module pointer, matching the file's existing style:
       `Ledger` -> `flow_review/ledger.py`, findings keyed by `LedgerEntry`, states include
       `false-positive`/`wont-fix`/`accepted`/`refuted` (sticky, A-15); `Fingerprint` ->
@@ -10289,13 +10289,13 @@ def test_docs_reference_the_ledger_not_the_v1_findings_module():
     - Verify: `grep -n "^## Ledger$\|^## Fingerprint$\|^## Budget$\|^## Validation$" docs/concepts.md`
       -> four matches.
 
-  - [ ] **3f. `docs/concepts.md` -- Finding entry stops citing `fr/findings.py`.**
+  - [x] **3f. `docs/concepts.md` -- Finding entry stops citing `fr/findings.py`.**
     - Old: `plugins/flow-review/skills/flow-review/fr/findings.py`.
     - New: `plugins/flow-review/engine/flow_review/ledger.py` (`ledger.reconcile` folds repeat
       demotion into the ledger; there is no standalone `findings.py` in v2).
     - Verify: `grep -n "fr/findings.py" docs/concepts.md` -> no output.
 
-  - [ ] **3g. `docs/walkthrough.md` -- rewrite the worked example to a `goal`-mode run.**
+  - [x] **3g. `docs/walkthrough.md` -- rewrite the worked example to a `goal`-mode run.**
     - Old: the walkthrough drives an unnamed default run with no GO-gate estimate shown and no
       dashboard URL.
     - New: add, after "2. First run -- the setup interview", a step showing `flow-review plan
@@ -10306,7 +10306,7 @@ def test_docs_reference_the_ledger_not_the_v1_findings_module():
     - Verify: `grep -n "flow-review plan\|flow-review serve\|flow-review triage" docs/walkthrough.md`
       -> at least one match each.
 
-  - [ ] **3h. `CONTRIBUTING.md` -- drop the stdlib-only opening line and update the module table.**
+  - [x] **3h. `CONTRIBUTING.md` -- drop the stdlib-only opening line and update the module table.**
     - Old: `flow-review is standard-library Python -- no dependencies to install, no build step.`
     - New: `flow-review's engine (\`plugins/flow-review/engine/flow_review/\`) is a managed-venv
       Python package (uv, pip fallback) with per-surface extras; the skill and agent files
@@ -10321,7 +10321,7 @@ def test_docs_reference_the_ledger_not_the_v1_findings_module():
       `grep -n "validate.py\|triage.py\|ledger.py\|budget.py\|plan.py" CONTRIBUTING.md` -> five
       matches.
 
-  - [ ] **3i. `references/testing.md` -- stop appending harness traps into the plugin's own
+  - [x] **3i. `references/testing.md` -- stop appending harness traps into the plugin's own
     install directory (audit M5).**
     - Old (closing paragraph of the per-driver-notes section): `These per-driver notes grow with
       the same discipline as the run's stuck-episode table: a novel harness trap earns one new
@@ -10339,7 +10339,7 @@ def test_docs_reference_the_ledger_not_the_v1_findings_module():
       -> no output; `grep -n ".flow-review/traps.md" plugins/flow-review/skills/flow-review/references/testing.md`
       -> at least one match.
 
-  - [ ] **3j. `references/stuck.md` -- same fix for the `HARNESS-stuck` line.**
+  - [x] **3j. `references/stuck.md` -- same fix for the `HARNESS-stuck` line.**
     - Old: `Not a product finding -- record it as an infra note, and **if the trap is novel,
       append it to \`testing.md\`** so the next run does not rediscover it.`
     - New: `Not a product finding -- record it as an infra note, and **if the trap is novel,
@@ -10348,7 +10348,7 @@ def test_docs_reference_the_ledger_not_the_v1_findings_module():
     - Verify: `grep -n "append it to \`testing.md\`" plugins/flow-review/skills/flow-review/references/stuck.md`
       -> no output.
 
-  - [ ] **3k. `references/evidence.md` -- replace the shell `printf` append idiom (audit item, the
+  - [x] **3k. `references/evidence.md` -- replace the shell `printf` append idiom (audit item, the
     idiom is shell-injectable) with the engine event writer.**
     - Old: the whole `### The append idiom -- use exactly this` subsection (the `TS=$(date ...)` /
       `printf` block and its four bullet points).
@@ -10372,7 +10372,7 @@ def test_docs_reference_the_ledger_not_the_v1_findings_module():
       -> no output; `grep -n "flow-review event --run" plugins/flow-review/skills/flow-review/references/evidence.md`
       -> at least one match.
 
-  - [ ] **3l. `references/setup.md` -- resolve the self-contradiction on unproven surfaces (audit
+  - [x] **3l. `references/setup.md` -- resolve the self-contradiction on unproven surfaces (audit
     item) and drop the dead v1 config vocabulary from sections 6-7.**
     - Old (end of section 4's `NOT_PROVEN` passage, no closing sentence currently present):
       nothing -- the contradiction is an omission, not a wrong sentence, so this is an addition,
@@ -10397,7 +10397,7 @@ def test_docs_reference_the_ledger_not_the_v1_findings_module():
     - Verify: `grep -n "lens_sets\|tester_agent\|evidence_types" plugins/flow-review/skills/flow-review/references/setup.md`
       -> no output.
 
-  - [ ] **3m. `templates/flows.md` -- note the row format is unchanged from v1.**
+  - [x] **3m. `templates/flows.md` -- note the row format is unchanged from v1.**
     - Old: nothing -- this is an addition after the "Row format" section's closing `BINDING` box.
     - New: `This row format is unchanged from v1 -- only \`config.json\` migrates (A-5); an
       existing \`.flow-review/flows.md\` in a project already using flow-review needs no changes
@@ -10405,13 +10405,13 @@ def test_docs_reference_the_ledger_not_the_v1_findings_module():
     - Verify: `grep -n "unchanged from v1" plugins/flow-review/skills/flow-review/templates/flows.md`
       -> one match.
 
-- [ ] **Step 4: re-run `python -m pytest test_readme.py -q` and `python -m pytest plugins/flow-review/skills/flow-review/test_references.py -q` -> PASS.**
-- [ ] **Step 5 (verify): `python -m pytest -q` from the repo root, full suite green; re-run every
+- [x] **Step 4: re-run `python -m pytest test_readme.py -q` and `python -m pytest plugins/flow-review/skills/flow-review/test_references.py -q` -> PASS.**
+- [x] **Step 5 (verify): `python -m pytest -q` from the repo root, full suite green; re-run every
   grep in 3a-3m in one pass as a final sweep, since edits made later in the checklist (e.g. 3l's
   renumbering) can reintroduce a stale cross-reference an earlier grep already cleared.**
-- [ ] **Step 6 (commit): `docs: sync setup/testing/stuck/evidence references and top-level docs to v2`.**
+- [x] **Step 6 (commit): `docs: sync setup/testing/stuck/evidence references and top-level docs to v2`.**
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   ```bash
   git add plugins/flow-review/skills/flow-review/references/setup.md plugins/flow-review/skills/flow-review/references/testing.md plugins/flow-review/skills/flow-review/references/stuck.md plugins/flow-review/skills/flow-review/references/evidence.md plugins/flow-review/skills/flow-review/templates/flows.md README.md docs/concepts.md docs/walkthrough.md CONTRIBUTING.md test_readme.py
   git commit -m "docs(plugin): docs sync (C7)"
@@ -10488,7 +10488,7 @@ Produces — HTTP endpoints, `127.0.0.1` only, ephemeral port (`0`) by default s
 
 **Steps:**
 
-- [ ] **Step 1: red.** Write the test below. Run `pytest plugins/flow-review/engine/flow_review/dashboard/test_serve.py -q` → FAIL (`serve.py` doesn't exist).
+- [x] **Step 1: red.** Write the test below. Run `pytest plugins/flow-review/engine/flow_review/dashboard/test_serve.py -q` → FAIL (`serve.py` doesn't exist).
 
 ```python
 # plugins/flow-review/engine/flow_review/dashboard/test_serve.py
@@ -10591,7 +10591,7 @@ def test_server_binds_localhost_only(tmp_path):
         server.shutdown()
 ```
 
-- [ ] **Step 2: green.** Implement `serve.py`, run the test again → PASS.
+- [x] **Step 2: green.** Implement `serve.py`, run the test again → PASS.
 
 ```python
 # plugins/flow-review/engine/flow_review/dashboard/serve.py
@@ -10742,7 +10742,7 @@ def serve(project_root: Path, run_dir: Path, cfg, port: int = 0) -> None:
 
 **Commit:** `feat(dashboard): serve.py — localhost HTTP server, SSE, triage POST`
 
-- [ ] **Step 3: Commit.**
+- [x] **Step 3: Commit.**
   ```bash
   git add plugins/flow-review/engine/flow_review/dashboard/serve.py plugins/flow-review/engine/flow_review/dashboard/test_serve.py plugins/flow-review/engine/flow_review/cli.py
   git commit -m "feat(dashboard): flow-review serve (E1)"
@@ -10784,7 +10784,7 @@ Produces:
 
 **Steps:**
 
-- [ ] **Step 1: red (fold).** Write the test below. Run `pytest plugins/flow-review/engine/flow_review/dashboard/test_state.py -q` → FAIL (`state.py` missing).
+- [x] **Step 1: red (fold).** Write the test below. Run `pytest plugins/flow-review/engine/flow_review/dashboard/test_state.py -q` → FAIL (`state.py` missing).
 
 ```python
 # plugins/flow-review/engine/flow_review/dashboard/test_state.py
@@ -10935,7 +10935,7 @@ def test_ledger_findings_pass_through_with_canonical_field_names(tmp_path, monke
     assert body["badge"]["counts"]["P1"] == 1
 ```
 
-- [ ] **Step 2: green (fold).** Implement `state.py`, run again → PASS.
+- [x] **Step 2: green (fold).** Implement `state.py`, run again → PASS.
 
 ```python
 # plugins/flow-review/engine/flow_review/dashboard/state.py
@@ -11173,7 +11173,7 @@ def _build_report(findings: list[dict], goals: dict[str, dict], not_exercised: l
     }
 ```
 
-- [ ] **Step 3: red (static).** Write the test below. Run `pytest plugins/flow-review/engine/flow_review/dashboard/test_static.py -q` → FAIL (`static.py` missing).
+- [x] **Step 3: red (static).** Write the test below. Run `pytest plugins/flow-review/engine/flow_review/dashboard/test_static.py -q` → FAIL (`static.py` missing).
 
 ```python
 # plugins/flow-review/engine/flow_review/dashboard/test_static.py
@@ -11262,7 +11262,7 @@ def test_static_thumbnails_are_downscaled_jpeg_data_uris_linking_to_full_res(tmp
     assert max(thumb.size) <= 320  # proposed max edge
 ```
 
-- [ ] **Step 4: green (static).** Implement `static.py`, run again → PASS.
+- [x] **Step 4: green (static).** Implement `static.py`, run again → PASS.
 
 ```python
 # plugins/flow-review/engine/flow_review/dashboard/static.py
@@ -11384,7 +11384,7 @@ def render_static(project_root: Path, run_dir: Path, cfg, out_path: Path) -> Non
 
 **Commit:** `feat(dashboard): state fold (canonical field names, id-matched withdraw, budget.used) + one-file static fallback (A-21)`
 
-- [ ] **Step 5: Commit.**
+- [x] **Step 5: Commit.**
   ```bash
   git add plugins/flow-review/engine/flow_review/dashboard/state.py plugins/flow-review/engine/flow_review/dashboard/test_state.py plugins/flow-review/engine/flow_review/dashboard/static.py plugins/flow-review/engine/flow_review/dashboard/test_static.py
   git commit -m "feat(dashboard): page-state fold (events + ledger + budget) and static fallba (E2)"
@@ -11408,11 +11408,11 @@ def render_static(project_root: Path, run_dir: Path, cfg, out_path: Path) -> Non
 
 **Steps:**
 
-- [ ] **Step 1: `impeccable init`.** Mode = **Operate** (a dashboard the tester watches and triages from, per `impeccable`'s mode table: "App UI, dashboards... outrank expression"). Deliverable: `plugins/flow-review/skills/flow-review/PRODUCT.md` capturing what flow-review is, who watches this dashboard, the Operate mode choice, and the locked design rules from spec §11 (no subheadings/descriptions, tooltips as accessible names, one findings badge, progressive disclosure) as durable constraints. Exit criterion: `PRODUCT.md` exists and states the mode + the locked rules.
+- [x] **Step 1: `impeccable init`.** Mode = **Operate** (a dashboard the tester watches and triages from, per `impeccable`'s mode table: "App UI, dashboards... outrank expression"). Deliverable: `plugins/flow-review/skills/flow-review/PRODUCT.md` capturing what flow-review is, who watches this dashboard, the Operate mode choice, and the locked design rules from spec §11 (no subheadings/descriptions, tooltips as accessible names, one findings badge, progressive disclosure) as durable constraints. Exit criterion: `PRODUCT.md` exists and states the mode + the locked rules.
 
-- [ ] **Step 2: confirm the direction** (do not reopen it) — Schibsted Grotesk / IBM Plex Mono / cool neutrals / hairlines / 4px radius / one blue accent / Phosphor icons. Deliverable: a design-direction section in `PRODUCT.md` recording the confirmation. Exit criterion: present in `PRODUCT.md`.
+- [x] **Step 2: confirm the direction** (do not reopen it) — Schibsted Grotesk / IBM Plex Mono / cool neutrals / hairlines / 4px radius / one blue accent / Phosphor icons. Deliverable: a design-direction section in `PRODUCT.md` recording the confirmation. Exit criterion: present in `PRODUCT.md`.
 
-- [ ] **Step 3: font download + subset (concrete commands).** Deliverable: `page/fonts/*.woff2`, two weights of Schibsted Grotesk (Regular 400, SemiBold 600) and one of IBM Plex Mono (Regular 400) — a UI face needs a body/emphasis pair, the mono face is numbers/logs only and needs no emphasis weight. Exit criterion: the four (3) files exist and are the **Latin subset only** (this is a dashboard, not an i18n product at M1).
+- [x] **Step 3: font download + subset (concrete commands).** Deliverable: `page/fonts/*.woff2`, two weights of Schibsted Grotesk (Regular 400, SemiBold 600) and one of IBM Plex Mono (Regular 400) — a UI face needs a body/emphasis pair, the mono face is numbers/logs only and needs no emphasis weight. Exit criterion: the four (3) files exist and are the **Latin subset only** (this is a dashboard, not an i18n product at M1).
   ```bash
   pip install fonttools brotli
   # Google Fonts' standard "latin" unicode range:
@@ -11430,9 +11430,9 @@ def render_static(project_root: Path, run_dir: Path, cfg, out_path: Path) -> Non
   ```
   **Why self-hosted, not a Google Fonts `<link>`:** `serve.py` binds `127.0.0.1` and the whole engine principle is "never calls an LLM API" / works offline — a CI box or an air-gapped dev machine running `flow-review serve` must not depend on a font CDN being reachable, and a live-push dashboard that stalls on a font request mid-run is exactly the kind of failure this rebuild is fixing. Both families are OFL-licensed, self-hosting is explicitly permitted.
 
-- [ ] **Step 4: icons — inline SVG sprite, no runtime CDN.** Deliverable: `page/icons/sprite.svg`, a single `<svg>` with one `<symbol id="...">` per Phosphor glyph actually used (severity, triage actions, theme toggle, drawer close, ...), hand-picked from Phosphor's SVG source (MIT-licensed) — not fetched at runtime. Referenced from markup as `<svg><use href="/icons/sprite.svg#name"></use></svg>` when served, and inlined directly by `static.py` (E2) for the one-file fallback. Exit criterion: `sprite.svg` exists with at least the glyphs E4 needs (severity dot, check/x/flag/reopen for triage, sun/moon for theme, x for drawer close).
+- [x] **Step 4: icons — inline SVG sprite, no runtime CDN.** Deliverable: `page/icons/sprite.svg`, a single `<svg>` with one `<symbol id="...">` per Phosphor glyph actually used (severity, triage actions, theme toggle, drawer close, ...), hand-picked from Phosphor's SVG source (MIT-licensed) — not fetched at runtime. Referenced from markup as `<svg><use href="/icons/sprite.svg#name"></use></svg>` when served, and inlined directly by `static.py` (E2) for the one-file fallback. Exit criterion: `sprite.svg` exists with at least the glyphs E4 needs (severity dot, check/x/flag/reopen for triage, sun/moon for theme, x for drawer close).
 
-- [ ] **Step 5: tokens — red.** Write the test below. Run `pytest plugins/flow-review/engine/flow_review/dashboard/test_tokens.py -q` → FAIL (`tokens.css` missing).
+- [x] **Step 5: tokens — red.** Write the test below. Run `pytest plugins/flow-review/engine/flow_review/dashboard/test_tokens.py -q` → FAIL (`tokens.css` missing).
 
 ```python
 # plugins/flow-review/engine/flow_review/dashboard/test_tokens.py
@@ -11482,7 +11482,7 @@ def test_palette_validator_run_is_recorded_in_a_comment():
     )
 ```
 
-- [ ] **Step 6: tokens — green.** Write `page/tokens.css` (one token set on `:root`, dark overrides under both `@media (prefers-color-scheme: dark)` guarded by `:root:not([data-theme="light"])` and an explicit `:root[data-theme="dark"]` block for the in-page toggle from E4). Minimum surface: `--bg`, `--panel`, `--border`, `--text-1`, `--text-2`, `--accent` (the one blue), `--radius: 4px`, `--sev-p0/p1/p2` (status colors — reserved, never reused per dataviz's non-negotiables), `--font-ui` (Schibsted Grotesk stack incl. the self-hosted `@font-face`s from Step 3), `--font-mono` (IBM Plex Mono stack), plus a spacing scale (`--space-1..6`).
+- [x] **Step 6: tokens — green.** Write `page/tokens.css` (one token set on `:root`, dark overrides under both `@media (prefers-color-scheme: dark)` guarded by `:root:not([data-theme="light"])` and an explicit `:root[data-theme="dark"]` block for the in-page toggle from E4). Minimum surface: `--bg`, `--panel`, `--border`, `--text-1`, `--text-2`, `--accent` (the one blue), `--radius: 4px`, `--sev-p0/p1/p2` (status colors — reserved, never reused per dataviz's non-negotiables), `--font-ui` (Schibsted Grotesk stack incl. the self-hosted `@font-face`s from Step 3), `--font-mono` (IBM Plex Mono stack), plus a spacing scale (`--space-1..6`).
 
   **One-time manual palette validation (A-23) — run once when the severity hex values are picked, then record the exact command and result as a comment in `tokens.css`** (never re-run in CI; re-run only if the hex values themselves change):
   ```css
@@ -11498,7 +11498,7 @@ def test_palette_validator_run_is_recorded_in_a_comment():
 
 **Commit:** `feat(dashboard): design foundation — PRODUCT.md, tokens.css (both themes, validated severity palette), subsetted self-hosted fonts, icon sprite`
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   ```bash
   git add plugins/flow-review/skills/flow-review/PRODUCT.md plugins/flow-review/engine/flow_review/dashboard/page/tokens.css plugins/flow-review/engine/flow_review/dashboard/page/icons/sprite.svg plugins/flow-review/engine/flow_review/dashboard/test_tokens.py
   git commit -m "feat(dashboard): design foundation (E3)"
@@ -11527,7 +11527,7 @@ Produces: the rendered page — no new server interface, this is the client.
 
 `app.js` is built up across the six steps below; each step's code block is additive — by Step 6 the file contains everything shown. Tests are structural (regex over the source) rather than a headless-browser harness per step, matching the rest of this task list's pattern; true rendered-DOM/visual correctness is exercised by E5's Playwright screenshot pass and this task's own manual Verify.
 
-- [ ] **Step 1: bootstrap & state load — red.** Write the test, run it → FAIL.
+- [x] **Step 1: bootstrap & state load — red.** Write the test, run it → FAIL.
 
 ```python
 # plugins/flow-review/engine/flow_review/dashboard/test_page_build.py (grows across steps 1-6)
@@ -11569,7 +11569,7 @@ def test_index_has_no_h2_to_h6_or_description_markup():
     assert "<p " not in html and "<p>" not in html, "no description paragraphs in the shell"
 ```
 
-- [ ] **Step 1: bootstrap & state load — green.**
+- [x] **Step 1: bootstrap & state load — green.**
 
 ```javascript
 // page/app.js (grows across all 6 steps -- this is the top of the file)
@@ -11639,7 +11639,7 @@ document.addEventListener('DOMContentLoaded', boot);
 
 Run Step 1's test → PASS.
 
-- [ ] **Step 2: live patch preserving scroll + open drawer — red.**
+- [x] **Step 2: live patch preserving scroll + open drawer — red.**
 
 ```python
 def test_patch_preserves_lane_scroll_and_open_drawer():
@@ -11650,7 +11650,7 @@ def test_patch_preserves_lane_scroll_and_open_drawer():
     assert "innerHTML = ''" not in js and 'innerHTML = ""' not in js
 ```
 
-- [ ] **Step 2: green.**
+- [x] **Step 2: green.**
 
 ```javascript
 // replaces the earlier patch()/render() in app.js
@@ -11666,7 +11666,7 @@ function patch(newState) {
 
 Run → PASS.
 
-- [ ] **Step 3: lane grid render (auto-fit, keyed, text-safe) — red.**
+- [x] **Step 3: lane grid render (auto-fit, keyed, text-safe) — red.**
 
 ```python
 def test_lanes_grid_uses_auto_fit_minmax_not_fixed_columns():
@@ -11687,7 +11687,7 @@ def test_render_lanes_is_keyed_and_uses_textcontent_for_user_text():
     assert ".innerHTML =" not in js, "user text (step labels, API/CLI output) must never use innerHTML (M8)"
 ```
 
-- [ ] **Step 3: green.**
+- [x] **Step 3: green.**
 
 ```css
 /* page/app.css -- structural only, every color a var(--token) from tokens.css */
@@ -11740,7 +11740,7 @@ function renderLanes(lanes) {
 
 Run → PASS.
 
-- [ ] **Step 4: badge (tint, hover split, click list, one eased P0 flash) — red.**
+- [x] **Step 4: badge (tint, hover split, click list, one eased P0 flash) — red.**
 
 ```python
 def test_badge_tint_hover_click_and_p0_flash():
@@ -11753,7 +11753,7 @@ def test_badge_tint_hover_click_and_p0_flash():
     assert "addEventListener('click'" in js or 'addEventListener("click"' in js
 ```
 
-- [ ] **Step 4: green.**
+- [x] **Step 4: green.**
 
 ```javascript
 function renderBadge(badge) {
@@ -11786,7 +11786,7 @@ document.querySelector('[data-role="badge"]').addEventListener('click', () => {
 
 Run → PASS.
 
-- [ ] **Step 5: drawer (evidence per type) + triage icon buttons + keyboard shortcuts — red.**
+- [x] **Step 5: drawer (evidence per type) + triage icon buttons + keyboard shortcuts — red.**
 
 ```python
 def test_drawer_evidence_dispatch_and_triage_and_keyboard_shortcuts():
@@ -11802,7 +11802,7 @@ def test_drawer_evidence_dispatch_and_triage_and_keyboard_shortcuts():
     assert "'Escape'" in js or '"Escape"' in js
 ```
 
-- [ ] **Step 5: green.**
+- [x] **Step 5: green.**
 
 ```javascript
 function openDrawer(findingId) {
@@ -11900,7 +11900,7 @@ function focusAdjacentFinding(delta) {
 
 Run → PASS.
 
-- [ ] **Step 6: theme toggle (OS + explicit, persisted) — red.**
+- [x] **Step 6: theme toggle (OS + explicit, persisted) — red.**
 
 ```python
 def test_theme_toggle_sets_data_theme_and_persists():
@@ -11911,7 +11911,7 @@ def test_theme_toggle_sets_data_theme_and_persists():
     assert "try {" in js and "catch" in js, "storage access must be wrapped -- private windows can throw"
 ```
 
-- [ ] **Step 6: green.**
+- [x] **Step 6: green.**
 
 ```javascript
 function applyStoredTheme() {
@@ -11938,7 +11938,7 @@ Run all of `test_page_build.py` → PASS.
 
 **Commit:** `feat(dashboard): run page — auto-grid lanes, badge, drawer, live SSE patching, triage shortcuts, theme toggle`
 
-- [ ] **Step 7: Commit.**
+- [x] **Step 7: Commit.**
   ```bash
   git add plugins/flow-review/engine/flow_review/dashboard/page/index.html plugins/flow-review/engine/flow_review/dashboard/page/app.js plugins/flow-review/engine/flow_review/dashboard/page/app.css plugins/flow-review/engine/flow_review/dashboard/test_page_build.py
   git commit -m "feat(dashboard): run page build (E4)"
@@ -11960,15 +11960,15 @@ Run all of `test_page_build.py` → PASS.
 
 **Ordered design-pass steps (each a Skill invocation with its deliverable and exit criterion):**
 
-- [ ] **Step 1: `impeccable` — new-work pass, then `polish`.** Target: the served run page (point it at `page/index.html` running under `flow-review serve` against the fixture app from B0, so it has real data to render, not an empty shell). Deliverable: edits to `app.css`/`app.js`/`index.html`. Exit criterion: a second `impeccable audit` (or the same command's own pass/fail) reports no craft-floor violations; spot-check against `reference/craft-floor.md`'s absolute bans.
-- [ ] **Step 2: `taste-skill:taste-skill`.** Anti-slop check against the same page. Deliverable: direct edits removing any templated/generic-AI visual tells. Exit criterion: taste-skill's own pre-flight check passes clean.
-- [ ] **Step 3: `uiux-pro-max`.** Design-intelligence review: visual hierarchy, micro-interactions, accessibility, modern-aesthetic standards. Deliverable: a findings list, applied. Exit criterion: no open "critical" or "serious" findings remain.
-- [ ] **Step 4: `hallmark` (audit mode).** Anti-AI-slop audit specifically. Deliverable: audit findings, applied. Exit criterion: hallmark's audit re-run is clean.
-- [ ] **Step 5: `animotion`.** Motion library/patterns for the badge's eased P0 highlight, drawer open/close, live-patch transitions. Deliverable: CSS transitions/keyframes wired, all gated behind `@media (prefers-reduced-motion: reduce)`. Exit criterion: every animation added has a reduced-motion counterpart (checked mechanically below).
+- [x] **Step 1: `impeccable` — new-work pass, then `polish`.** Target: the served run page (point it at `page/index.html` running under `flow-review serve` against the fixture app from B0, so it has real data to render, not an empty shell). Deliverable: edits to `app.css`/`app.js`/`index.html`. Exit criterion: a second `impeccable audit` (or the same command's own pass/fail) reports no craft-floor violations; spot-check against `reference/craft-floor.md`'s absolute bans.
+- [x] **Step 2: `taste-skill:taste-skill`.** Anti-slop check against the same page. Deliverable: direct edits removing any templated/generic-AI visual tells. Exit criterion: taste-skill's own pre-flight check passes clean.
+- [x] **Step 3: `uiux-pro-max`.** Design-intelligence review: visual hierarchy, micro-interactions, accessibility, modern-aesthetic standards. Deliverable: a findings list, applied. Exit criterion: no open "critical" or "serious" findings remain.
+- [x] **Step 4: `hallmark` (audit mode).** Anti-AI-slop audit specifically. Deliverable: audit findings, applied. Exit criterion: hallmark's audit re-run is clean.
+- [x] **Step 5: `animotion`.** Motion library/patterns for the badge's eased P0 highlight, drawer open/close, live-patch transitions. Deliverable: CSS transitions/keyframes wired, all gated behind `@media (prefers-reduced-motion: reduce)`. Exit criterion: every animation added has a reduced-motion counterpart (checked mechanically below).
 
 **Mechanical rule-lint — TDD, full code:**
 
-- [ ] **Step 6: rule-lint — red.** Write the test below. Run `pytest plugins/flow-review/engine/flow_review/dashboard/test_rule_lint.py -q` → FAIL (pre-existing E4 output likely still has gaps: no reduced-motion query yet on every animation, animotion not yet applied).
+- [x] **Step 6: rule-lint — red.** Write the test below. Run `pytest plugins/flow-review/engine/flow_review/dashboard/test_rule_lint.py -q` → FAIL (pre-existing E4 output likely still has gaps: no reduced-motion query yet on every animation, animotion not yet applied).
 
 ```python
 # plugins/flow-review/engine/flow_review/dashboard/test_rule_lint.py
@@ -12025,11 +12025,11 @@ def test_both_themes_defined_in_tokens():
     assert '[data-theme="light"]' in css or ':root:not([data-theme="dark"])' in css
 ```
 
-- [ ] **Step 7: rule-lint — green.** Apply the design-pass fixes from Steps 1-5 until every assertion holds. Run again → PASS.
+- [x] **Step 7: rule-lint — green.** Apply the design-pass fixes from Steps 1-5 until every assertion holds. Run again → PASS.
 
 **Manual screenshot review (Playwright, human/agent-reviewed, not pass/fail asserted beyond "captured"):**
 
-- [ ] **Step 8: screenshot capture harness.**
+- [x] **Step 8: screenshot capture harness.**
 
 ```python
 # plugins/flow-review/engine/flow_review/dashboard/test_screenshots.py
@@ -12073,7 +12073,7 @@ def test_capture_theme_and_lane_variants(theme, lane_count, dashboard_server, tm
 
 **Commit:** `polish(dashboard): design pass (impeccable/taste-skill/uiux-pro-max/hallmark/animotion) + rule-lint gate`
 
-- [ ] **Step 9: Commit.**
+- [x] **Step 9: Commit.**
   ```bash
   git add plugins/flow-review/engine/flow_review/dashboard/test_rule_lint.py plugins/flow-review/engine/flow_review/dashboard/test_screenshots.py
   git commit -m "feat(dashboard): full design pass + mechanical rule-lint + screenshot review (E5)"
@@ -12086,38 +12086,126 @@ Each checkpoint is run by an **opus** reviewer using superpowers:verification-be
 
 ### Task CP1: Foundations checkpoint
 **Executor:** opus · **Depends:** A1-A10 · **Wave:** 4
-- [ ] **Step 1: Full suite.** Run `python -m pytest -q` from the repo root. Expected: all pass, 0 errors, no skips except `web`-marked tests.
-- [ ] **Step 2: No import-time stdout side effects.** Run `python -m pytest -q plugins/flow-review/skills/flow-review/test_references.py -k stdout`. Expected: PASS.
-- [ ] **Step 3: CLI smoke.** Run `python -m flow_review.cli --help`. Expected: exit 0, listing `setup-env migrate prove plan event replay serve triage ledger budget model`.
-- [ ] **Step 4: v1 migration end to end.** Write the v1 config fixture from A3's test module into `<tmp>/.flow-review/config.json`, then run `flow-review migrate --project <tmp>`. Expected: `<tmp>/.flow-review/config.v1.bak` equals the original bytes, `config.json` has `"schema_version": 2`, and a change summary is printed.
-- [ ] **Step 5: Audit closure table.** For each audit item C1, C4, C5, H1-H4, H7-H11, M1, M3, M8, M9, name the test that now fails if the defect returns. Any item without a test = checkpoint fail.
-- [ ] **Step 6: Review.** Code-review the A-series diff against the spec §2 and Canonical Interfaces. Record the findings in the PR/commit notes.
+- [x] **Step 1: Full suite.** Run `python -m pytest -q` from the repo root. Expected: all pass, 0 errors, no skips except `web`-marked tests.
+- [x] **Step 2: No import-time stdout side effects.** Run `python -m pytest -q plugins/flow-review/skills/flow-review/test_references.py -k stdout`. Expected: PASS.
+- [x] **Step 3: CLI smoke.** Run `python -m flow_review.cli --help`. Expected: exit 0, listing `setup-env migrate prove plan event replay serve triage ledger budget model`.
+- [x] **Step 4: v1 migration end to end.** Write the v1 config fixture from A3's test module into `<tmp>/.flow-review/config.json`, then run `flow-review migrate --project <tmp>`. Expected: `<tmp>/.flow-review/config.v1.bak` equals the original bytes, `config.json` has `"schema_version": 2`, and a change summary is printed.
+- [x] **Step 5: Audit closure table.** For each audit item C1, C4, C5, H1-H4, H7-H11, M1, M3, M8, M9, name the test that now fails if the defect returns. Any item without a test = checkpoint fail.
+- [x] **Step 6: Review.** Code-review the A-series diff against the spec §2 and Canonical Interfaces. Record the findings in the PR/commit notes.
 
 ### Task CP2: Engine loop checkpoint
 **Executor:** opus · **Depends:** B0-B10, CP1 · **Wave:** 9
-- [ ] **Step 1: Browser install.** Run `python -m playwright install chromium`. Expected: exit 0.
-- [ ] **Step 2: Full suite including web.** Run `python -m pytest -q -m "web or not web"`. Expected: all pass.
-- [ ] **Step 3: Fixture e2e without recording.** Run `flow-review plan --mode quick --goal "sign in" --json` against the fixture project. Expected: the JSON has the estimate and gaps; nothing is written under `.flow-review/recordings/`.
-- [ ] **Step 4: Fixture e2e with recording.** Record the fixture's sign-in flow (B2 test helper), then run `flow-review replay`. Expected: exit 1, with findings for each planted measurable bug (`contrast.aa`, `token.color` near-miss, `rect.overlap`, `http.5xx`). Then break a locator in the fixture copy and run it again. Expected: exit 2 and `.flow-review/divergences.json` written.
-- [ ] **Step 5: Secrets.** Grep the run folder, ledger and recordings for the fixture password value. Expected: no match.
-- [ ] **Step 6: Review.** Opus review of the B-series against spec §3, §5, §6, §9, §10 and A-1..A-3, A-7, A-16..A-20.
+- [x] **Step 1: Browser install.** Run `python -m playwright install chromium`. Expected: exit 0.
+- [x] **Step 2: Full suite including web.** Run `python -m pytest -q -m "web or not web"`. Expected: all pass.
+- [x] **Step 3: Fixture e2e without recording.** Run `flow-review plan --mode quick --goal "sign in" --json` against the fixture project. Expected: the JSON has the estimate and gaps; nothing is written under `.flow-review/recordings/`.
+- [x] **Step 4: Fixture e2e with recording.** Record the fixture's sign-in flow (B2 test helper), then run `flow-review replay`. Expected: exit 1, with findings for each planted measurable bug (`contrast.aa`, `token.color` near-miss, `rect.overlap`, `http.5xx`). Then break a locator in the fixture copy and run it again. Expected: exit 2 and `.flow-review/divergences.json` written.
+- [x] **Step 5: Secrets.** Grep the run folder, ledger and recordings for the fixture password value. Expected: no match.
+- [x] **Step 6: Review.** Opus review of the B-series against spec §3, §5, §6, §9, §10 and A-1..A-3, A-7, A-16..A-20.
 
 ### Task CP3: Plugin dry-run checkpoint
 **Executor:** opus · **Depends:** C1-C7, E1-E5, CP2 · **Wave:** 12
-- [ ] **Step 1: Suite.** Run `python -m pytest -q -m "web or not web"`. Expected: all pass.
-- [ ] **Step 2: Install the plugin locally.** From the repo root in a fresh Claude Code session: `/plugin marketplace add ./` then `/plugin install flow-review@flow-review`. Expected: the agents are listed with pinned models (`/agents`).
-- [ ] **Step 3: Quick run.** In a copy of the fixture project: `/flow-review quick sign in`. Expected: the GO gate shows the estimate + one destructive multi-select (if any persistent surface) + the creds gap; `serve` prints a localhost URL; the page updates live; the ledger contains the planted measurable findings; no model is `inherit` in the dispatch log.
-- [ ] **Step 4: Auto run.** `/flow-review` (no goal). Expected: cold-eyes then docs pass; the docs-only page appears as a goal-card metric "from docs" (first miss, A-8), not as a finding.
-- [ ] **Step 5: Triage round trip.** Mark one finding false-positive in the drawer with a keyboard shortcut; re-run quick. Expected: it stays collapsed with runs_seen+1 (A-15), and the lens prompt shows it as a suppression.
-- [ ] **Step 6: Review.** Opus review of the C- and E-series against spec §4, §5, §7, §8, §11 and the dashboard rules.
+- [x] **Step 1: Suite.** Run `python -m pytest -q -m "web or not web"`. Expected: all pass.
+- [x] **Step 2: Install the plugin locally.** From the repo root in a fresh Claude Code session: `/plugin marketplace add ./` then `/plugin install flow-review@flow-review`. Expected: the agents are listed with pinned models (`/agents`).
+- [x] **Step 3: Quick run.** In a copy of the fixture project: `/flow-review quick sign in`. Expected: the GO gate shows the estimate + one destructive multi-select (if any persistent surface) + the creds gap; `serve` prints a localhost URL; the page updates live; the ledger contains the planted measurable findings; no model is `inherit` in the dispatch log.
+- [x] **Step 4: Auto run.** `/flow-review` (no goal). Expected: cold-eyes then docs pass; the docs-only page appears as a goal-card metric "from docs" (first miss, A-8), not as a finding.
+- [x] **Step 5: Triage round trip.** Mark one finding false-positive in the drawer with a keyboard shortcut; re-run quick. Expected: it stays collapsed with runs_seen+1 (A-15), and the lens prompt shows it as a suppression.
+- [x] **Step 6: Review.** Opus review of the C- and E-series against spec §4, §5, §7, §8, §11 and the dashboard rules.
 
 ### Task CP4: M1 release checkpoint
 **Executor:** opus · **Depends:** all · **Wave:** 13
-- [ ] **Step 1: Build.** `cd plugins/flow-review/engine && python -m build && python -m twine check dist/*`. Expected: both pass.
-- [ ] **Step 2: Clean-venv install.** `uv venv /tmp/frv && uv pip install --python /tmp/frv "plugins/flow-review/engine[web]"`, then `flow-review --help` from that venv. Expected: exit 0.
-- [ ] **Step 3: Version bump.** Set `plugin.json` `version` to `2.0.0` and the pyproject version to match; `test_manifests.py` passes.
-- [ ] **Step 4: Publish gate.** Ask the user before `twine upload` (A-10). Do not publish without an explicit go.
-- [ ] **Step 5: Final verification.** superpowers:verification-before-completion over the whole M1: the suite, CP2 Step 4, CP3 Step 3, all re-run fresh, with output quoted.
+- [x] **Step 1: Build.** `cd plugins/flow-review/engine && python -m build && python -m twine check dist/*`. Expected: both pass.
+- [x] **Step 2: Clean-venv install.** `uv venv /tmp/frv && uv pip install --python /tmp/frv "plugins/flow-review/engine[web]"`, then `flow-review --help` from that venv. Expected: exit 0.
+- [x] **Step 3: Version bump.** Set `plugin.json` `version` to `2.0.0` and the pyproject version to match; `test_manifests.py` passes.
+- [x] **Step 4: Publish gate.** ~~Ask the user before `twine upload` (A-10).~~ Superseded by A-27: GitHub-only, never PyPI.
+- [x] **Step 5: Final verification.** superpowers:verification-before-completion over the whole M1: the suite, CP2 Step 4, CP3 Step 3, all re-run fresh, with output quoted.
+
+## M1 cleanup and release (added 2026-09-24)
+
+State at `e9a61f9`: every task above is done and verified (`.superpowers/sdd/progress.md`), and `python -m pytest -q -m "web or not web"` gives 526 passed. The ponytail audit `docs/audits/2026-09-24-ponytail-audit.md` found dead code that has already shipped, and three built-but-unwired modules. The R-tasks below apply the audit (A-28..A-33), then re-verify the release. Numbers such as "audit #4" refer to that file.
+
+Rules for every R-task:
+- TDD. Write the failing test first where there is behaviour; a deletion is verified by the suite staying green.
+- One commit per task on `m1-v2`, with a caveman-commit message.
+- The Canonical Interfaces above still win. A deleted function also disappears from any doc that names it.
+- After every R-task, `python -m pytest -q -m "web or not web"` must be green before the commit.
+
+### Task R1: docs↔CLI flag-parity test (first, before any doc edit)
+**Executor:** sonnet · **Depends:** none
+**Files:** create `plugins/flow-review/skills/flow-review/test_cli_parity.py`.
+- [ ] **Step 1:** Write a test that collects every backtick span and fenced code line in `SKILL.md`, `references/**/*.md`, `agents/*.md`, `README.md` and `docs/*.md` that starts with `flow-review ` (greedy regex, not a markdown parser). For each one, resolve the verb (plus `drive`/`ledger`/`budget`/`validate`/`manifest` sub-verbs) against `flow_review.cli.build_parser()`, and assert that every `--flag` token in the span is an option of that subparser. The test fails when a verb or flag is missing, and names file:line.
+- [ ] **Step 2:** Run it. If it finds real drift, fix the doc (never the parser, unless the doc is right and the CLI lost a flag). Expected result: PASS against the current tree.
+- [ ] **Step 3:** Prove it bites. Temporarily change one doc flag to `--nope`, see it FAIL with file:line, then revert.
+
+### Task R2: delete the legacy renderer (audit #1)
+**Executor:** haiku · **Depends:** R1
+- [ ] Delete `dashboard/render.py`, `dashboard/template.html` and `dashboard/test_render.py`. Remove any import or fixture of them from `dashboard/conftest.py` and `cli.py` (grep `render` first; `render` inside `page/app.js` is unrelated). Drop `template.html` from `pyproject.toml` package-data. Suite green.
+
+### Task R3: dead-code sweep (audit #4, #6, #7, #9, #10, #11, #14, #15)
+**Executor:** sonnet · **Depends:** R1
+- [ ] Delete `lenses.py` + `test_lenses.py`. Fix README.md:125 and docs/concepts.md:29 so they point at `references/lenses/ui.md`.
+- [ ] `validate.py`: delete `route`, `resolve_after_replay`, `Disposition`, `Verdict.FILED` and `Verdict.OPINION` along with their tests. Fix docs/concepts.md:82 to describe only `validate resolve`.
+- [ ] `triage.py`: delete `build_fix_brief` + `FixBrief` and their tests, and the module-docstring line that names them.
+- [ ] `web/measure.py`: delete `check_contrast` and its test (keep `check_contrast_pair`).
+- [ ] `audit.py`: delete `default_port`, `WORKSPACE_FRAMEWORK_PORTS` and `_default_port`.
+- [ ] `cli.py`: remove the `_STUB_VERBS`/`prove` stub and `plan --json`. Drop `--json` from every doc span that R1 now tracks. Update CP1 step 3's verb list in any test that asserts it.
+- [ ] `envsetup.py`: drop `SetupResult.commands_run`/`used_uv` if nothing reads them after this task, or else leave them.
+- [ ] Suite green; R1 still green.
+
+### Task R4: M1-only skill content (audit #3, #5, #8)
+**Executor:** sonnet · **Depends:** R1
+- [ ] `git rm` `references/lenses/api.md` and `references/lenses/cli.md` (A-29). Point `SKILL.md:96`, `agents/fr-lens.md:14`, `agents/fr-triage.md:38` and the README lens section at `lenses/ui.md` only, with one line: "API and CLI lenses return with M4." Update the REQUIRED lists in `test_references.py` and `test_skill.py`.
+- [ ] Remove the adb/shell/http driver notes from `references/testing.md:90-110`, and the adb/ios-sim/shell/http/custom driver blocks from `references/surfaces.md:44-116`, leaving one line for each: "pending-driver until M2/M3/M4 (A-14)".
+- [ ] The verifier rule "refuted needs a real evidence ref" is stated in full only in `references/validation.md`. `SKILL.md:100-107` and `agents/fr-verifier.md:19-29` replace their copies with a one-line pointer.
+- [ ] Suite green.
+
+### Task R5: `drive fault` (wire B6, A-28)
+**Executor:** sonnet · **Depends:** R1
+- [ ] Test first (web): after `drive fault --kind offline`, a `goto` sees a network failure. After `--kind 5xx --pattern "*/api/*"`, the matching request returns 503. After `--kind slow --pattern ... --delay-ms 1500`, it is delayed. `drive fault --clear` restores normal behaviour. Each call returns JSON `{ok: true, fault: ...}` and appends an event of type `fault`.
+- [ ] Add `DriveSession.fault(kind, pattern, delay_ms)` / `clear_faults()`, the `_dispatch` verb and the `fault` subparser in `drive.py`, calling `web/faults.py`. Inline `faults.match_pattern` into `fnmatch.fnmatch` (audit #7 note).
+- [ ] Docs: the unhappy-paths bullet in `references/goals.md` and `agents/fr-explorer.md` names `flow-review drive fault`. R1 green.
+
+### Task R6: `replay --variants` (wire B7, A-28)
+**Executor:** sonnet · **Depends:** R1
+- [ ] Test first: `flow-review replay --log L --run R --variants --mode goal` runs `variants.plan_variants(surface, mode)` over the log through `variants.run_all`. It writes one result per variant and files a finding per failing variant, with `rule` = `variant.<kind>` and the variant params in the finding's context. `--mode quick` runs none. The exit code follows the replay convention (0 clean, 1 findings, 2 divergence).
+- [ ] Wire `--variants` and `--mode` (default `goal`) into the replay subparser and `_run_replay`. Recorded-flow replay (`--surface/--flow`) accepts `--variants` too.
+- [ ] Docs: `references/goals.md:19` names the real command, and `SKILL.md`'s run procedure calls it once per finished flow in goal/auto/full mode (never quick). R1 green.
+
+### Task R7: visual baselines in replay (wire B5, A-28, A-32)
+**Executor:** sonnet · **Depends:** R6
+- [ ] Test first (web, using the fixture): the first replay of a recorded flow saves an end-of-flow screenshot as `.flow-review/recordings/<surface>/<flow>.baseline.png` and files nothing. The second replay with an unchanged app files nothing. After a planted CSS change, the second replay files a P2 `visual.changed` finding whose evidence is the `visual.crop_regions` crops in the run dir. `--update-baselines` overwrites the baseline and files nothing.
+- [ ] Ephemeral `--log` replays never write baselines (A-3: nothing persists without recording).
+- [ ] Docs: one line in `SKILL.md` and README under replay. R1 green.
+
+### Task R8: small shrinks (audit #12, #13) and the doc bug
+**Executor:** haiku · **Depends:** R1
+- [ ] Put one `slug()` in `config.py` and use it from `drift.py`, `migrate.py` and `web/actionlog.py`, keeping actionlog's current behaviour if it differs (read all three first; if they differ, keep them separate and note why).
+- [ ] `page/app.js`: `_findingRow(f, onClick)` is reused by `toggleFindingsList`.
+- [ ] CONTRIBUTING.md: the dashboard path becomes `plugins/flow-review/engine/flow_review/dashboard/`.
+- [ ] Suite green.
+
+### Task R9: cut the prose-presence tests (A-30)
+**Executor:** sonnet · **Depends:** R1-R8
+- [ ] Delete the positive `assert "<phrase>" in text` tests in `test_skill.py`, `test_references.py` and `test_readme.py` that R1 or a structural test does not already cover.
+- [ ] Keep: frontmatter, BOM/emoji, the lens registry↔rubric check, the reference-file-exists check, the stdout-at-import checks, the SVG/banner checks and every negative guard ("never/no longer claims ..."). Also keep the install-command tests in test_readme.py, since they guard A-27.
+- [ ] Record the removed test names in the commit body. Suite green.
+
+### Task R10: full suite
+**Executor:** opus (controller) · **Depends:** R1-R9
+- [ ] `python -m playwright install chromium`, then `python -m pytest -q -m "web or not web"`. Expected: 0 failed, 0 errors. Quote the summary line.
+
+### Task R11: clean-venv install
+**Executor:** opus (controller) · **Depends:** R10
+- [ ] In the scratchpad: `uv venv <tmp>/frv` (or `python -m venv` if uv is absent), then `<tmp>/frv` pip-installs `"plugins/flow-review/engine[web]"`. From a directory outside the repo, `<tmp>/frv/Scripts/flow-review --help` must exit 0 and list `drive replay serve plan ...`, with no `prove` stub. Also run `flow-review serve --static out.html` against a scratch run dir from that venv, to prove the page assets shipped in the wheel.
+
+### Task R12: real end-to-end run on the sample app
+**Executor:** opus (controller) · **Depends:** R11
+- [ ] Copy `plugins/flow-review/engine/fixtures/webapp` into a scratch project. Start it the way its README says.
+- [ ] Run the real skill headless: from the scratch project, `claude -p "/flow-review quick sign in" --plugin-dir <repo>/plugins/flow-review` with a permission mode that lets it run `flow-review` and the file tools, and a budget cap in the config. First-run setup (audit-and-prove) happens inside that run or in a preceding `claude -p "/flow-review --reconfigure"`.
+- [ ] Expected: `.flow-review/config.json` is v2 with a proven web surface; a run folder with `events.jsonl`; ledger entries for the planted measurable bugs (`contrast.aa`, `token.color`, `rect.overlap`, `http.5xx`); no fixture password anywhere in the run folder or ledger (grep).
+- [ ] Live dashboard: `flow-review serve` prints a localhost URL, `GET /` returns 200, and the SSE stream (`/events`) emits the run's events. Static: `flow-review serve --static report.html` writes a single self-contained file (no external `http` references except links).
+- [ ] Any failure: stop, run superpowers:systematic-debugging, fix it in a new task, and re-run R10-R12.
+
+Publishing (merge/PR, push, README install check) and the local install follow after R12 via superpowers:finishing-a-development-branch, with the user's OK before any push. They are not plan tasks.
 
 ## Later milestones (direction only)
 
@@ -12162,5 +12250,11 @@ Answered by the user on 2026-09-23 in the planning session. Never re-ask these.
 | A-26 | Which .env values are secrets | Only values of env vars named in a surface's `creds` are registered for redaction; values under 4 chars never are. Other .env lines load normally. (CP1 found `DEBUG=1` blanked every "1" in events.) |
 | A-27 | No PyPI (supersedes A-10's publish) | Decided by the user on 2026-09-24: flow-review is sourced only from GitHub, never PyPI. Users install the plugin from the repo, and `setup-env` installs the bundled engine from `plugins/flow-review/engine`. A standalone engine install is `pip install "flow-review[web] @ git+https://github.com/Bilohit/flow-review#subdirectory=plugins/flow-review/engine"`, and CI uses the same git URL with `uvx --from`. CP4 Step 4 (publish gate) is dropped. |
 | A-13 | Audit recon correction | The Haiku recon marked C2/C3/C5/H3/H8/M7-M9 as not true; the orchestrator spot-check shows all are still true (`lenses/ui.md:48,214`; `prove.py:193`; `evidence.md:37` interpolates into a double-quoted shell string; `template.html:77`; `render.py:179`; stdout reconfigure in every module, locked by `test_references.py:45-56`). |
+| A-28 | Unwired B5-B7 modules (audit #2) | Decided by the user on 2026-09-24: wire all three. `drive fault` (B6), `replay --variants` (B7), and visual baselines in replay (B5). Tasks R5-R7. |
+| A-29 | API/CLI lens rubrics | Decided by the user on 2026-09-24: drop `lenses/api.md` and `lenses/cli.md` now and restore them from git at M4. M1 ships `lenses/ui.md` only. Task R4. |
+| A-30 | Prose-presence tests | The user sent this to a Sonnet council (2026-09-24), which voted 3-1: add a docs↔argparse flag-parity test first (R1), delete the positive phrase asserts, keep the structural tests and negative "no longer claims" guards (R9). The dissent (Skeptic) wanted the negative guards gone too. |
+| A-31 | Shipped dead code (audit #1, #4, #6, #7, #9-#15) | Orchestrator call, applied directly from the audit with no user question: every item has zero production callers, as verified by a repo-wide grep over .py/.md/.js. It includes removing the `prove` CLI stub (setup.md calls `fr.prove.prove`). Tasks R2, R3, R8. |
+| A-32 | Visual baseline policy | Orchestrator default (flag at review): the baseline is the end-of-flow screenshot of a *recorded* flow, saved on its first replay; a later diff files a P2 `visual.changed` finding with crops; `replay --update-baselines` accepts changes. Ephemeral logs never write baselines (A-3). |
+| A-33 | M1 release verification | R10 full suite, R11 clean-venv `engine[web]` install + `--help`, R12 a real headless `claude -p "/flow-review quick sign in" --plugin-dir` run on the fixture app, including live `serve` and `--static`. Required by the user's session brief on 2026-09-24. |
 
 Orchestrator conventions (not user decisions; flag at review if wrong): engine package at `plugins/flow-review/engine/flow_review`; agents at `plugins/flow-review/agents/`; `requires-python >=3.10`; tests colocated.
