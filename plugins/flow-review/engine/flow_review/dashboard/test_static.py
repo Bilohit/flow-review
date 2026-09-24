@@ -81,3 +81,12 @@ def test_static_thumbnails_are_downscaled_jpeg_data_uris_linking_to_full_res(tmp
     b64 = html.split("data:image/jpeg;base64,")[1].split('"')[0]
     thumb = Image.open(__import__("io").BytesIO(base64.b64decode(b64)))
     assert max(thumb.size) <= 320  # proposed max edge
+
+
+def test_thumbnail_link_escapes_the_path(tmp_path):
+    from PIL import Image
+    from flow_review.dashboard import static
+    name = "a'b&c.png"
+    Image.new("RGB", (4, 4)).save(tmp_path / name)
+    block = static._thumbnail_block(name, tmp_path)
+    assert 'href="a&#x27;b&amp;c.png"' in block

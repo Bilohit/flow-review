@@ -12,6 +12,7 @@ in the repo, so this reads them directly -- no placeholder fallback.
 from __future__ import annotations
 
 import base64
+import html
 import io
 import json
 import re
@@ -63,7 +64,7 @@ def _thumbnail_block(rel_path: str, run_dir: Path) -> str:
     data_uri = _thumbnail_data_uri(full)
     if not data_uri:
         return ""
-    return f'<a href="{rel_path}"><img src="{data_uri}" alt=""></a>'
+    return f'<a href="{html.escape(rel_path)}"><img src="{data_uri}" alt=""></a>'
 
 
 def render_static(project_root: Path, run_dir: Path, cfg, out_path: Path) -> None:
