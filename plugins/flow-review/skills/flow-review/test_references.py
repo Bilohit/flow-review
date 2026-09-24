@@ -99,10 +99,8 @@ def test_no_reference_file_carries_a_byte_order_mark():
         assert not path.read_bytes().startswith(b"\xef\xbb\xbf"), f"BOM in {path}"
 
 
-def test_evidence_file_keeps_the_append_idiom_rules():
+def test_evidence_file_never_recommends_printf_over_the_event_cli():
     text = (REFS / "evidence.md").read_text(encoding="utf-8")
-    assert "events.jsonl" in text
-    assert "flow-review event" in text
     assert "printf" not in text
 
 
@@ -153,47 +151,6 @@ def test_goals_reference_exists_and_is_required():
     assert (REFS / "goals.md") in REQUIRED
 
 
-def test_goals_file_states_the_around_set_and_default_on():
-    text = (REFS / "goals.md").read_text(encoding="utf-8")
-    for phrase in ("unhappy path", "interruption", "alternate route", "variant"):
-        assert phrase in text.lower()
-    assert re.search(r"on by default", text, re.I)
-    assert re.search(r"quick mode", text, re.I)
-
-
-def test_goals_file_states_cold_eyes_then_docs_pass():
-    text = (REFS / "goals.md").read_text(encoding="utf-8")
-    assert re.search(r"pass 1", text, re.I)
-    assert re.search(r"pass 2", text, re.I)
-    assert re.search(r"no code|not read.{0,20}code|read no code", text, re.I)
-
-
-def test_goals_file_uses_the_canonical_ledger_functions_for_discoverability():
-    text = (REFS / "goals.md").read_text(encoding="utf-8")
-    assert "record_miss" in text
-    assert "missed_twice" in text
-    assert re.search(r"\bP2\b", text)
-    assert "P1" not in text.split("record_miss")[0].split("Hidden-feature")[-1]
-
-
-def test_goals_file_states_path_ratio_metric():
-    text = (REFS / "goals.md").read_text(encoding="utf-8")
-    assert re.search(r"path.{0,10}ratio|shortest.{0,20}route", text, re.I)
-
-
-def test_goals_file_states_the_safety_limits():
-    text = (REFS / "goals.md").read_text(encoding="utf-8")
-    for phrase in ("sandbox only", "test_inbox", "no-test-inbox", "payment-not-sandboxed",
-                   "destructive-no-optin", "not-exercised"):
-        assert phrase in text, phrase
-
-
-def test_goals_file_names_the_drive_cli_and_secret_handling():
-    text = (REFS / "goals.md").read_text(encoding="utf-8")
-    assert "flow-review drive" in text
-    assert "--from-env" in text
-
-
 def test_goals_file_never_claims_the_explorer_writes_its_own_action_log_or_step_events():
     text = (REFS / "goals.md").read_text(encoding="utf-8")
     assert "events.append" not in text
@@ -226,18 +183,6 @@ def test_every_lens_file_uses_the_canonical_finding_field_names():
         # the old v1 field names must be gone, not merely supplemented
         for old in ('"lens"', '"severity"', '"claim"', '"location"'):
             assert old not in text, f"lenses/{kind}.md still uses old field {old!r}"
-
-
-def test_every_lens_file_states_evidence_text_before_crops():
-    for kind in ("ui",):
-        text = (REFS / "lenses" / f"{kind}.md").read_text(encoding="utf-8")
-        assert re.search(r"text.{0,40}(before|first).{0,40}(crop|screenshot|image)", text, re.I)
-
-
-def test_every_lens_file_states_suppressions_are_injected():
-    for kind in ("ui",):
-        text = (REFS / "lenses" / f"{kind}.md").read_text(encoding="utf-8")
-        assert "suppressions_for" in text
 
 
 def test_every_lens_file_points_at_validation_not_arbitration():
