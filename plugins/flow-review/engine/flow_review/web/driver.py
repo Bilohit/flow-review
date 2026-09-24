@@ -1,7 +1,12 @@
 from pathlib import Path
 from typing import TypedDict
 
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
+
+from flow_review.events import REDACTED
+
+SETTLE_MS = 3000
 
 
 class Locator(TypedDict, total=False):
@@ -60,7 +65,16 @@ class WebDriver:
 
     def click(self, locator: dict) -> None:
         self.resolve(locator).click()
-        self.page.wait_for_load_state("networkidle")
+        self._settle()
+
+    def _settle(self) -> None:
+        # ponytail: networkidle capped at SETTLE_MS; apps with long-poll/SSE never go idle, so
+        # an uncapped wait would stall every click for Playwright's 30s default. Upgrade path:
+        # an app-specific ready signal from config.
+        try:
+            self.page.wait_for_load_state("networkidle", timeout=SETTLE_MS)
+        except PlaywrightTimeoutError:
+            pass
 
     def fill(self, locator: dict, value: str) -> None:
         self.resolve(locator).fill(value)
@@ -84,7 +98,7 @@ class WebDriver:
             "input[type=password]", "els => els.map(e => e.value)"
         ):
             if value:
-                aria = aria.replace(value, "[redacted]")
+                aria = aria.replace(value, REDACTED)
         return {"aria": aria}
 
     def console_errors(self) -> list[dict]:

@@ -57,3 +57,20 @@ def test_console_errors_tagged_with_step_window(webapp_server):
     assert tagged["outside step"] is None
     assert tagged["inside step 3"] == 3
     assert tagged["outside again"] is None
+
+
+def test_click_settle_is_capped_when_the_network_never_idles():
+    from playwright.sync_api import TimeoutError as PWTimeout
+    from flow_review.web import driver as drv
+
+    calls = []
+
+    class _Page:
+        def wait_for_load_state(self, state, timeout=None):
+            calls.append((state, timeout))
+            raise PWTimeout("never idle")
+
+    d = drv.WebDriver()
+    d.page = _Page()
+    d._settle()  # must not raise
+    assert calls == [("networkidle", drv.SETTLE_MS)]
