@@ -24,12 +24,21 @@ import os
 import signal
 import subprocess
 import tempfile
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
 
 from flow_review.audit import Candidate
 from flow_review.config import validate_preconditions
+
+_IS_WINDOWS = os.name == "nt"
+
+if _IS_WINDOWS:
+    # ctypes.wintypes does not exist on POSIX, so this import must stay behind the platform
+    # guard -- importing it unconditionally would break the module on Linux/macOS.
+    import ctypes
+    from ctypes import wintypes
 
 # Provenance vocabulary fr.config validates against (VALID_PROVENANCE). Kept here at their
 # existing values so a Proof's outcome can be translated straight into a Surface's field
@@ -46,8 +55,6 @@ RUNNING_READY = "running_ready"
 NOT_PROVEN = "not_proven"
 OUTCOMES = (EXITED_CLEAN, EXITED_FAILED, RUNNING_READY, NOT_PROVEN)
 
-_IS_WINDOWS = os.name == "nt"
-
 _HEAD_CHARS = 2000
 _TAIL_CHARS = 2000
 # Coarse enough not to busy-loop spawning precondition checks, fine enough that a readiness
@@ -60,16 +67,131 @@ _TEARDOWN_WAIT_S = 5.0
 # raising out of prove(); a leftover temp file is a nuisance, not a defect worth crashing over.
 _UNLINK_RETRIES = 5
 _UNLINK_RETRY_DELAY_S = 0.1
-# ponytail: each snapshot shells out to PowerShell (a few hundred ms), so at _POLL_INTERVAL_S
-# that was a fresh process spawn every 100ms for the life of the launch -- real but needless
-# cost on every Windows proof, not just the rare H3 case it exists for. Throttled to once per
-# _DESCENDANT_SNAPSHOT_S (_kill_tree's own unconditional fresh walk at teardown time, unchanged
-# below, already covers the "right before teardown" case for free). Ceiling this accepts: a
-# grandchild born and orphaned entirely inside one _DESCENDANT_SNAPSHOT_S window (spawned after
-# the last snapshot, its parent already dead again before the next one) can still escape
-# detection. Upgrade path if that ever bites in practice: a Windows Job Object around the
-# launched process, which the OS itself keeps alive membership for regardless of polling.
+# ponytail: each snapshot shells out to PowerShell -- measured at ~1.1-1.3s per call on a
+# loaded machine, not the "a few hundred ms" this constant's throttle was originally sized for
+# (see test_slow_precondition_does_not_blow_through_ready_deadline, which caught a real prod
+# machine slow enough that a single snapshot could eat a whole short ready_timeout_s budget).
+# Throttled to once per _DESCENDANT_SNAPSHOT_S so it is not called on every _POLL_INTERVAL_S
+# poll. This snapshot is no longer load-bearing for correctness -- reaping the whole tree is
+# now the Windows Job Object's job (see _create_kill_on_close_job / _assign_to_job below,
+# JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE): a process assigned to a job automatically pulls every
+# child IT spawns into the same job, with no PowerShell walk involved and no window in which a
+# fast-spawned grandchild can be born and orphaned before anything notices it. What remains
+# here is reporting/fallback only: windows_descendants collected via this snapshot is still fed
+# to _teardown as a best-effort cross-check, and still helps if the job could not be created or
+# assigned (accepted race: it is assigned immediately after Popen, not before, since Popen
+# offers no CREATE_SUSPENDED hook).
 _DESCENDANT_SNAPSHOT_S = 1.0
+
+if _IS_WINDOWS:
+    _kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+    _JobObjectExtendedLimitInformation = 9
+    _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000
+    _PROCESS_TERMINATE = 0x0001
+    _PROCESS_SET_QUOTA = 0x0100
+
+    class _IO_COUNTERS(ctypes.Structure):
+        _fields_ = [
+            ("ReadOperationCount", ctypes.c_uint64),
+            ("WriteOperationCount", ctypes.c_uint64),
+            ("OtherOperationCount", ctypes.c_uint64),
+            ("ReadTransferCount", ctypes.c_uint64),
+            ("WriteTransferCount", ctypes.c_uint64),
+            ("OtherTransferCount", ctypes.c_uint64),
+        ]
+
+    class _JOBOBJECT_BASIC_LIMIT_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ("PerProcessUserTimeLimit", ctypes.c_int64),
+            ("PerJobUserTimeLimit", ctypes.c_int64),
+            ("LimitFlags", wintypes.DWORD),
+            ("MinimumWorkingSetSize", ctypes.c_size_t),
+            ("MaximumWorkingSetSize", ctypes.c_size_t),
+            ("ActiveProcessLimit", wintypes.DWORD),
+            ("Affinity", ctypes.c_size_t),
+            ("PriorityClass", wintypes.DWORD),
+            ("SchedulingClass", wintypes.DWORD),
+        ]
+
+    class _JOBOBJECT_EXTENDED_LIMIT_INFORMATION(ctypes.Structure):
+        _fields_ = [
+            ("BasicLimitInformation", _JOBOBJECT_BASIC_LIMIT_INFORMATION),
+            ("IoInfo", _IO_COUNTERS),
+            ("ProcessMemoryLimit", ctypes.c_size_t),
+            ("JobMemoryLimit", ctypes.c_size_t),
+            ("PeakProcessMemoryUsed", ctypes.c_size_t),
+            ("PeakJobMemoryUsed", ctypes.c_size_t),
+        ]
+
+    # restype must be set explicitly on every HANDLE-returning function: ctypes defaults to
+    # c_int, which truncates a 64-bit HANDLE on 64-bit Windows and hands back garbage.
+    _kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+    _kernel32.CreateJobObjectW.argtypes = [wintypes.LPVOID, wintypes.LPCWSTR]
+    _kernel32.OpenProcess.restype = wintypes.HANDLE
+    _kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+    _kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+    _kernel32.AssignProcessToJobObject.argtypes = [wintypes.HANDLE, wintypes.HANDLE]
+    _kernel32.SetInformationJobObject.restype = wintypes.BOOL
+    _kernel32.SetInformationJobObject.argtypes = [
+        wintypes.HANDLE, ctypes.c_int, wintypes.LPVOID, wintypes.DWORD,
+    ]
+    _kernel32.TerminateJobObject.restype = wintypes.BOOL
+    _kernel32.TerminateJobObject.argtypes = [wintypes.HANDLE, wintypes.UINT]
+    _kernel32.CloseHandle.restype = wintypes.BOOL
+    _kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+
+    def _create_kill_on_close_job() -> int | None:
+        """A Windows Job Object with JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE.
+
+        Any process assigned to this job -- and, critically, every child THAT process later
+        spawns, since job membership propagates to children automatically unless a process
+        explicitly opts out with CREATE_BREAKAWAY_FROM_JOB -- dies the instant the job is
+        terminated or its last handle is closed. This is what makes the whole descendant tree
+        reapable without ever having to discover its membership by walking the process table.
+        """
+        job = _kernel32.CreateJobObjectW(None, None)
+        if not job:
+            return None
+        info = _JOBOBJECT_EXTENDED_LIMIT_INFORMATION()
+        info.BasicLimitInformation.LimitFlags = _JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+        ok = _kernel32.SetInformationJobObject(
+            job, _JobObjectExtendedLimitInformation, ctypes.byref(info), ctypes.sizeof(info),
+        )
+        if not ok:
+            _kernel32.CloseHandle(job)
+            return None
+        return job
+
+    def _assign_to_job(job: int, pid: int) -> bool:
+        # PROCESS_TERMINATE + PROCESS_SET_QUOTA are the access rights
+        # AssignProcessToJobObject itself requires on the process handle.
+        process_handle = _kernel32.OpenProcess(
+            _PROCESS_TERMINATE | _PROCESS_SET_QUOTA, False, pid,
+        )
+        if not process_handle:
+            # The process may already have exited (it was spawned via shell=True and could be
+            # a wrapper that exits almost immediately) -- not assignable, not a crash.
+            return False
+        try:
+            return bool(_kernel32.AssignProcessToJobObject(job, process_handle))
+        finally:
+            _kernel32.CloseHandle(process_handle)
+
+    def _new_kill_on_close_job_for(pid: int) -> int | None:
+        """Best-effort: create a job and assign pid to it, or return None on any failure.
+
+        Never raises -- a launched process this could not wrap into a job still gets torn down
+        by the existing taskkill /T fallback in _kill_tree, just without the job's stronger
+        guarantee against a fast-spawned, fast-orphaned grandchild.
+        """
+        job = _create_kill_on_close_job()
+        if job is None:
+            return None
+        if not _assign_to_job(job, pid):
+            _kernel32.CloseHandle(job)
+            return None
+        return job
 
 
 @dataclass
@@ -141,10 +263,17 @@ def _start_process(launch: str, root: Path, handle) -> subprocess.Popen:
     # Both branches exist so a group/tree kill can actually reach the grandchild that
     # shell=True interposes: cmd.exe or sh is the direct child, the real program is not.
     if _IS_WINDOWS:
-        return subprocess.Popen(
+        process = subprocess.Popen(
             launch, cwd=str(root), shell=True, stdout=handle, stderr=subprocess.STDOUT,
             creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
         )
+        # Popen offers no CREATE_SUSPENDED hook, so the job is assigned immediately after
+        # Popen returns rather than before the process starts running -- a process that spawns
+        # and orphans a child in the few microseconds before this line runs would still escape
+        # the job. Accepted per the task: narrower than any PowerShell-walk window it replaces,
+        # and the taskkill /T fallback in _kill_tree still covers it either way.
+        process._fr_job = _new_kill_on_close_job_for(process.pid)
+        return process
     return subprocess.Popen(
         launch, cwd=str(root), shell=True, stdout=handle, stderr=subprocess.STDOUT,
         start_new_session=True,
@@ -192,6 +321,45 @@ def _descendant_pids(root_pid: int) -> set[int]:
     return seen
 
 
+class _DescendantWatcher:
+    """Collects the throttled Windows descendant snapshot on a background thread.
+
+    test_slow_precondition_does_not_blow_through_ready_deadline caught the real defect this
+    fixes: running the snapshot inline in prove()'s observe loop meant a single slow
+    Get-CimInstance call (~1.1-1.3s measured, not the "a few hundred ms" the throttle was
+    originally sized for) could by itself consume a whole short ready_timeout_s budget before
+    the capped precondition check ever got a chance to run. The snapshot is no longer needed
+    for correctness -- a Windows Job Object (_new_kill_on_close_job_for) is what actually
+    guarantees every descendant gets reaped -- so it now runs off the deadline-critical path
+    entirely and is read as a best-effort, non-blocking cross-check/fallback.
+    """
+
+    def __init__(self, pid: int) -> None:
+        self._pid = pid
+        self._lock = threading.Lock()
+        self._seen: set[int] = set()
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, daemon=True)
+        self._thread.start()
+
+    def _run(self) -> None:
+        while not self._stop.is_set():
+            found = _descendant_pids(self._pid)
+            with self._lock:
+                self._seen |= found
+            self._stop.wait(_DESCENDANT_SNAPSHOT_S)
+
+    def snapshot(self) -> set[int]:
+        with self._lock:
+            return set(self._seen)
+
+    def stop(self) -> None:
+        # No join: the in-flight PowerShell call (if any) is left to finish on its own daemon
+        # thread rather than have prove()'s return wait on it -- it is a short-lived read-only
+        # query with nothing left in this process to report back to once stopped.
+        self._stop.set()
+
+
 def _windows_pid_alive(pid: int) -> bool:
     try:
         result = subprocess.run(
@@ -205,23 +373,28 @@ def _windows_pid_alive(pid: int) -> bool:
 def _kill_tree(process: subprocess.Popen) -> tuple[bool, set[int]]:
     """Send the kill and report (signal succeeded, descendants observed at kill time).
 
-    The descendants are handed back so _teardown can independently confirm each one is
-    actually gone -- on Windows, taskkill /T's own return code only speaks to the walk it could
-    still perform FROM process.pid; it says nothing about a descendant killed individually
-    below, and nothing at all once process.pid's own entry is already gone.
+    On Windows the primary kill is TerminateJobObject on the job _start_process assigned this
+    process to (see _new_kill_on_close_job_for): every descendant is a member of that job
+    automatically, so this does not need its own fresh process-table walk to find them first --
+    the walk that used to live here was exactly the blocking PowerShell call
+    test_slow_precondition_does_not_blow_through_ready_deadline caught eating a whole short
+    ready_timeout_s budget. taskkill /T still runs as a fallback for the case the job could not
+    be created or assigned. The descendants set returned is empty by design; _teardown's own
+    verification instead uses known_descendants, the throttled snapshot the caller already
+    collected during the observe loop.
     """
     if _IS_WINDOWS:
-        descendants = _descendant_pids(process.pid)
+        job = getattr(process, "_fr_job", None)
+        job_killed = False
+        if job is not None:
+            job_killed = bool(_kernel32.TerminateJobObject(job, 1))
+            _kernel32.CloseHandle(job)
+            process._fr_job = None
         tree_result = subprocess.run(
             ["taskkill", "/T", "/F", "/PID", str(process.pid)],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        for pid in descendants:
-            subprocess.run(
-                ["taskkill", "/F", "/PID", str(pid)],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-        return tree_result.returncode == 0, descendants
+        return job_killed or tree_result.returncode == 0, set()
     try:
         os.killpg(process.pid, signal.SIGKILL)
     except ProcessLookupError:
@@ -249,15 +422,14 @@ def _teardown(process: subprocess.Popen, known_descendants: set[int] = frozenset
     on its own by the time this is called.
 
     known_descendants (Windows only) is a set the caller may have accumulated by walking the
-    process table *while the tree was still alive*: on Windows a descendant's own Win32_Process
-    entry only exists as long as it is alive, and ParentProcessId lineage can only be walked
-    through entries that still exist. If an intermediate process (e.g. cmd.exe's own direct
-    child) has already exited by the time _kill_tree runs -- entirely possible when it exits
-    almost immediately after spawning a grandchild -- a fresh walk starting from process.pid
-    can no longer reach that grandchild at all, since the link through the vanished
-    intermediate is gone from the table. A pid seen earlier, while the link still existed,
-    remains a real process to hunt down and confirm even though the walk done at kill time no
-    longer finds it on its own.
+    process table *while the tree was still alive* (the throttled snapshot in prove()'s observe
+    loop). The Windows Job Object _kill_tree terminates is the actual guarantee that every
+    descendant -- including one spawned and orphaned between snapshots, or one whose only link
+    back to process.pid had already vanished from the table by the time of the last walk (H3) --
+    is reaped, since job membership is inherited by every child a job member spawns regardless
+    of whether this module ever walked the table far enough to see it. known_descendants is used
+    here only as an independent, best-effort cross-check and as the fallback path for a process
+    the job could not be assigned to.
     """
     kill_ok, descendants = _kill_tree(process)
     if process.poll() is None:
@@ -273,10 +445,9 @@ def _teardown(process: subprocess.Popen, known_descendants: set[int] = frozenset
         return False
     all_descendants = descendants | set(known_descendants)
     if _IS_WINDOWS:
-        # Kill every descendant _kill_tree's own fresh walk could not find, because it was
-        # only ever reachable through a link that had already vanished from the table by the
-        # time _kill_tree ran (H3) -- known_descendants was collected earlier, while that link
-        # still existed.
+        # Backstop: the job kill in _kill_tree should already have reaped everything, but
+        # taskkill each pid the snapshot happened to see anyway, in case the job could not be
+        # created/assigned for this process (see _new_kill_on_close_job_for).
         for pid in all_descendants - descendants:
             if _windows_pid_alive(pid):
                 subprocess.run(
@@ -390,16 +561,13 @@ def prove(
     # process (e.g. the launched command itself, running under cmd.exe) exits on its own --
     # possibly before _teardown ever gets a chance to walk the tree fresh. A pid observed here
     # remains a real process to hunt down at teardown even once that walk can no longer find it.
-    windows_descendants: set[int] = set()
-    last_snapshot_s: float | None = None
+    # Collected on a background thread (_DescendantWatcher), not inline in the loop below --
+    # see its docstring for why a call this slow can never be allowed back onto the
+    # deadline-critical path.
+    watcher = _DescendantWatcher(process.pid) if _IS_WINDOWS else None
 
     try:
         while True:
-            if _IS_WINDOWS:
-                now = time.monotonic()
-                if last_snapshot_s is None or now - last_snapshot_s >= _DESCENDANT_SNAPSHOT_S:
-                    windows_descendants |= _descendant_pids(process.pid)
-                    last_snapshot_s = now
             status = process.poll()
             if status is not None:
                 exit_code = status
@@ -441,14 +609,15 @@ def prove(
                 break
             time.sleep(min(_POLL_INTERVAL_S, deadline - elapsed))
     finally:
-        # No extra snapshot is taken here right before teardown: _kill_tree already does its
-        # own fresh, unconditional _descendant_pids(process.pid) walk as its first step (see
-        # _kill_tree below), so a second one here would either duplicate that exact call (when
-        # the direct child is still alive -- pure redundant PowerShell cost) or find nothing at
-        # all (when it has already exited -- the H3 case, where the link back to process.pid is
-        # already gone from the table and no walk from process.pid can recover it, however
-        # recent). windows_descendants -- collected during the loop, throttled below -- is the
-        # only thing that can still name a descendant in that second case.
+        # No extra snapshot is taken here right before teardown: _kill_tree's primary kill on
+        # Windows is TerminateJobObject on the job the process was assigned to at launch, which
+        # needs no process-table walk at all to reach every descendant (see _kill_tree). The
+        # watcher's own last snapshot is passed through only as a best-effort cross-check /
+        # fallback, not because a fresh walk is needed here.
+        windows_descendants: set[int] = set()
+        if watcher is not None:
+            windows_descendants = watcher.snapshot()
+            watcher.stop()
         teardown_ok = _teardown(process, windows_descendants)
 
     if not teardown_ok:
