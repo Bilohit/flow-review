@@ -12,9 +12,9 @@ This is the human-readable mirror of `flow_review.validate`'s state machine (§7
 2. **A `P2` judgment finding -> filed as opinion.** Straight to the ledger with
    `disposition: opinion`. No replay, no verifier.
 3. **A `P0`/`P1` judgment finding -> ephemeral replay, then the verifier.** The finding's action
-   log (or the flow it came from) replays once against the live surface, free, into
-   `<run_dir>/repro/` -- ephemeral: never reused, never feeds `flow-review replay` (A-3). The
-   verifier then returns exactly one of two verdicts:
+   log (or the flow it came from) is replayed only within this run (variants, then the
+   verifier) into `<run_dir>/repro/` -- ephemeral: never persisted or reused on later runs,
+   never feeds `flow-review replay` (A-3). The verifier then returns exactly one of two verdicts:
    - **stands** -- the default outcome. The finding is filed as-is.
    - **refuted** -- only ever returned with a mandatory `evidence` object attached, shaped
      `{"kind": "measurement" | "replay", "ref": "<path relative to run_dir>"}`, where

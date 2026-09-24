@@ -25,7 +25,7 @@ DOC_FILES = [p for p in (
     + sorted((REPO_ROOT / "docs").glob("*.md"))
 ) if p.is_file()]
 
-SPAN_RE = re.compile(r"`(flow-review [^`\n]*)`")
+SPAN_RE = re.compile(r"`(flow-review [^`\n]*(?:\n[^`\n]*)?)`")
 FLAG_RE = re.compile(r"--[A-Za-z][\w-]*")
 
 
@@ -42,7 +42,10 @@ def _subparser_choices(parser: argparse.ArgumentParser) -> dict | None:
 def _spans(text: str) -> list[tuple[int, str]]:
     """(1-based line number, span text) for every backtick span and fenced code line that
     starts with `flow-review `."""
-    found = [(text[: m.start()].count("\n") + 1, m.group(1)) for m in SPAN_RE.finditer(text)]
+    # A span wrapped across one newline (a long `flow-review ...` invocation broken for line
+    # length inside backticks) is joined back into one logical line before it is checked.
+    found = [(text[: m.start()].count("\n") + 1, re.sub(r"\s*\n\s*", " ", m.group(1)))
+             for m in SPAN_RE.finditer(text)]
     in_fence = False
     for lineno, line in enumerate(text.splitlines(), start=1):
         if line.strip().startswith("```"):
