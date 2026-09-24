@@ -3,3 +3,5 @@ __pycache__/
 .pytest_cache/
 .flow-review/runs/
 .superpowers/
+build/
+*.egg-info/
