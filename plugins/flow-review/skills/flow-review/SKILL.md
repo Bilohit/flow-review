@@ -7,104 +7,146 @@ description: Use when the user asks for an end-to-end flow review, a UX review, 
 
 `flow-review` drives a product end to end the way a first-time user would, gathers evidence from
 the real surface rather than an impression of it, and returns ranked findings plus a design
-critique. It never fixes anything and never edits product code -- it only logs what it found.
+critique. It never fixes anything and never edits product code -- it only logs what it found. The
+engine (`flow_review`, invoked as `flow-review <subcommand>`) does every deterministic step; this
+skill and its subagents do only the judgment work the engine cannot.
 
 ## 1. Which phase am I in
 
 Read `.flow-review/config.json` in the project root before doing anything else.
 
-- **Absent, or `--reconfigure` was passed** -> **setup mode**. State this in one line, then hand
-  off to `references/setup.md` and follow it start to finish. Nothing below this section applies
-  until setup has written a config.
-- **Present, and `--reconfigure` was not passed** -> **run mode**. State this in one line, then
-  continue with section 3 below.
+- **Absent, or `--reconfigure` was passed** -> **setup mode**. State this in one line, hand off to
+  `references/setup.md`, and follow it start to finish. Setup also runs `flow-review setup-env`
+  and, for a pre-v2 config, `flow-review migrate`.
+- **Present, and `--reconfigure` was not passed** -> **run mode**. State this in one line and
+  continue with section 2.
 
-Never guess which mode applies from context or from what the user said last session -- read the
-file, every time.
+Never guess which mode applies from context -- read the file, every time.
 
-## 2. Setup mode
+## 2. Choosing a mode
 
-Setup mode is the whole of `references/setup.md`: audit or preset, confirm every candidate, prove
-each accepted surface, stamp provenance, pick lens sets, choose the tester agent, seed the flows
-manifest, and write `config.json`. Do not duplicate that procedure here -- load the reference and
-run it.
+`/flow-review <goal>` -- **goal mode**: the stated goal and everything around it (unhappy paths,
+interruptions, alternate routes and adjacent features, device/persona variants), all on by
+default.
 
-## 3. Run mode
+`/flow-review` with no goal -- **auto mode**: `fr-cold-eyes` pass 1 (UI-only, no code, no docs)
+then a docs pass 2 (README/docs/routes/OpenAPI); a function only pass 2 found is a discoverability
+observation (A-8; `references/goals.md`).
 
-1. **Scope resolution.** Reconcile `.flow-review/flows.md` against the project's own state docs
-   (named in config): a built feature missing from the manifest becomes a `NEW` stub; a dead or
-   superseded flow is dropped and logged. Probe every `NEW`/unverified stub against the project's
-   own route or command registry. A stub that does not resolve becomes `SKIPPED-NOT-BUILT` --
-   logged, never handed to a tester, never guessed at.
-2. **Preconditions and drift.** Before driving anything, walk every configured surface and run
-   `fr.drift.detect_drift` against the current repository: a surface whose evidence has vanished
-   from the repo, a surface the repo now contains but the config does not, or a launch command
-   that changed underneath the config. Report every line it returns.
-3. **The GO gate.** Present scope, drift, and any open questions once, together, before any
-   surface is driven. **The interview closes permanently at GO** -- no further questions reach
-   the user for the rest of the run, including recovery (`references/stuck.md` R2-R5 are decided
-   by the main thread alone). Fast mode's narrow interrupt right covers credentials and
-   destructive authority only, never recovery, never clarification.
-4. **Dispatch.** One tester per surface, each reading `references/testing.md`,
-   `references/evidence.md`, and `references/stuck.md`, plus its own `references/surfaces.md`
-   driver section and the critique lens file matching its surface's `kind` --
-   `references/lenses/ui.md` for a `ui` surface, `references/lenses/cli.md` for a `cli` surface,
-   `references/lenses/api.md` for an `api` surface. A `library` surface reads none of the three:
-   `fr.lenses.has_critique` is `False` for it, so there is no lens file to point at. Each tester
-   drives only the surface it was assigned and reports structured events, never narrative, to
-   `<RUN>/events.jsonl` (`evidence.md` section 1 is the exact schema).
-5. **Dashboard.** The live dashboard reads `events.jsonl` as testers append to it -- `run`,
-   `step`, `shot`, `finding`, `status`, `withdraw` events. A screenshot only ever shows up there
-   if its `shot` event was emitted alongside the file.
-6. **Arbitration.** For a surface with a critique lens set (`fr.lenses.has_critique`), candidate
-   findings that two or more lenses independently agree on go to a separate arbitration pass that
-   sets final severity, merges duplicates, and kills any claim an objective measurement
-   contradicts. A finding held by exactly one lens is kept verbatim as a minority opinion, never
-   silently dropped. Objective failures -- crash, hang, data loss, wrong content, a failed round
-   trip, or a project-declared lock violation -- bypass this vote entirely: one reproduction files
-   at the severity the rule sets, and no lens may soften it.
-7. **Manifest write-back.** What was learned during this run -- resolved stubs, dropped dead
-   flows, step and entry-point corrections -- is written back now, at the end, since learnings are
-   only known once driving and arbitration are done. Call `fr.manifest.apply_learnings` with the
-   manifest path, the recorded `Config.flows_hash`, and the learnings collected above, then store
-   its return value as the new `Config.flows_hash`. A run that learned nothing calls it with an
-   empty list and writes nothing -- `apply_learnings` returns the recorded hash unchanged in that
-   case, so `flows_hash` never moves without a reason.
-8. **Report.** Section 5 below.
+`/flow-review full` -- **full mode**: everything, deep -- every lens, every variant, no trimming.
+
+`/flow-review quick <goal>` -- **quick mode**: the happy path only. No around-variants, no
+judgment lenses dispatched. Engine checks, objective failures, and the P0/P1 verifier path still
+run in full.
+
+Recording is **off by default** (A-1); it turns on only per run (`record` in the invocation, or a
+yes at the GO gate) or sticky per surface (`record: true`). Without either, nothing is written to
+`.flow-review/recordings/`.
+
+## 3. Run mode procedure
+
+1. **Plan.** Run `flow-review plan --mode <mode> [--goal "<goal>"] [--record] --json`. It returns
+   the planned work per surface, a token estimate per surface (A-19: per-mode unit priors, refined
+   by `budget.estimate` once `usage_history.json` has >=3 runs), and gaps: missing credentials, and
+   every `persistent`-state surface a destructive action was planned against.
+2. **The GO gate.** Present scope, estimate, and gaps once, together, before any surface is
+   driven. Exactly two kinds of question are ever asked here, or anywhere else in the run:
+   - **Missing credentials** -- named, with an offer to save each one to the gitignored
+     `.flow-review/.env` once supplied.
+   - **Destructive authority** -- **one multi-select question** listing every `persistent`-state
+     surface the plan would touch destructively, asked together, in every mode including `quick`
+     (A-20). Default is no for every surface on the list; without an opt-in for a given surface,
+     the explorer skips destructive actions there and files them `not-exercised`.
+   The user may trim planned work here. **The interview closes permanently at GO** -- no further
+   questions reach the user for the rest of the run: no question, no interview after the GO. Recovery decisions (`references/stuck.md`)
+   are never a question.
+3. **Serve.** Immediately after GO, launch `flow-review serve --run <RUN_DIR>` and print the URL
+   it returns.
+4. **Drive sessions.** For every runnable web surface the plan touches, start its drive session
+   before any explorer is dispatched against it: `flow-review drive start --surface ID --run DIR
+   [--record]` (the `--record` flag mirrors whatever the GO gate resolved for that surface, A-1/
+   A-2). This is the orchestrator's only direct use of `drive` -- every other verb (`goto`,
+   `click`, `fill`, `press`, `look`, `flow-begin`, `flow-end`) belongs to the dispatched
+   `fr-explorer`/`fr-cold-eyes` agent, never to the orchestrator itself (A-24). At run end, after
+   the report is assembled (step 7), stop every session that was started: `flow-review drive stop
+   --surface ID --run DIR`.
+5. **Dispatch, one role at a time, per the plan's schedule.** Before every dispatch run
+   `flow-review budget check --run DIR --next ROLE --surface ID`. If the cap
+   (`cfg.budget["cap_tokens"]`) would be exceeded, no new LLM work is dispatched for the rest of
+   the run; replays and measurements (engine-only) continue regardless, and the report lists what
+   was skipped: record each skipped dispatch with
+   `flow-review event --run DIR --type status state=not-exercised surface_id=ID flow_id=FLOW
+   step=ROLE reason=budget-cap` (the dashboard's not-exercised section reads these). Resolve the dispatch model with `flow-review model ROLE` (backed by
+   `config.resolve_model`, C1 -- `role_overrides` win over the profile) and pass it explicitly on
+   the dispatch, never `inherit`. After every subagent call returns, log its reported usage with
+   `flow-review event --run DIR --type usage --json '{"surface": "ID", "role": "ROLE", "tokens": N}'`
+   (pass `tokens` through `--json` so it stays an integer; `k=v` fields arrive as strings), which
+   is exactly the event `budget.record_usage` writes -- the event log is the one source of truth for usage, there is no
+   separate usage store the orchestrator writes to directly.
+   - **Exploration.** `fr-explorer` per surface toward the goal (goal/full mode), or `fr-cold-eyes`
+     pass 1 then `fr-explorer` pass 2 for docs (auto mode) -- `references/goals.md`. Every
+     explorer works from `references/testing.md` (how to drive and measure),
+     `references/evidence.md` (what counts as proof) and `references/stuck.md` (recovery).
+   - **Replay repair.** Where a recorded action log exists and `flow-review replay` reports a
+     divergence, `fr-replay-repair` runs once at Haiku, escalating to Sonnet only on a real
+     escalation report.
+   - **Judgment.** For every screen a `ui`/`api`/`cli` surface produced evidence for (skipped
+     entirely in `quick` mode), `fr-lens` runs once per screen against every lens that surface
+     kind defines -- never once per lens. `references/lenses/ui.md`, `references/lenses/api.md` and `references/lenses/cli.md` are the rubrics;
+     suppressions via `ledger.suppressions_for(ledger, rule)` are injected first.
+   - **Validation.** Every judgment finding routes through `references/validation.md` (C5): an
+     engine check or objective failure is filed on one reproduction; a `P2` judgment finding is
+     filed directly as an opinion; a `P0`/`P1` judgment finding gets an ephemeral replay, then
+     `fr-verifier` at Opus, which may refute it only with measured or replayed evidence -- enforced
+     by `validate.resolve_after_verifier` requiring a real evidence file under the run folder, not
+     a reason string alone. If the verifier cannot supply that file, `resolve_after_verifier`
+     raises `ValueError`; **catch it and treat the finding as `stands`**, exactly as if the
+     verifier had returned `stands` directly -- never let a failed refutation crash the run. A
+     successful refutation stays in the ledger with the reason and the evidence ref, never
+     deleted.
+   - **Triage.** `fr-triage` at Haiku classifies stuck episodes, resolves fuzzy-dedup ties
+     (`ledger.find_alias_candidates` / `ledger.record_alias`, A-6), and reconciles the ledger
+     (`ledger.reconcile`) after a batch of transitions.
+6. **Manifest write-back.** What was learned this run is written back by calling
+   `manifest.apply_learnings(path, recorded_hash, learnings)` explicitly -- never a hand-rolled
+   rewrite of `flows.md`, and never touching a human-edited file (see `references/setup.md`
+   section 8 for the append-only mechanism this reuses). A run that learned nothing calls it with
+   an empty `learnings` list; the returned hash only moves when there was something to record.
+7. **Report.** Section 4 below. Stop every drive session (step 4) once the report is assembled.
 
 ## 4. Agent tiering
 
 The main thread never runs a screenshot-look-tap loop itself. Every surface is driven by a
-dispatched tester; the main thread reads back structured verdicts and stuck reports, never a
-transcript of taps. **Screenshots never reach the main thread** -- a tester keeps every capture in
-its own context and returns at most one failing image, and only when a verdict genuinely depends
-on seeing it. This is what keeps a multi-surface run from drowning the coordinating thread in
-image tokens it cannot act on anyway.
+dispatched subagent; the main thread reads back structured verdicts and stuck reports, never a
+transcript of taps. **Screenshots never reach the main thread** -- a subagent keeps every capture
+in its own context and returns at most one failing image, only when a verdict genuinely depends on
+seeing it.
 
 ## 5. The report
 
-In order:
+The hybrid report, in order (§11 of the design):
 
-1. **Headline findings.** Every finding that is new or has changed severity since the previous
-   run. A finding identical to the previous run's -- same location, same claim, same severity --
-   is never headlined twice; `fr.findings.demote_repeats` does this demotion mechanically, keyed
-   on a fingerprint that is coarse about whitespace and punctuation but exact about severity, so a
-   severity change always re-promotes a finding even when its wording did not move.
-2. **Repeats, collapsed to a count.** Everything `demote_repeats` classified as a repeat is listed
-   once, by location, with how many runs it has now been seen on -- never repeated in full. A
-   report that opens with the same three findings every run teaches its reader to skip it.
-3. **What was skipped, and why.** Every `SKIPPED-NOT-BUILT` flow, every quarantined
-   (`BLOCKED`) flow with its stuck report, every surface that halted on three consecutive
-   quarantines, and every surface with no critique lens set -- named as such, in words ("this
-   surface gets QA and no design critique"), never as a silently empty section.
+1. **Needs-attention list.** Every finding that is new or regressed this run, by severity.
+2. **Goal cards.** Reached/blocked per goal, actions taken vs the shortest known route (A-9, a
+   goal-card metric only in M1), found cold vs found only from docs (A-8).
+3. **Collapsed sections**, each named plainly even when empty: opinions (`P2` judgment findings),
+   repeats (ledger entries whose state after `ledger.reconcile` is still `open` and were already
+   seen on an earlier run -- folded to a count via `runs_seen`; a `regressed` entry is never a
+   repeat, it goes to the needs-attention list), refuted findings (with the
+   verifier's reason), not-exercised items (destructive actions with no opt-in, email verification
+   with no configured test inbox, and anything the budget cap caused to be skipped).
+
+A suppressed finding (`false-positive`, `wont-fix`, `accepted`, or `refuted`) is sticky (A-15):
+`runs_seen` keeps counting and it stays in the collapsed sections on every later run until a human
+reopens it (`flow-review triage ID open`, or the drawer) -- never silently re-promoted by the tool
+itself.
 
 Carried forward from the whole design, restated here because a report that violates any of these
 is not this tool's report:
 
 - the skill never fixes anything and never edits product code -- it only logs what it found;
-- a finding produced on a cheap surface must reproduce on the real one before it is filed;
+- a judgment finding at `P0`/`P1` must survive replay and the verifier before it is filed;
 - the interview closes permanently at GO;
 - screenshots never reach the main thread;
 - stuck is evidence about the product, not merely an obstacle to route around;
-- nothing is faked to keep a surface alive -- a surface that cannot be proven is reported as such,
-  never propped up to make the run look clean.
+- nothing is faked to keep a surface alive.
