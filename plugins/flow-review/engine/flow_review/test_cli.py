@@ -19,7 +19,7 @@ def test_main_with_no_args_prints_usage_and_exits_nonzero(capsys):
 
 def test_main_dispatches_known_stub_subcommands():
     for verb in (
-        "prove", "serve", "ledger",
+        "prove", "ledger",
     ):
         code = cli.main([verb])
         assert code == 2, f"{verb} stub must report not-yet-implemented, not crash or succeed"
@@ -317,3 +317,64 @@ def test_drive_verb_delegates_to_web_drive_main(monkeypatch, tmp_path):
     assert rc == 0
     assert captured["argv"] == ["goto", "--surface", "webapp", "--run", str(tmp_path), "/"]
     assert captured["project_root"] == tmp_path.resolve()
+
+
+def test_serve_without_project_exits_three(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    run_dir = tmp_path / "run1"
+    run_dir.mkdir()
+    assert cli.main(["serve", "--run", str(run_dir)]) == 3
+
+
+def test_serve_static_flag_calls_render_static_not_serve(tmp_path, monkeypatch):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
+    run_dir = tmp_path / "run1"
+    run_dir.mkdir()
+    out = tmp_path / "out.html"
+
+    seen = {}
+
+    def fake_render_static(project_root, run_dir_arg, cfg, out_path):
+        seen["project_root"] = Path(project_root)
+        seen["run_dir"] = run_dir_arg
+        seen["out_path"] = out_path
+
+    def fake_serve(*a, **k):
+        raise AssertionError("serve() must not be called when --static is given")
+
+    from flow_review.dashboard import static as staticmod
+    from flow_review.dashboard import serve as servemod
+    monkeypatch.setattr(staticmod, "render_static", fake_render_static)
+    monkeypatch.setattr(servemod, "serve", fake_serve)
+
+    code = cli.main(["serve", "--project", str(tmp_path), "--run", str(run_dir), "--static", str(out)])
+    assert code == 0
+    assert seen["project_root"] == tmp_path.resolve()
+    assert seen["run_dir"] == run_dir
+    assert seen["out_path"] == out
+
+
+def test_serve_without_static_calls_serve(tmp_path, monkeypatch):
+    (tmp_path / ".flow-review").mkdir()
+    (tmp_path / ".flow-review" / "config.json").write_text(
+        '{"schema_version": 2, "generator_version": "t", "surfaces": []}', encoding="utf-8")
+    run_dir = tmp_path / "run1"
+    run_dir.mkdir()
+
+    seen = {}
+
+    def fake_serve(project_root, run_dir_arg, cfg, port):
+        seen["project_root"] = Path(project_root)
+        seen["run_dir"] = run_dir_arg
+        seen["port"] = port
+
+    from flow_review.dashboard import serve as servemod
+    monkeypatch.setattr(servemod, "serve", fake_serve)
+
+    code = cli.main(["serve", "--project", str(tmp_path), "--run", str(run_dir), "--port", "9999"])
+    assert code == 0
+    assert seen["project_root"] == tmp_path.resolve()
+    assert seen["run_dir"] == run_dir
+    assert seen["port"] == 9999

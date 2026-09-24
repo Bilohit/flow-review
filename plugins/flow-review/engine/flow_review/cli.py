@@ -18,7 +18,7 @@ from pathlib import Path
 # A5 ledger) replaces exactly one function here with real behaviour; the parser wiring does not
 # change.
 _STUB_VERBS = (
-    "prove", "serve", "ledger",
+    "prove", "ledger",
 )
 
 
@@ -206,6 +206,16 @@ def build_parser() -> argparse.ArgumentParser:
     drive_parser.add_argument("drive_args", nargs=argparse.REMAINDER)
     drive_parser.set_defaults(func=_run_drive)
 
+    serve_parser = sub.add_parser(
+        "serve", parents=[project_after_verb],
+        help="serve the live dashboard (or render a static snapshot with --static)",
+    )
+    serve_parser.add_argument("--run", required=True, dest="run_dir", type=Path)
+    serve_parser.add_argument("--port", type=int, default=0)
+    serve_parser.add_argument("--static", default=None, type=Path,
+                               help="render one self-contained HTML snapshot to this path instead of serving")
+    serve_parser.set_defaults(func=_run_serve)
+
     return parser
 
 
@@ -239,6 +249,27 @@ def _run_model(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return 3
     print(configmod.resolve_model(cfg, args.role))
+    return 0
+
+
+def _run_serve(args: argparse.Namespace) -> int:
+    from flow_review import config as configmod
+    project_root = args.project_root
+    if project_root is None:
+        print("no .flow-review/ found; run /flow-review setup first, or pass --project",
+              file=sys.stderr)
+        return 3
+    try:
+        cfg = configmod.load(Path(project_root) / ".flow-review" / "config.json")
+    except Exception as exc:  # noqa: BLE001 -- CLI boundary, report and exit, never traceback
+        print(str(exc), file=sys.stderr)
+        return 3
+    if args.static is not None:
+        from flow_review.dashboard import static as staticmod
+        staticmod.render_static(Path(project_root), args.run_dir, cfg, args.static)
+        return 0
+    from flow_review.dashboard import serve as servemod
+    servemod.serve(Path(project_root), args.run_dir, cfg, args.port)
     return 0
 
 
