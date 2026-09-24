@@ -192,13 +192,16 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
             for flow_path in flow_files:
                 found_any_recording = True
                 log = actionlog.load(flow_path)
-                flows_run.add(log["flow_id"])
                 try:
                     result = replay_one(driver, log, measure=hook, project_root=project_root)
                 except MissingEnv as exc:
                     print(str(exc), file=sys.stderr)
                     return 3
                 all_findings.extend(result["findings"])
+                if result["status"] != "divergence":
+                    # a diverged flow never reached its later steps: its unseen findings are
+                    # unknown, not fixed (CP2 I6)
+                    flows_run.add(log["flow_id"])
                 if result["status"] == "divergence":
                     d = result["divergence"]
                     divergences.append({

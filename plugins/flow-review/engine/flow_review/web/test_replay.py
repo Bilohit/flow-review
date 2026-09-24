@@ -292,3 +292,30 @@ def test_replay_log_app_unreachable_exits_three(tmp_path, monkeypatch):
     cfg = config.Config(schema_version=2, generator_version="test",
                          surfaces=[_surface(f"http://127.0.0.1:{_dead_port()}")])
     assert replay_mod.replay_log(cfg, project_root, log_path, tmp_path) == 3
+
+
+def test_diverged_flow_does_not_mark_unseen_findings_fixed(tmp_path, monkeypatch):
+    from flow_review import ledger
+    project_root = tmp_path / "project"
+    ledger_path = project_root / ".flow-review" / "findings.json"
+    ledger_path.parent.mkdir(parents=True)
+    seeded = {"surface_id": "webapp", "flow_id": "f", "rule": "contrast.aa", "route": "/after",
+              "locator": "", "sev": "P2", "text": "late step", "evidence": [],
+              "disposition": "engine"}
+    ledger.save(ledger.reconcile(ledger.load(ledger_path), [seeded], {"f"}, "r0"), ledger_path)
+
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    actionlog.record_step(log, "click", locator={"testid": "gone"}, url="/")
+    actionlog.save(log, tmp_path, project_root, record_enabled=True)
+
+    drv = _FakeDriver(fail_locators={"gone"})
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+    assert replay_mod.replay(cfg, project_root) == 2
+    states = {e.state for e in ledger.load(ledger_path).findings.values()}
+    assert states == {"open"}
