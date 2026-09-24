@@ -238,7 +238,7 @@ def test_replay_log_mode_writes_result_json_and_never_touches_ledger(tmp_path, w
     code = replay_mod.replay_log(cfg, project_root, log_path, run_dir)
     assert code == 1
 
-    # C1: the result lands under the run dir, never next to the recorded log -- a
+    # The result lands under the run dir, never next to the recorded log -- a
     # `<log>.result.json` sitting in recordings/ would be picked up by the next `replay()`
     # glob (which matches `*.json`) and crash it with a KeyError trying to parse it as a log.
     result_path = run_dir / "replay" / f"{log_path.stem}.result.json"
@@ -252,7 +252,7 @@ def test_replay_log_mode_writes_result_json_and_never_touches_ledger(tmp_path, w
 
 
 def test_replay_log_recording_result_then_replay_does_not_crash(tmp_path, monkeypatch):
-    # C1: a previous bug wrote `<log>.result.json` next to the recorded log itself. Since the
+    # A previous bug wrote `<log>.result.json` next to the recorded log itself. Since the
     # log lives under recordings/ as `f.json`, the next `replay()` glob (`*.json`) would pick
     # the result file back up as if it were a recording and crash trying to parse it as one.
     project_root = tmp_path / "project"
@@ -281,7 +281,7 @@ def test_replay_log_recording_result_then_replay_does_not_crash(tmp_path, monkey
 
 
 def test_replay_variants_storage_state_dir_is_under_run_dir(tmp_path, monkeypatch):
-    # I3: `.flow-review/variants/` is not gitignored, and a storage state can carry
+    # `.flow-review/variants/` is not gitignored, and a storage state can carry
     # cookies/tokens -- it must live under the (gitignored) run dir instead, like replay_log's
     # variants already do.
     project_root = tmp_path / "project"
@@ -314,7 +314,7 @@ def test_replay_variants_storage_state_dir_is_under_run_dir(tmp_path, monkeypatc
 
 
 def test_replay_log_variants_clean_emits_flow_begin_for_reconcile(tmp_path, monkeypatch):
-    # I4: on the --log path (the path SKILL.md uses), a variant flow id that ran must be
+    # On the --log path (the path SKILL.md uses), a variant flow id that ran must be
     # recorded the same way `drive`'s own flow-begin is, or `ledger reconcile`'s flows_run
     # builder never learns the variant flow ran, and a variant finding can never turn fixed.
     project_root = tmp_path / "project"
@@ -348,9 +348,9 @@ def test_replay_log_variants_clean_emits_flow_begin_for_reconcile(tmp_path, monk
 
 
 def test__run_variants_drops_findings_that_match_the_base_flow(monkeypatch):
-    # I6: a variant replay re-measures the whole page and re-files every base-flow finding
-    # under its own tagged flow id -- drop whatever exactly matches (rule, route, locator) on
-    # the base flow's own result, keep whatever is genuinely new under the variant.
+    # A variant replay re-measures the whole page and re-files every base-flow finding
+    # under its own tagged flow id -- drop whatever exactly matches (rule, route, locator,
+    # text) on the base flow's own result, keep whatever is genuinely new under the variant.
     surface = _surface("http://x")
     log = {"flow_id": "f", "steps": []}
     variant = {"kind": "color-scheme", "params": {"scheme": "dark"}}
@@ -366,10 +366,87 @@ def test__run_variants_drops_findings_that_match_the_base_flow(monkeypatch):
     )
     monkeypatch.setattr("flow_review.web.variants.run_all",
                         lambda *a, **kw: [(variant, clean_with_findings)])
-    base_findings = [{"rule": "contrast.aa", "route": "/", "locator": ""}]
+    base_findings = [{"rule": "contrast.aa", "route": "/", "locator": "", "text": "low contrast"}]
     findings, flow_ids = replay_mod._run_variants(surface, "http://x", log, "goal", None,
                                                    base_findings=base_findings)
     assert findings == [fresh]
+
+
+def test__run_variants_keeps_a_variant_only_console_error_on_the_base_route(monkeypatch):
+    # R1: console.error/http.5xx carry an empty locator, so a (rule, route, locator) key alone
+    # would drop a variant-only console error just because the base flow flagged a DIFFERENT
+    # console error (a favicon 404, say) on the very same route.
+    surface = _surface("http://x")
+    log = {"flow_id": "f", "steps": []}
+    variant = {"kind": "color-scheme", "params": {"scheme": "dark"}}
+    dark_only = {"surface_id": "webapp", "flow_id": "f@color-scheme:dark",
+                 "rule": "console.error", "route": "/", "locator": "", "sev": "P1",
+                 "text": "Uncaught TypeError: boom", "evidence": [], "disposition": "engine"}
+    clean_with_finding = replay_mod.ReplayResult(
+        flow_id="f@color-scheme:dark", status="clean", steps_run=1, divergence=None,
+        findings=[dark_only],
+    )
+    monkeypatch.setattr("flow_review.web.variants.run_all",
+                        lambda *a, **kw: [(variant, clean_with_finding)])
+    base_findings = [{"rule": "console.error", "route": "/", "locator": "",
+                      "text": "Failed to load resource: favicon.ico 404"}]
+    findings, flow_ids = replay_mod._run_variants(surface, "http://x", log, "goal", None,
+                                                   base_findings=base_findings)
+    assert findings == [dark_only]
+
+
+def test__run_variants_keeps_a_different_contrast_text_on_the_same_locator(monkeypatch):
+    # R1: a locator the base flow already flagged can still carry a genuinely different
+    # contrast ratio under a variant (dark mode, say) -- that must not be dropped just because
+    # (rule, route, locator) coincidentally matches.
+    surface = _surface("http://x")
+    log = {"flow_id": "f", "steps": []}
+    variant = {"kind": "color-scheme", "params": {"scheme": "dark"}}
+    worse_ratio = {"surface_id": "webapp", "flow_id": "f@color-scheme:dark",
+                   "rule": "contrast.aa", "route": "/", "locator": "role:button[name=Pay]",
+                   "sev": "P1", "text": "contrast ratio 1.8:1", "evidence": [],
+                   "disposition": "engine"}
+    clean_with_finding = replay_mod.ReplayResult(
+        flow_id="f@color-scheme:dark", status="clean", steps_run=1, divergence=None,
+        findings=[worse_ratio],
+    )
+    monkeypatch.setattr("flow_review.web.variants.run_all",
+                        lambda *a, **kw: [(variant, clean_with_finding)])
+    base_findings = [{"rule": "contrast.aa", "route": "/", "locator": "role:button[name=Pay]",
+                      "text": "contrast ratio 3.9:1"}]
+    findings, flow_ids = replay_mod._run_variants(surface, "http://x", log, "goal", None,
+                                                   base_findings=base_findings)
+    assert findings == [worse_ratio]
+
+
+def test__run_variants_no_spurious_markers_when_base_flow_is_a_regression(monkeypatch):
+    # R2: when the base flow is itself a regression (e.g. a checkpoint mismatch), every variant
+    # reproduces that same finding. The base-duplicate filter drops it from `variant_findings`,
+    # but that must not make the (now filtered-empty) variant look like a bare failure that
+    # needs a synthetic P1 `variant.<kind>` marker -- the marker decision must look at the
+    # UNFILTERED result, not at what happened to survive filtering.
+    surface = _surface("http://x")
+    log = {"flow_id": "f", "steps": []}
+    checkpoint_mismatch = {"surface_id": "webapp", "flow_id": "f@viewport:375x812",
+                           "rule": "replay.checkpoint", "route": "/settings", "locator": "",
+                           "sev": "P1", "text": "checkpoint 'post-login' mismatch",
+                           "evidence": [], "disposition": "objective"}
+    variants_and_results = [
+        ({"kind": "viewport", "params": {"width": 375, "height": 812}},
+         replay_mod.ReplayResult(flow_id="f@viewport:375x812", status="regression", steps_run=2,
+                                 divergence=None, findings=[dict(checkpoint_mismatch)])),
+        ({"kind": "color-scheme", "params": {"scheme": "dark"}},
+         replay_mod.ReplayResult(flow_id="f@color-scheme:dark", status="regression", steps_run=2,
+                                 divergence=None,
+                                 findings=[dict(checkpoint_mismatch, flow_id="f@color-scheme:dark")])),
+    ]
+    monkeypatch.setattr("flow_review.web.variants.run_all",
+                        lambda *a, **kw: variants_and_results)
+    base_findings = [dict(checkpoint_mismatch, flow_id="f")]
+    findings, flow_ids = replay_mod._run_variants(surface, "http://x", log, "goal", None,
+                                                   base_findings=base_findings)
+    assert findings == []
+    assert not any(f["rule"].startswith("variant.") for f in findings)
 
 
 def test_replay_one_resolves_from_env_fill_and_registers_secret(monkeypatch):
@@ -383,7 +460,7 @@ def test_replay_one_resolves_from_env_fill_and_registers_secret(monkeypatch):
     drv.fill = lambda loc, v, secret=False: filled.append((v, secret))
     result = replay_mod.replay_one(drv, log)
     assert result["status"] == "clean"
-    # I2: a from_env fill must reach driver.fill with secret=True so a baseline screenshot
+    # A from_env fill must reach driver.fill with secret=True so a baseline screenshot
     # masks it, even though this locator's own "secret" flag is also True here.
     assert filled == [("Rp9secretvalue", True)]
     assert "Rp9secretvalue" not in events.redact("Rp9secretvalue")
@@ -485,7 +562,7 @@ def test__run_variants_files_p1_summary_for_a_bare_divergence(monkeypatch):
     assert finding["disposition"] == "engine"
     assert finding["route"] == "/x"
     assert any("375" in item for item in finding["evidence"])
-    # I5: a diverged variant never reached its later steps, so its flow id must NOT be folded
+    # A diverged variant never reached its later steps, so its flow id must NOT be folded
     # into flows_run -- otherwise an unrelated, unseen finding under that flow id would be
     # marked "fixed" simply because the variant never got far enough to see it again.
     assert flow_ids == []

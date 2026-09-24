@@ -114,7 +114,7 @@ def test_run_variant_threads_measure_hook_and_tags_the_finding_flow_id():
 
 
 def test_run_all_skips_viewport_variant_matching_base_viewport(tmp_path):
-    # I6: the base flow already ran at its own viewport, so re-running that exact viewport as
+    # The base flow already ran at its own viewport, so re-running that exact viewport as
     # a "variant" would just re-file every base finding a second time under a different flow id.
     surface = _FakeSurface({"viewport": [{"width": 1280, "height": 800},
                                           {"width": 375, "height": 812}]})

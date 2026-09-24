@@ -751,7 +751,7 @@ def test_new_finding_on_second_action_still_emits(tmp_path, monkeypatch):
 
 
 def test_p2_then_p1_console_error_on_same_route_both_emit(tmp_path, monkeypatch):
-    # I1: console.error/http.5xx carry an empty locator, so the fingerprint alone (which does
+    # Console.error/http.5xx carry an empty locator, so the fingerprint alone (which does
     # not include sev/text) would collapse two genuinely distinct errors on the same route --
     # and would drop a later, more severe P1 as if it were an already-seen repeat.
     run_dir, project_root = _dirs(tmp_path)

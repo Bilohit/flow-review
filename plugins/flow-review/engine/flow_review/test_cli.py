@@ -498,7 +498,7 @@ def test_ledger_reconcile_folds_run_findings_keeping_event_ids(tmp_path):
 
 
 def test_ledger_reconcile_flow_begin_for_variant_tagged_flow_marks_it_fixed(tmp_path):
-    # I4: `replay_log` now emits a step/flow-begin event for a variant's tagged flow id (e.g.
+    # `replay_log` now emits a step/flow-begin event for a variant's tagged flow id (e.g.
     # "login@color-scheme:dark") the same way `drive` emits one for a base flow id -- confirm
     # the reconcile CLI's flows_run builder (cli.py's `_run_ledger_reconcile`) folds that
     # variant-tagged id in just like any other flow id, so a stale variant finding turns fixed.

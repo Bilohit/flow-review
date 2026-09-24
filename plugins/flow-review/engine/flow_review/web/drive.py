@@ -172,11 +172,6 @@ class DriveSession:
         for finding in findings:
             if self._is_self_inflicted(finding):
                 continue
-            # RC1: measure.check_page returns every live finding on EVERY action, so an
-            # unfixed defect would otherwise be appended (and reported to the explorer as
-            # "new") on each subsequent action of the same flow. Skip a fingerprint already
-            # emitted this flow; the same fingerprint reconcile/the ledger use, so this stays
-            # exactly in step with what ledger.reconcile would dedup anyway.
             # measure.check_page returns every live finding on EVERY action, so an unfixed defect
             # would otherwise be appended (and reported to the explorer as "new") on each
             # subsequent action of the same flow. Skip only an EXACT repeat (fingerprint, sev,

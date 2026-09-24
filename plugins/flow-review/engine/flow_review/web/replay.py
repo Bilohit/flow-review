@@ -139,22 +139,27 @@ def _run_variants(surface, base_url: str, log: dict, mode: str,
     would be circular.
 
     Returns `(findings, flow_ids)`: `flow_ids` is every variant's tagged flow id that ran to a
-    non-diverged result (clean or regression, never divergence -- I5), for the caller to fold
-    into `flows_run` -- otherwise a variant finding from an earlier run can never be marked fixed
-    once the underlying bug is fixed, because `ledger.reconcile` only retires an entry whose flow
-    id is in `flows_run` this run. A diverged variant never reached its later steps, so adding
-    its flow id would falsely mark an unrelated, unseen finding "fixed".
+    non-diverged result (clean or regression, never divergence), for the caller to fold into
+    `flows_run` -- otherwise a variant finding from an earlier run can never be marked fixed once
+    the underlying bug is fixed, because `ledger.reconcile` only retires an entry whose flow id
+    is in `flows_run` this run. A diverged variant never reached its later steps, so adding its
+    flow id would falsely mark an unrelated, unseen finding "fixed".
 
     `base_findings` (the base flow's own findings) and `base_viewport` (the base flow's own
     viewport) let this drop a variant finding that is really just the base flow's own finding
-    re-filed under a different flow id -- I6.
+    re-filed under a different flow id.
     """
     from flow_review.web import variants as variants_mod
 
     def driver_factory(**kwargs):
         return WebDriver(headless=True, **kwargs)
 
-    base_keys = {(f["rule"], f["route"], f["locator"]) for f in (base_findings or [])}
+    # Keyed on the full finding, not just (rule, route, locator): console.error/http.5xx carry
+    # an empty locator, so a locator-less key would also swallow a variant-only finding that
+    # merely shares a route with something the base flow flagged (a different console error, a
+    # different contrast ratio on a locator the base already flagged under a different text).
+    # Only an exact re-file of the same finding is a duplicate worth dropping.
+    base_keys = {(f["rule"], f["route"], f["locator"], f["text"]) for f in (base_findings or [])}
 
     findings: list[dict] = []
     flow_ids: list[str] = []
@@ -165,18 +170,23 @@ def _run_variants(surface, base_url: str, log: dict, mode: str,
             flow_ids.append(result["flow_id"])
         variant_findings = [
             f for f in result["findings"]
-            if (f["rule"], f["route"], f["locator"]) not in base_keys
+            if (f["rule"], f["route"], f["locator"], f["text"]) not in base_keys
         ]
         if variant_findings:
             findings.extend(variant_findings)
         if result["status"] == "clean":
             continue
-        if variant_findings and result["status"] != "divergence":
+        # Whether the synthetic P1 `variant.<kind>` marker is filed is decided from the
+        # UNFILTERED result, never from `variant_findings`: when the base flow is itself a
+        # regression (e.g. a checkpoint mismatch), every variant reproduces that same finding,
+        # the base-duplicate filter above drops it, and `variant_findings` goes empty -- but the
+        # variant is not silently missing anything the base run didn't already report, so no
+        # marker belongs here. A bare divergence (or one with no findings of its own) has
+        # nothing else to carry its own sev, so it still gets the marker -- and a variant that
+        # diverged AFTER filing findings of its own still gets it too: the findings already
+        # extended above must not make the divergence itself invisible.
+        if result["findings"] and result["status"] != "divergence":
             continue
-        # A bare divergence (or one with no findings of its own) has nothing else to carry its
-        # own sev, so it still gets a synthetic P1 `variant.<kind>` summary -- and a variant that
-        # diverged AFTER filing findings of its own still gets this marker too (I5): the findings
-        # already extended above must not make the divergence itself invisible.
         route = _url_path(result["divergence"]["url"]) if result["divergence"] else ""
         # No `context` field exists on the canonical finding payload, so the variant's params
         # go into `evidence`.
@@ -383,8 +393,8 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
                         if visual_finding is not None:
                             all_findings.append(visual_finding)
                     if variants:
-                        # I3: under the run dir, never `.flow-review/variants/` -- that path is
-                        # not gitignored, and a storage state can carry cookies/tokens.
+                        # Under the run dir, never `.flow-review/variants/` -- that path is not
+                        # gitignored, and a storage state can carry cookies/tokens.
                         storage_state_dir = run_dir / "variants" / surface.id
                         base_viewport = (surface.options.get("viewport") or [None])[0]
                         variant_findings, variant_flow_ids = _run_variants(
@@ -484,10 +494,10 @@ def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path,
         )
         for finding in variant_findings:
             events.append(run_dir, {"type": "finding", **finding})
-        # I4: on this --log path, a variant flow that ran (never a diverged one -- I5) must be
-        # recorded the same way `drive`'s own flow-begin is, or `ledger reconcile`'s flows_run
-        # builder (cli.py's `_run_ledger_reconcile`) never learns the variant flow ran at all,
-        # and a variant finding from an earlier run can never be marked fixed.
+        # On this --log path, a variant flow that ran (never a diverged one) must be recorded
+        # the same way `drive`'s own flow-begin is, or `ledger reconcile`'s flows_run builder
+        # (cli.py's `_run_ledger_reconcile`) never learns the variant flow ran at all, and a
+        # variant finding from an earlier run can never be marked fixed.
         for vid in variant_flow_ids:
             events.append(run_dir, {
                 "type": "step", "surface_id": surfaces[0].id, "flow_id": vid,
