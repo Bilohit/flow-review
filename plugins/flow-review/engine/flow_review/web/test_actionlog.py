@@ -1,6 +1,38 @@
 from flow_review.web import actionlog
 
 
+def test_save_slugs_a_path_traversal_flow_id_so_it_lands_inside_the_run_dir(tmp_path):
+    log = actionlog.new_log("webapp", "../../x")
+    actionlog.record_step(log, "goto", url="/")
+
+    project_root = tmp_path / "project"
+    run_dir = tmp_path / "runs" / "run1"
+    run_dir.mkdir(parents=True)
+
+    out = actionlog.save(log, run_dir, project_root, record_enabled=False)
+
+    repro_root = (run_dir / "repro").resolve()
+    assert repro_root in out.resolve().parents
+    assert out.exists()
+    loaded = actionlog.load(out)
+    assert loaded["flow_id"] == "../../x"  # the content is untouched -- only the filename is slugged
+
+
+def test_save_slugs_a_path_traversal_surface_id_so_it_lands_inside_recordings(tmp_path):
+    log = actionlog.new_log("../../evil", "login")
+    actionlog.record_step(log, "goto", url="/")
+
+    project_root = tmp_path / "project"
+    run_dir = tmp_path / "runs" / "run1"
+    run_dir.mkdir(parents=True)
+
+    out = actionlog.save(log, run_dir, project_root, record_enabled=True)
+
+    recordings_root = (project_root / ".flow-review" / "recordings").resolve()
+    assert recordings_root in out.resolve().parents
+    assert out.exists()
+
+
 def test_locator_key_prefers_role_then_testid_then_css():
     assert actionlog.locator_key({"role": "button", "name": "Sign in"}) == "role:button:Sign in"
     assert actionlog.locator_key({"testid": "pw-input"}) == "testid:pw-input"

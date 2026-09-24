@@ -1,9 +1,21 @@
 import json
+import re
 from pathlib import Path
 
 from flow_review import events
 
 SCHEMA_VERSION = 1
+
+_UNSAFE_CHARS = re.compile(r"[^A-Za-z0-9._-]")
+
+
+def _slug(value: str) -> str:
+    """flow_id/surface_id come from `flow-begin --flow`/config, or over the unauthenticated
+    drive socket -- used raw, a "../../x" id writes outside the run dir. Keep only
+    [A-Za-z0-9._-], replace everything else (path separators included) with "-", and strip
+    leading dots so the result can never be "." or start a ".." traversal segment."""
+    slug = _UNSAFE_CHARS.sub("-", value).lstrip(".")
+    return slug or "_"
 
 
 def locator_key(locator: dict) -> str:
@@ -49,11 +61,13 @@ def record_step(log: dict, action: str, locator: dict | None = None,
 
 
 def save(log: dict, run_dir: Path, project_root: Path, record_enabled: bool) -> Path:
+    surface_slug = _slug(log["surface_id"])
+    flow_slug = _slug(log["flow_id"])
     if record_enabled:
         out = (project_root / ".flow-review" / "recordings"
-               / log["surface_id"] / f"{log['flow_id']}.json")
+               / surface_slug / f"{flow_slug}.json")
     else:
-        out = run_dir / "repro" / f"{log['flow_id']}.json"
+        out = run_dir / "repro" / f"{flow_slug}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(log, ensure_ascii=False, indent=2), encoding="utf-8")
     return out
