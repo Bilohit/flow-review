@@ -187,18 +187,37 @@ def _measure_hook(tokens: dict[str, str] | None) -> MeasureHook:
     return hook
 
 
-def _visual_baseline_check(driver, surface_dir: Path, flow_slug: str, surface_id: str,
-                           flow_id: str, route: str, update_baselines: bool) -> dict | None:
+def _new_run_id() -> str:
+    """`events.now_iso()` contains ':', invalid in a Windows directory name, so it is replaced
+    with '-' here. This id doubles as the `.flow-review/runs/<run_id>/` folder name, matching
+    the convention `dashboard/state.py` already assumes (`run["id"] = run_dir.name`)."""
+    return events.now_iso().replace(":", "-")
+
+
+def _visual_baseline_check(driver, surface_dir: Path, run_dir: Path, flow_slug: str,
+                           surface_id: str, flow_id: str, route: str,
+                           update_baselines: bool) -> dict | None:
     """A-32: baseline policy for a recorded flow's base replay (never a variant, never a
     --log ephemeral replay -- A-3). The end-of-flow screenshot is saved as
     `<flow>.baseline.png` on the first replay (files nothing). A later replay diffs the new
     screenshot against it; `--update-baselines` accepts the new screenshot as the baseline
     instead of diffing, either way filing nothing. `driver.screenshot()` is the same masked
-    path every other screenshot goes through (A-9: secrets never appear).
+    path every other screenshot goes through (A-9: secrets never appear). The baseline itself
+    stays under `surface_dir` (`.flow-review/recordings/<surface>/`) -- persistent by design --
+    but a diff's crops are per-run evidence, so they go under `run_dir` (the same
+    `.flow-review/runs/<run_id>/` layout `drive` writes into) as
+    `visual/<surface>/<flow>/region_N.png`, with evidence stored run-relative like every other
+    finding's evidence path (dashboard/serve.py's `/run/<relpath>` route and validate.py's
+    `run_dir / evidence["ref"]` both expect that form). A fresh per-run directory also means
+    a stale crop from an earlier diff can never be mistaken for this run's evidence.
 
     A size mismatch between baseline and current (a changed viewport) makes visual.diff's own
     pixel comparison meaningless -- Image.resize would silently paper over it -- so it is
     caught here and reported as "changed, whole image" rather than diffed or allowed to crash.
+
+    Callers must only reach this for a flow that ran to a clean completion (never a divergence,
+    never a checkpoint-mismatch/exception regression) -- a baseline is never saved or diffed
+    against a broken or incomplete page.
     """
     from flow_review.web import visual
 
@@ -224,15 +243,16 @@ def _visual_baseline_check(driver, surface_dir: Path, flow_slug: str, surface_id
         current_path.unlink(missing_ok=True)
         return None
 
-    crops_dir = surface_dir / f"{flow_slug}.diff"
+    crops_dir = run_dir / "visual" / surface_id / flow_slug
     crop_paths = visual.crop_regions(current_path, result["regions"], crops_dir)
     current_path.unlink(missing_ok=True)
+    evidence = [p.relative_to(run_dir).as_posix() for p in crop_paths]
     return {
         "surface_id": surface_id, "flow_id": flow_id,
         "rule": "visual.changed", "route": route, "locator": "",
         "sev": "P2",
         "text": f"visual diff: {result['diff_ratio']:.2%} of the page changed since the baseline",
-        "evidence": [str(p) for p in crop_paths],
+        "evidence": evidence,
         "disposition": "engine",
     }
 
@@ -277,6 +297,8 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
         return 3
 
     recordings_root = project_root / ".flow-review" / "recordings"
+    run_id = _new_run_id()
+    run_dir = project_root / ".flow-review" / "runs" / run_id
     all_findings: list[dict] = []
     divergences: list[dict] = []
     flows_run: set[str] = set()
@@ -318,13 +340,18 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
                     # unknown, not fixed (CP2 I6)
                     flows_run.add(log["flow_id"])
                     # A-28/A-32: baselines are the base flow only, never a variant -- taken here,
-                    # before any variant run, on the same driver session the base flow just left.
-                    visual_finding = _visual_baseline_check(
-                        driver, surface_dir, flow_path.stem, surface.id, log["flow_id"],
-                        _current_path(driver), update_baselines,
-                    )
-                    if visual_finding is not None:
-                        all_findings.append(visual_finding)
+                    # before any variant run, on the same driver session the base flow just left
+                    # -- and only for a flow that ran cleanly to the end. "regression" also
+                    # covers an exception that cut the flow short (replay_one's step_failed
+                    # path), so a checkpoint mismatch or a crash must never save or diff a
+                    # baseline against a broken/incomplete page.
+                    if result["status"] == "clean":
+                        visual_finding = _visual_baseline_check(
+                            driver, surface_dir, run_dir, flow_path.stem, surface.id,
+                            log["flow_id"], _current_path(driver), update_baselines,
+                        )
+                        if visual_finding is not None:
+                            all_findings.append(visual_finding)
                     if variants:
                         storage_state_dir = (
                             project_root / ".flow-review" / "variants" / surface.id
@@ -354,7 +381,6 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
 
     ledger_path = project_root / ".flow-review" / "findings.json"
     ledger_ = ledger.load(ledger_path)
-    run_id = events.now_iso()
     ledger_ = ledger.reconcile(ledger_, all_findings, flows_run, run_id)
     ledger.save(ledger_, ledger_path)
 

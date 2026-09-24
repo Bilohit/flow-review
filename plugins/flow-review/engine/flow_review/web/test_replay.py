@@ -664,36 +664,44 @@ class _FakeScreenshotDriver:
 
 
 def test_visual_baseline_first_replay_saves_baseline_and_files_nothing(tmp_path):
+    surface_dir, run_dir = tmp_path / "surface", tmp_path / "run"
+    surface_dir.mkdir()
     drv = _FakeScreenshotDriver([((255, 255, 255), (100, 100))])
     finding = replay_mod._visual_baseline_check(
-        drv, tmp_path, "home", "webapp", "home", "/", update_baselines=False,
+        drv, surface_dir, run_dir, "home", "webapp", "home", "/", update_baselines=False,
     )
     assert finding is None
-    baseline = tmp_path / "home.baseline.png"
+    baseline = surface_dir / "home.baseline.png"
     assert baseline.exists()
     with Image.open(baseline) as img:
         assert img.size == (100, 100)
+    # crops only ever appear inside the run dir, never next to the (persistent) baseline
+    assert not run_dir.exists() or not any(run_dir.rglob("*.png"))
 
 
 def test_visual_baseline_unchanged_app_files_nothing(tmp_path):
+    surface_dir, run_dir = tmp_path / "surface", tmp_path / "run"
+    surface_dir.mkdir()
     drv = _FakeScreenshotDriver([
         ((255, 255, 255), (100, 100)),
         ((255, 255, 255), (100, 100)),
     ])
-    replay_mod._visual_baseline_check(drv, tmp_path, "home", "webapp", "home", "/",
+    replay_mod._visual_baseline_check(drv, surface_dir, run_dir, "home", "webapp", "home", "/",
                                       update_baselines=False)
-    finding = replay_mod._visual_baseline_check(drv, tmp_path, "home", "webapp", "home", "/",
-                                                update_baselines=False)
+    finding = replay_mod._visual_baseline_check(drv, surface_dir, run_dir, "home", "webapp",
+                                                "home", "/", update_baselines=False)
     assert finding is None
     # the "current" screenshot must not linger next to the baseline
-    assert not (tmp_path / "home.current.png").exists()
+    assert not (surface_dir / "home.current.png").exists()
 
 
-def test_visual_baseline_changed_app_files_p2_with_crop_evidence(tmp_path):
+def test_visual_baseline_changed_app_files_p2_with_run_relative_crop_evidence(tmp_path):
+    surface_dir, run_dir = tmp_path / "surface", tmp_path / "run"
+    surface_dir.mkdir()
     drv = _FakeScreenshotDriver([
         ((255, 255, 255), (100, 100)),
     ])
-    replay_mod._visual_baseline_check(drv, tmp_path, "home", "webapp", "home", "/",
+    replay_mod._visual_baseline_check(drv, surface_dir, run_dir, "home", "webapp", "home", "/",
                                       update_baselines=False)
 
     changed_img = Image.new("RGB", (100, 100), (255, 255, 255))
@@ -702,8 +710,8 @@ def test_visual_baseline_changed_app_files_p2_with_crop_evidence(tmp_path):
             changed_img.putpixel((x, y), (255, 0, 0))
     drv2 = SimpleNamespace(screenshot=lambda path: changed_img.save(path))
 
-    finding = replay_mod._visual_baseline_check(drv2, tmp_path, "home", "webapp", "home", "/dash",
-                                                update_baselines=False)
+    finding = replay_mod._visual_baseline_check(drv2, surface_dir, run_dir, "home", "webapp",
+                                                "home", "/dash", update_baselines=False)
     assert finding is not None
     assert finding["rule"] == "visual.changed"
     assert finding["sev"] == "P2"
@@ -714,44 +722,147 @@ def test_visual_baseline_changed_app_files_p2_with_crop_evidence(tmp_path):
     assert finding["locator"] == ""
     assert finding["evidence"], "expected at least one crop path as evidence"
     for crop in finding["evidence"]:
-        assert __import__("pathlib").Path(crop).exists()
+        # run-relative, forward-slashed, and it must actually resolve under run_dir --
+        # the same form dashboard/serve.py's /run/<relpath> route and validate.py expect.
+        assert not crop.startswith("/") and ".." not in crop.split("/")
+        assert (run_dir / crop).exists()
+    # crops never land next to the (persistent) baseline
+    assert not any(surface_dir.glob("*.diff")) and not any(surface_dir.rglob("region_*.png"))
     # the baseline itself is untouched by a plain (non-update) diff
-    with Image.open(tmp_path / "home.baseline.png") as img:
+    with Image.open(surface_dir / "home.baseline.png") as img:
         assert img.getpixel((0, 0)) == (255, 255, 255)
 
 
 def test_visual_baseline_update_baselines_overwrites_and_files_nothing(tmp_path):
+    surface_dir, run_dir = tmp_path / "surface", tmp_path / "run"
+    surface_dir.mkdir()
     drv = _FakeScreenshotDriver([
         ((255, 255, 255), (100, 100)),
     ])
-    replay_mod._visual_baseline_check(drv, tmp_path, "home", "webapp", "home", "/",
+    replay_mod._visual_baseline_check(drv, surface_dir, run_dir, "home", "webapp", "home", "/",
                                       update_baselines=False)
 
     changed_img = Image.new("RGB", (100, 100), (0, 0, 0))
     drv2 = SimpleNamespace(screenshot=lambda path: changed_img.save(path))
-    finding = replay_mod._visual_baseline_check(drv2, tmp_path, "home", "webapp", "home", "/",
-                                                update_baselines=True)
+    finding = replay_mod._visual_baseline_check(drv2, surface_dir, run_dir, "home", "webapp",
+                                                "home", "/", update_baselines=True)
     assert finding is None
-    with Image.open(tmp_path / "home.baseline.png") as img:
+    with Image.open(surface_dir / "home.baseline.png") as img:
         assert img.getpixel((0, 0)) == (0, 0, 0)
 
 
 def test_visual_baseline_size_mismatch_treated_as_changed_without_crashing(tmp_path):
+    surface_dir, run_dir = tmp_path / "surface", tmp_path / "run"
+    surface_dir.mkdir()
     drv = _FakeScreenshotDriver([
         ((255, 255, 255), (100, 100)),
     ])
-    replay_mod._visual_baseline_check(drv, tmp_path, "home", "webapp", "home", "/",
+    replay_mod._visual_baseline_check(drv, surface_dir, run_dir, "home", "webapp", "home", "/",
                                       update_baselines=False)
 
     # same solid color, different size: an implicit resize-then-diff would see no change at all,
     # so this only passes if the size mismatch is treated as "changed" explicitly.
     small_img = Image.new("RGB", (50, 50), (255, 255, 255))
     drv2 = SimpleNamespace(screenshot=lambda path: small_img.save(path))
-    finding = replay_mod._visual_baseline_check(drv2, tmp_path, "home", "webapp", "home", "/",
-                                                update_baselines=False)
+    finding = replay_mod._visual_baseline_check(drv2, surface_dir, run_dir, "home", "webapp",
+                                                "home", "/", update_baselines=False)
     assert finding is not None
     assert finding["rule"] == "visual.changed"
     assert finding["evidence"]
+    assert (run_dir / finding["evidence"][0]).exists()
+
+
+# ---------- baseline gate: only a cleanly-completed base flow (A-32) ----------
+
+def test_replay_crashed_flow_never_writes_or_updates_baseline(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    recordings = project_root / ".flow-review" / "recordings" / "webapp"
+    recordings.mkdir(parents=True)
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    actionlog.record_step(log, "click", locator={"testid": "boom"}, url="/")
+    (recordings / "f.json").write_text(json.dumps(log), encoding="utf-8")
+
+    class _CrashingDriver(_FakeDriver):
+        def click(self, locator):
+            raise RuntimeError("kaboom")
+
+        def screenshot(self, path):
+            pytest.fail("a crashed (incomplete) flow must never take a baseline screenshot")
+
+    drv = _CrashingDriver()
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+    code = replay_mod.replay(cfg, project_root)
+
+    assert code == 1  # a real regression, just not one that should ever touch a baseline
+    assert not (recordings / "f.baseline.png").exists()
+
+
+def test_replay_checkpoint_mismatch_never_writes_or_updates_baseline(tmp_path, monkeypatch):
+    # A checkpoint mismatch runs the flow to completion (status="regression", not
+    # "divergence"), so this is a separate case from the crash above: "clean" is still the
+    # only status baselines are gated on.
+    project_root = tmp_path / "project"
+    recordings = project_root / ".flow-review" / "recordings" / "webapp"
+    recordings.mkdir(parents=True)
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    actionlog.record_step(log, "click", locator={"testid": "signin-button"}, url="/")
+    actionlog.record_step(log, "assert_url", url="/settings", checkpoint="post-login")
+    (recordings / "f.json").write_text(json.dumps(log), encoding="utf-8")
+
+    drv = _FakeDriver(click_target="/dashboard")
+    drv.close = lambda: None
+    drv.screenshot = lambda path: pytest.fail(
+        "a checkpoint-mismatch flow must never take a baseline screenshot either"
+    )
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+    replay_mod.replay(cfg, project_root)
+
+    assert not (recordings / "f.baseline.png").exists()
+
+
+def test_replay_update_baselines_still_gated_on_clean_status(tmp_path, monkeypatch):
+    # --update-baselines must not bypass the clean-status gate: a crashed flow still must not
+    # write a baseline even when the caller asked to accept whatever the screenshot shows.
+    project_root = tmp_path / "project"
+    recordings = project_root / ".flow-review" / "recordings" / "webapp"
+    recordings.mkdir(parents=True)
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    actionlog.record_step(log, "click", locator={"testid": "boom"}, url="/")
+    (recordings / "f.json").write_text(json.dumps(log), encoding="utf-8")
+
+    class _CrashingDriver(_FakeDriver):
+        def click(self, locator):
+            raise RuntimeError("kaboom")
+
+        def screenshot(self, path):
+            pytest.fail("a crashed flow must never take a baseline screenshot, "
+                        "even under --update-baselines")
+
+    drv = _CrashingDriver()
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+    replay_mod.replay(cfg, project_root, update_baselines=True)
+
+    assert not (recordings / "f.baseline.png").exists()
 
 
 # ---------- --log replays never write baselines (A-3) ----------
@@ -828,8 +939,18 @@ def test_replay_e2e_visual_baseline_saved_then_diffed_after_css_change(tmp_path,
     assert entry.sev == "P2"
     assert entry.state == "open"
     assert entry.evidence
+
+    # evidence is run-relative (like every other finding's evidence path), and lands inside a
+    # fresh `.flow-review/runs/<run_id>/` folder this replay minted -- never next to the
+    # baseline under recordings/, which stays persistent (A-32).
+    runs_root = project_root / ".flow-review" / "runs"
+    run_dirs = [d for d in runs_root.iterdir() if d.is_dir()] if runs_root.is_dir() else []
+    assert len(run_dirs) == 1, "the first two (no-diff) replays must never create a run folder"
+    this_run_dir = run_dirs[0]
     for crop in entry.evidence:
-        assert (project_root / crop).exists() or __import__("pathlib").Path(crop).exists()
+        assert not crop.startswith("/") and ".." not in crop.split("/")
+        assert (this_run_dir / crop).exists()
+    assert not (project_root / ".flow-review" / "recordings" / "webapp" / "home.diff").exists()
 
     # --update-baselines accepts the change and files nothing more
     replay_mod.replay(cfg, project_root, update_baselines=True)
