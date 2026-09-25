@@ -114,7 +114,7 @@ step window, runs the B4 measurement checks, and appends the step/shot/finding e
 the engine, before the JSON response ever reaches you. Your only remaining reporting job is filing
 a *judgment* finding yourself when you observe one the engine's own checks would not catch (an
 objective failure you witnessed, or something worth flagging for `fr-lens` to evaluate later) --
-via the CLI's `event --run DIR --type finding ...` subcommand, never by writing to `events.jsonl`
+via `flow-review event --run DIR --type finding ...`, never by writing to `events.jsonl`
 directly.
 
 `references/evidence.md` and `references/testing.md` cover the rest of the reporting and driving

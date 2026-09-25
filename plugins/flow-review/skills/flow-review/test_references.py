@@ -151,12 +151,32 @@ def test_goals_reference_exists_and_is_required():
     assert (REFS / "goals.md") in REQUIRED
 
 
+def _claims_explorer_writes_own_log(text: str) -> bool:
+    """drive writes the action log and the step/shot events; the explorer never does. Filing a
+    finding or goal through `flow-review event` is the explorer's job, so it is not banned."""
+    return bool(
+        "events.append" in text
+        or re.search(r"flow-review event[^`\n]*--type\s+(step|shot)\b", text)
+        or re.search(r"explorer.{0,60}(writes|emits|hand-writes).{0,40}(action log|step event)",
+                     text, re.I)
+    )
+
+
+def test_explorer_self_logging_ban_allows_finding_events_but_not_step_events():
+    # A-44 row 21: filing a judgment finding through the CLI is allowed; only the explorer
+    # writing its own step/shot events or action log is banned
+    assert not _claims_explorer_writes_own_log(
+        "file it via `flow-review event --run DIR --type finding ...`")
+    assert not _claims_explorer_writes_own_log(
+        "`flow-review event --run DIR --type goal --json '{}'`")
+    assert _claims_explorer_writes_own_log("`flow-review event --run DIR --type step step=click`")
+    assert _claims_explorer_writes_own_log("`flow-review event --run DIR --type shot`")
+    assert _claims_explorer_writes_own_log("call events.append(run_dir, ev)")
+    assert _claims_explorer_writes_own_log("the explorer writes its own action log")
+
+
 def test_goals_file_never_claims_the_explorer_writes_its_own_action_log_or_step_events():
-    text = (REFS / "goals.md").read_text(encoding="utf-8")
-    assert "events.append" not in text
-    assert "flow-review event" not in text
-    assert re.search(r"explorer.{0,60}(writes|emits|hand-writes).{0,40}(action log|step event)",
-                      text, re.I) is None
+    assert not _claims_explorer_writes_own_log((REFS / "goals.md").read_text(encoding="utf-8"))
 
 
 def test_no_lens_file_claims_it_runs_alone_or_never_drives_the_flow():

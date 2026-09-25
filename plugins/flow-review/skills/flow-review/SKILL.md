@@ -67,11 +67,14 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
    The user may trim planned work here. **The interview closes permanently at GO** -- no further
    questions reach the user for the rest of the run: no question, no interview after the GO. Recovery decisions (`references/stuck.md`)
    are never a question.
-3. **Serve.** Immediately after GO, launch `flow-review serve --run <RUN_DIR>` and print the URL
-   it returns. Then record the run's lifecycle for the dashboard, since nothing else emits it:
+3. **Serve.** Immediately after GO, mint the run with `flow-review run new --project <root>`; it
+   prints `{"run_id": ..., "run_dir": ...}`. That printed `run_dir` is `RUN_DIR` (and every `DIR`
+   below) for the rest of the run -- never invent a run-dir name yourself (A-51). Then launch
+   `flow-review serve --run <RUN_DIR>` and print the URL it returns. Then record the run's lifecycle for the dashboard, since nothing else emits it:
    `flow-review event --run DIR --type run mode=<mode> flows_total=<N planned flows>` (`N` is the
    number of flows the plan/GO scope settled on across every surface).
-4. **Drive sessions.** For every runnable web surface the plan touches, start its drive session
+4. **Drive sessions.** For every runnable web or tauri surface the plan touches (a tauri
+   surface's own dev server must already be up), start its drive session
    before any explorer is dispatched against it: `flow-review drive start --surface ID --run DIR
    [--record]` (the `--record` flag mirrors whatever the GO gate resolved for that surface, A-1/
    A-2). This is the orchestrator's only direct use of `drive` -- every other verb (`goto`,
@@ -116,9 +119,7 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
      (JSON) are injected first.
    - **Validation.** Every judgment finding routes through `references/validation.md` (C5): an
      engine check or objective failure is filed on one reproduction; a `P2` judgment finding is
-     filed directly as an opinion; a `P0`/`P1` judgment finding gets an ephemeral replay. For
-     every tauri surface with an open P0/P1 finding, run `flow-review confirm --run DIR` before
-     the verifier step; its `native/<id>/result.json` files feed the verifier as replay evidence.
+     filed directly as an opinion; a `P0`/`P1` judgment finding gets an ephemeral replay.
      Then `fr-verifier` at Opus, resolved via `flow-review validate resolve --run DIR --verdict
      stands|refuted --reason R --kind measurement|replay --ref PATH`. Refute only with a real
      evidence ref -- the rule and its enforcement are in `references/validation.md`. A successful
@@ -128,6 +129,16 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
      alias is passed as `--alias FINGERPRINT=ID` to reconcile, A-6). After the run's findings are
      in, reconcile the ledger with `flow-review ledger reconcile --run DIR` (folds the run's
      `finding` events, minus `withdraw`n ones, into `.flow-review/findings.json`).
+   - **Native confirm.** After `ledger reconcile` (so this run's findings are in the ledger), for
+     every `tauri` surface this run drove, run `flow-review confirm --run DIR --surface ID`. It is
+     engine-only and replays only this run's open P0/P1 findings that have a repro log. Exit codes:
+     `0` -- all reproduced; continue. `1` -- some did not reproduce; continue: those findings keep
+     their verdict path, `fr-verifier` gets each `native/<id>/result.json` as replay evidence
+     (`flow-review validate resolve --kind replay --ref native/<id>/result.json`). `3` -- the
+     native app could not be launched or attached (binary not built, CDP port in use, attach
+     timeout); continue, file `flow-review event --run DIR --type status state=not-exercised
+     surface_id=ID step=confirm reason=native-unavailable` and report native confirm as
+     not-exercised. Never ask the user -- the interview closed at GO.
 6. **Manifest write-back.** What was learned this run is written back by calling
    `flow-review manifest apply-learnings --path FILE --hash RECORDED_HASH --learning TEXT` (one
    `--learning` per line; prints the new hash to store as `flows_hash`) -- never a hand-rolled
