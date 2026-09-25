@@ -116,8 +116,10 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
      (JSON) are injected first.
    - **Validation.** Every judgment finding routes through `references/validation.md` (C5): an
      engine check or objective failure is filed on one reproduction; a `P2` judgment finding is
-     filed directly as an opinion; a `P0`/`P1` judgment finding gets an ephemeral replay, then
-     `fr-verifier` at Opus, resolved via `flow-review validate resolve --run DIR --verdict
+     filed directly as an opinion; a `P0`/`P1` judgment finding gets an ephemeral replay. For
+     every tauri surface with an open P0/P1 finding, run `flow-review confirm --run DIR` before
+     the verifier step; its `native/<id>/result.json` files feed the verifier as replay evidence.
+     Then `fr-verifier` at Opus, resolved via `flow-review validate resolve --run DIR --verdict
      stands|refuted --reason R --kind measurement|replay --ref PATH`. Refute only with a real
      evidence ref -- the rule and its enforcement are in `references/validation.md`. A successful
      refutation stays in the ledger with the reason and the evidence ref, never deleted.

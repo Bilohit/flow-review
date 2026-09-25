@@ -11,6 +11,7 @@ import statistics
 from pathlib import Path
 
 from flow_review import budget, config, drift, envsetup
+from flow_review import ledger as ledger_mod
 
 UNIT_TEMPLATES = {
     "quick": {"explorer": 1, "verifier": 1},
@@ -47,6 +48,8 @@ def plan(project_root: Path, mode: str, goal: str | None = None,
     if dotenv_path.exists():
         envsetup.load_dotenv(dotenv_path, environ=combined_env)
 
+    lgr = ledger_mod.load(project_root / ".flow-review" / "findings.json")
+
     surfaces_out = []
     persistent_ids = []
     total_tokens = 0
@@ -56,6 +59,11 @@ def plan(project_root: Path, mode: str, goal: str | None = None,
 
         counts = _unit_counts_for(surface.id, mode, project_root)
         units = [{"role": role, "count": count} for role, count in counts.items() if count > 0]
+        if surface.driver == "tauri" and any(
+            e.surface_id == surface.id and e.state == "open" and e.sev in ("P0", "P1")
+            for e in lgr.findings.values()
+        ):
+            units.append({"role": "confirm", "count": 1})
         plan_units = [
             {"surface_id": surface.id, "role": u["role"], "count": u["count"]}
             for u in units

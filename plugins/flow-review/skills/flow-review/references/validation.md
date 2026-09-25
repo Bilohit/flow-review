@@ -44,6 +44,12 @@ collapsed "refuted" section shows it, reason and evidence ref included. This is 
 planted-bug benchmark app (§7.6, M5) measures recall on every release: a refutation that quietly
 disappeared, or that rested on an unverifiable claim, would be unfalsifiable.
 
+## Native replay evidence
+
+`native/<finding_id>/result.json` (written by `flow-review confirm --run DIR`) is a valid
+`replay`-kind evidence ref: `validate resolve --kind replay --ref native/<finding_id>/result.json`
+reads its `reproduced` boolean.
+
 ## What this file does not decide
 
 Severity (`sev`) is set by the lens that filed the finding, or by the product-stuck floor rule in
