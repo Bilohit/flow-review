@@ -1,7 +1,13 @@
 """Native confirm (A-35, M2): replay each P0/P1 finding's repro log on the native app over CDP.
 
 `flow-review confirm --run DIR [--surface ID] [--finding ID] [--port 9333]` walks the ledger for
-open P0/P1 findings on tauri-driver surfaces. A `native: "pending"` surface (A-35: Linux
+open P0/P1 findings on tauri-driver surfaces, run after `ledger reconcile` so this run's findings
+are in it. Candidate rule: an entry is confirmed only if this run saw it (`last_run` == the run
+dir's name, which reconcile stamps; `--finding` names one explicitly and skips this check) and a
+repro log exists for its flow -- `<run_dir>/repro/<flow_slug>.json`, else the recording
+`.flow-review/recordings/<surface_slug>/<flow_slug>.json` (record mode). An entry with no repro log
+is skipped with a not-exercised/no-repro-log status event and does not count against the exit
+code. A `native: "pending"` surface (A-35: Linux
 tauri-driver / macOS AX are parked) never reaches WebDriver.attach -- it only files a
 not-exercised/native-pending status event per finding and writes no result.json. Otherwise the
 native binary is launched once per surface (A-50: a fixed default CDP port, 9333, overridable
@@ -9,13 +15,16 @@ with --port, since only one native confirm run happens at a time locally), attac
 bounded retry poll, and each finding's flat repro log `<run_dir>/repro/<flow_slug>.json` is
 replayed against it.
 
-Exit 0 = every attempted finding reproduced (native-pending findings do not count against this);
-1 = some did not (a missing repro log counts as not reproduced); 3 = the native app could not be
-attached within the retry window -- no ledger write happens on that path.
+Exit 0 = every attempted finding reproduced (skipped / native-pending findings do not count);
+1 = some did not; 3 = the native app could not be launched or attached -- `binary` option missing
+or not built, the CDP port already taken, or no attach within the retry window. No ledger write
+happens on an exit-3 path.
 """
 from __future__ import annotations
 
 import json
+import socket
+import sys
 import time
 from pathlib import Path
 
@@ -37,6 +46,37 @@ def _attach_with_retry(cdp_url: str) -> WebDriver | None:
             return WebDriver.attach(cdp_url)
         except Exception:
             time.sleep(ATTACH_POLL_S)
+    return None
+
+
+def _port_in_use(port: int) -> bool:
+    with socket.socket() as sock:
+        sock.settimeout(0.5)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def _repro_path(project_root: Path, run_dir: Path, entry) -> Path | None:
+    # ponytail: reaches into actionlog._slug so the path matches what actionlog.save wrote;
+    # upgrade: make it public if a third caller appears
+    flow_slug = actionlog._slug(entry.flow_id)
+    for path in (run_dir / "repro" / f"{flow_slug}.json",
+                 project_root / ".flow-review" / "recordings" / actionlog._slug(entry.surface_id)
+                 / f"{flow_slug}.json"):
+        if path.exists():
+            return path
+    return None
+
+
+def _launch_error(project_root: Path, surface, port: int) -> str | None:
+    if not surface.options.get("binary"):
+        return (f"surface {surface.id!r} has no `binary` option; build the app and set it in "
+                f".flow-review/config.json")
+    binary = project_root / surface.options["binary"]
+    if not binary.is_file():
+        return f"native binary {binary} not found; build the app first (cargo tauri build)"
+    if _port_in_use(port):
+        return (f"CDP port {port} is already in use; stop whatever listens there or pass "
+                f"--port <free port>")
     return None
 
 
@@ -89,6 +129,7 @@ def confirm(project_root: Path, run_dir: Path, surface_id: str | None = None,
         entry for entry in lgr.findings.values()
         if entry.state == "open" and entry.sev in ("P0", "P1")
         and entry.surface_id in surfaces_by_id
+        and (finding_id is not None or entry.last_run == run_dir.name)
     ]
     if surface_id is not None:
         candidates = [e for e in candidates if e.surface_id == surface_id]
@@ -112,16 +153,22 @@ def confirm(project_root: Path, run_dir: Path, surface_id: str | None = None,
                 })
                 continue
 
-            # ponytail: reaches into actionlog._slug so the path matches what actionlog.save wrote;
-            # upgrade: make it public if a third caller appears
-            repro_path = run_dir / "repro" / f"{actionlog._slug(entry.flow_id)}.json"
-            if not repro_path.exists():
-                all_reproduced = False
+            repro_path = _repro_path(project_root, run_dir, entry)
+            if repro_path is None:
+                events.append(run_dir, {
+                    "type": "status", "state": "not-exercised",
+                    "surface_id": entry.surface_id, "flow_id": entry.flow_id,
+                    "step": "confirm", "reason": "no-repro-log",
+                })
                 continue
 
             if session["surface_id"] != entry.surface_id:
                 _stop(session)
                 session["surface_id"] = entry.surface_id
+                error = _launch_error(project_root, surface, port)
+                if error is not None:
+                    print(error, file=sys.stderr)
+                    return 3
                 # a relative binary path in config is relative to the project, not the cwd
                 binary = project_root / surface.options["binary"]
                 # held in session before attach so _stop kills it on every exit path
