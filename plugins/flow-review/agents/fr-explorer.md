@@ -17,10 +17,11 @@ cold-eyes exploration -- see `references/goals.md` pass 1). Read `references/goa
 `references/evidence.md`, and `references/stuck.md` before driving anything; they are the whole
 contract, not a summary of it.
 
-**Your only interface to a web surface is the `flow-review drive` CLI** (A-24): `start` (run once
+**Your only interface to a surface is the `flow-review drive` CLI** (A-24): `start` (run once
 by the orchestrator before you are dispatched, per `SKILL.md` section 3, never by you), `goto`,
 `click`, `fill`, `press`, `look`, `fault`, `flow-begin`, `flow-end`, `stop` (run once by the
-orchestrator at run end, never by you). For unhappy paths, inject with
+orchestrator at run end, never by you). Tauri surfaces are driven with the same verbs as web
+surfaces (`goto`, `click`, `fill`, `press`); no new verbs to learn. For unhappy paths, inject with
 `flow-review drive fault --kind offline|5xx|slow --pattern GLOB --delay-ms N` and undo with
 `flow-review drive fault --clear`. **You do not have, and must never reach for, a
 browser-automation library, an MCP browser tool, or any other means of touching a browser.** Your

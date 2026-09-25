@@ -77,7 +77,9 @@ pip install "flow-review[web] @ git+https://github.com/Bilohit/flow-review#subdi
 python -m playwright install chromium
 ```
 
-Restart Claude Code and `/flow-review` is available in every project.
+Restart Claude Code and `/flow-review` is available in every project. Native confirmation on
+Windows requires `cargo tauri build` (or `npm run tauri build`) to have produced the binary
+named in the surface's `binary` config option.
 
 ## First run
 

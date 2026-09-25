@@ -9,8 +9,8 @@ driving it, and what evidence it can produce. `testing.md` covers how to drive o
 
 ## Driver: cdp
 
-Drives a Chromium-backed surface over the Chrome DevTools Protocol -- a web app in a browser,
-or an Electron or Tauri application.
+Drives a Chromium-backed surface over the Chrome DevTools Protocol -- a web app in a browser
+or an Electron application. (Tauri applications use the `tauri` driver instead; see below.)
 
 **Launch.** The config's `launch` command, with the remote debugging port bound. For a packaged
 desktop application the port is usually bound by an environment variable rather than an argument;
@@ -41,6 +41,29 @@ loaded URL matches the config's base URL.
 **Evidence it can produce.** `locator.bounding_box()`, `page.evaluate()` for computed style and
 DOM state, `page.screenshot()`, console and network events via `page.on(...)`, and a full trace
 file if tracing is enabled.
+
+## Driver: tauri
+
+Drives a Tauri application in development or as a native binary. Tauri surfaces are driven
+over the dev server (same as `playwright`, using `goto`, `click`, `fill`, `press`, `look`) when
+the app is running in dev mode, and over the Chrome DevTools Protocol when confirming P0/P1
+findings on the native Windows binary.
+
+**Launch.** `npm run tauri dev` (or `cargo tauri dev`) for development flows. For native
+confirmation, `flow-review confirm --run DIR [--surface ID] [--finding ID]` launches the binary
+named in the `binary` config option.
+
+**Proven attached when.** The dev server responds to navigation; the native binary attaches over
+CDP when the debugger port is available.
+
+**Options.** `dev_url` (dev server URL, e.g. `http://localhost:1420`), `mocks_file` (path to
+`tauri-mocks.json`), `binary` (path to the built binary for native confirmation on Windows --
+relative paths resolve against the project root), `native` (`pending` or `webview2`; audit sets
+`webview2` on Windows and `pending` elsewhere, and `confirm` skips only `pending` surfaces).
+
+**Evidence it can produce.** Same as `playwright` during dev flows. During native confirmation:
+`measure.check_page` runs the full engine ruleset on the native binary and writes evidence refs
+to the ledger; `flow-review confirm` also produces a screenshot at `<run_dir>/native/<finding_id>/shot.png`.
 
 ## Driver: adb
 

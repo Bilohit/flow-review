@@ -25,7 +25,8 @@ Neither path is recommended over the other -- which one applies is a fact about 
 ## 2. Audit
 
 Run `fr.audit.detect(root)`. It proposes candidates from what the repository actually contains --
-a `package.json` `dev`/`start`/`serve` script becomes a `ui` surface driven by `cdp`, a
+a `package.json` `dev`/`start`/`serve` script becomes a `ui` surface driven by `playwright`, a
+`src-tauri/tauri.conf.json` with `build.devUrl` becomes a `ui` surface driven by `tauri`, a
 `pyproject.toml` `[project.scripts]` entry becomes a `cli` surface driven by `shell`, an OpenAPI or
 Swagger file becomes an `api` surface driven by `http`. `fr.audit` only proposes; it never launches
 anything itself -- that split is what lets drift detection later reuse the same detection without
@@ -121,6 +122,27 @@ direction and the drift gate breaks in one of two ways:
   (it wasn't found there in the first place), so it is reported as newly "removed" on every single
   run. The gate cries wolf and the user learns to click through it -- which loses the gate
   entirely for the surfaces that actually matter.
+
+## 5.5. Tauri: mocking and native confirmation
+
+For a `tauri` driver surface, three extra steps precede proving:
+
+1. **Start the app's own dev server.** Run the project's `src-tauri/tauri.conf.json`
+   `build.beforeDevCommand` (e.g. `npm run dev`) -- not `cargo tauri dev` / `npm run tauri dev`,
+   which opens the native window instead. Driving reaches it at `build.devUrl`, recorded as the
+   surface's `dev_url`; `prove_tauri_dev_server` fails fast if nothing answers there.
+
+2. **Generate mock stubs.** Run `flow-review tauri mocks --project <root>` from the project root.
+   It scans every `.rs` file under `src-tauri/` for functions annotated `#[tauri::command]`, writes
+   `.flow-review/tauri-mocks.json` with a `{command: null}` stub for each unfilled command, never
+   overwrites an already-filled value, and reports how many new stubs were added. Fill each stub's
+   value by hand with plausible test data -- unfilled commands resolve to `null` and are reported
+   as not-exercised with reason `mock-missing`, once per command per flow.
+
+3. **Record the binary path.** Once `cargo tauri build` (or `npm run tauri build`) produces the
+   release binary, set the surface's `binary` config option to its path -- relative paths resolve
+   against the project root. The `confirm` verb uses this to launch the native app for native P0/P1
+   finding verification on Windows.
 
 ## 6. Surface setup: state, reset, and credentials
 
