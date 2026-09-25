@@ -343,6 +343,23 @@ function renderEvidence(finding, container) {
     pre.textContent = (finding.evidence[0] || '');   // API/CLI text first, textContent only
     container.appendChild(pre);
   }
+
+  // Native confirm pair: wrap the just-rendered web-shot img with the native/<id>/shot.png
+  // evidence ref, side by side, reusing .before-after. Absent when confirmed is null (no
+  // native run yet) -- no placeholder per the dashboard's no-subheadings/descriptions rule.
+  const nativeShot = `native/${finding.id}/shot.png`;
+  const webImg = container.firstChild;
+  if (finding.confirmed != null && finding.evidence.includes(nativeShot) && webImg && webImg.tagName === 'IMG') {
+    const wrap = document.createElement('div');
+    wrap.className = 'before-after';
+    container.removeChild(webImg);
+    const nativeImg = document.createElement('img');
+    nativeImg.src = _assetUrl(nativeShot);
+    nativeImg.alt = 'native confirm';
+    nativeImg.title = 'native confirm';
+    wrap.append(webImg, nativeImg);
+    container.appendChild(wrap);
+  }
 }
 
 function isVisual(finding) {

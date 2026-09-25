@@ -54,6 +54,19 @@ def _drop_missing_evidence(findings: list[dict], run_dir: Path) -> None:
         f["evidence"] = [e for e in f.get("evidence", []) if (run_dir / e).is_file()]
 
 
+def _confirmed_state(run_dir: Path, finding_id: str) -> bool | None:
+    result_path = run_dir / "native" / finding_id / "result.json"
+    if not result_path.is_file():
+        return None
+    try:
+        data = json.loads(result_path.read_text(encoding="utf-8"))
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    return data.get("reproduced")
+
+
 def fold(project_root: Path, run_dir: Path, cfg) -> dict:
     events_path = run_dir / "events.jsonl"
     text = events_path.read_text(encoding="utf-8") if events_path.exists() else ""
@@ -185,6 +198,8 @@ def fold(project_root: Path, run_dir: Path, cfg) -> dict:
     ledger_keys = {f["id"] for f in ledger_findings} | {f["fingerprint"] for f in ledger_findings}
     findings = ledger_findings + _unreconciled(live_findings, ledger_keys, withdrawn)
     _drop_missing_evidence(findings, run_dir)
+    for f in findings:
+        f["confirmed"] = _confirmed_state(run_dir, f["id"])
 
     counts = {s: 0 for s in SEVERITIES}
     for f in findings:

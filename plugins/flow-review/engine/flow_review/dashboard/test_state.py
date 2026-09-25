@@ -195,6 +195,52 @@ def test_fold_drops_evidence_missing_from_current_run_dir(tmp_path, monkeypatch)
     assert findings["f1"]["evidence"] == ["shots/real.png"]
 
 
+def test_fold_exposes_confirmed_from_native_result_json(tmp_path, monkeypatch):
+    from flow_review.dashboard.state import fold
+    _patch_common(monkeypatch)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "native" / "f1").mkdir(parents=True)
+    (run_dir / "native" / "f1" / "result.json").write_text(
+        '{"finding_id": "f1", "reproduced": true, "findings": []}', encoding="utf-8")
+    _write_events(run_dir, [
+        {"ts": "2026-09-24T10:00:00.000Z", "id": "e1", "type": "run", "mode": "goal",
+         "surfaces": [{"id": "desktop", "kind": "tauri"}]},
+        {"ts": "2026-09-24T10:00:01.000Z", "id": "f1", "type": "finding", "sev": "P1",
+         "surface_id": "desktop", "flow_id": "flow-1", "text": "console.error in step window",
+         "disposition": "engine"},
+        {"ts": "2026-09-24T10:00:02.000Z", "id": "f2", "type": "finding", "sev": "P2",
+         "surface_id": "desktop", "flow_id": "flow-1", "text": "no native/f2/result.json",
+         "disposition": "engine"},
+    ])
+    state = fold(tmp_path, run_dir, _FakeCfg())
+    findings = {f["id"]: f for f in state["findings"]}
+    assert findings["f1"]["confirmed"] is True
+    assert findings["f2"]["confirmed"] is None
+
+
+def test_fold_handles_non_dict_result_json_gracefully(tmp_path, monkeypatch):
+    # Valid JSON that isn't a dict (e.g., [], "x", 42, true) should return confirmed=None
+    # without crashing, not raise AttributeError when accessing .get()
+    from flow_review.dashboard.state import fold
+    _patch_common(monkeypatch)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "native" / "f1").mkdir(parents=True)
+    (run_dir / "native" / "f1" / "result.json").write_text('[]', encoding="utf-8")
+    _write_events(run_dir, [
+        {"ts": "2026-09-24T10:00:00.000Z", "id": "e1", "type": "run", "mode": "goal",
+         "surfaces": [{"id": "desktop", "kind": "tauri"}]},
+        {"ts": "2026-09-24T10:00:01.000Z", "id": "f1", "type": "finding", "sev": "P1",
+         "surface_id": "desktop", "flow_id": "flow-1", "text": "console.error in step window",
+         "disposition": "engine"},
+    ])
+    state = fold(tmp_path, run_dir, _FakeCfg())
+    findings = {f["id"]: f for f in state["findings"]}
+    assert "f1" in findings
+    assert findings["f1"]["confirmed"] is None  # valid JSON but not a dict, should return None
+
+
 def test_run_event_flows_total_arrives_as_string_from_cli_and_still_counts(tmp_path, monkeypatch):
     # RC2: `flow-review event --run DIR --type run mode=quick flows_total=1` writes flows_total
     # as a string (cli.py's `event` verb never coerces k=v values) -- fold must still surface it
