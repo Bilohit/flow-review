@@ -232,3 +232,43 @@ def test_click_settle_waits_for_click_triggered_request_and_console_error():
     finally:
         d.close()
         srv.shutdown()
+
+
+def test_webdriver_applies_init_script_after_page_is_created(monkeypatch):
+    from flow_review.web import driver as driver_mod
+
+    calls = {}
+
+    class FakePage:
+        def add_init_script(self, script):
+            calls["script"] = script
+        def on(self, *a, **k):
+            pass
+
+    class FakeBrowser:
+        def new_page(self, **kwargs):
+            return FakePage()
+        def close(self):
+            pass
+
+    class FakeChromium:
+        def launch(self, headless):
+            return FakeBrowser()
+
+    class FakePlaywright:
+        chromium = FakeChromium()
+        def stop(self):
+            pass
+
+    monkeypatch.setattr(driver_mod, "sync_playwright", lambda: _StartCtx(FakePlaywright()))
+    d = driver_mod.WebDriver(headless=True, init_script="window.__MARK__ = 1;")
+    assert d.page is None  # page does not exist before launch()
+    d.launch("http://fake/")
+    assert calls["script"] == "window.__MARK__ = 1;"
+
+
+class _StartCtx:
+    def __init__(self, pw):
+        self._pw = pw
+    def start(self):
+        return self._pw

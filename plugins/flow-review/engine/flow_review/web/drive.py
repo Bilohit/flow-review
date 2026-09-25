@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 from flow_review import envsetup, events, ledger
 from flow_review.web import actionlog, faults, measure
+from flow_review.web.driver import WebDriver
 from flow_review.web.faults import url_matches
 
 MAX_BODY = 64 * 1024  # an action POST is a few hundred bytes to a few KiB (a fill value)
@@ -38,6 +39,7 @@ class DriveSession:
         self._active_5xx_patterns: list[str] = []
         self._active_fault = False
         self._seen_fingerprints: set[str] = set()
+        self._mock_missing_warned: set[tuple[str, str | None]] = set()
 
     def flow_begin(self, flow_id: str) -> dict:
         self.flow_id = flow_id
@@ -231,8 +233,31 @@ class DriveSession:
         page = getattr(self.driver, "page", None)
         return getattr(page, "url", None) if page is not None else None
 
+    def _note_mock_invocation(self, command: str) -> None:
+        key = (command, self.flow_id)
+        if key in self._mock_missing_warned:
+            return
+        self._mock_missing_warned.add(key)
+        events.append(self.run_dir, {
+            "type": "status", "state": "not-exercised", "surface_id": self.surface_id,
+            "flow_id": self.flow_id, "step": command, "reason": "mock-missing",
+        })
+
     def _result(self, new_ids: list) -> dict:
         page = getattr(self.driver, "page", None)
+        # Only a tauri driver carries an init script (the invoke mocks); it records every
+        # stubbed-but-unfilled command it answered with null, and each one is a flow step that
+        # never really ran (A-37).
+        # ponytail: window.__flowReviewMissingMocks resets on navigation (it's a page-global set
+        # up by the init script, which re-runs on every new document), so a null-stub invoke
+        # immediately followed by a navigation within the same action is never reported here --
+        # the poll below only ever sees the post-navigation page's (empty) list. Upgrade path:
+        # expose a binding via page.expose_function that the init script calls synchronously on
+        # every stubbed invoke, so the missing-mock is recorded before any navigation can wipe
+        # it, or poll this list before the action's own navigation runs instead of after.
+        if page is not None and getattr(self.driver, "init_script", None) is not None:
+            for command in page.evaluate("window.__flowReviewMissingMocks || []"):
+                self._note_mock_invocation(command)
         title = None
         if page is not None:
             title_fn = getattr(page, "title", None)
@@ -253,8 +278,57 @@ class DriveSession:
 
 
 def _default_driver_factory(headless: bool, viewport: dict | None):
-    from flow_review.web.driver import WebDriver
     return WebDriver(headless=headless, viewport=viewport)
+
+
+def _load_tauri_mocks(mocks_path_str: str) -> dict:
+    mocks_path = Path(mocks_path_str)
+    if not mocks_path.is_file():
+        return {}
+    return json.loads(mocks_path.read_text(encoding="utf-8"))
+
+
+def tauri_init_script(options: dict) -> str:
+    """Loads options["mocks_file"] and builds the invoke-mock init script. Shared by
+    _tauri_driver_factory and replay's variant driver factory (web/replay.py::_run_variants) so
+    there is exactly one mocks->init_script construction instead of two."""
+    from flow_review.tauri.mocks import init_script
+    mocks = _load_tauri_mocks(options.get("mocks_file", ".flow-review/tauri-mocks.json"))
+    return init_script(mocks)
+
+
+def _tauri_driver_factory(headless: bool, viewport: dict | None, options: dict | None = None):
+    options = options or {}
+    return WebDriver(headless=headless, viewport=viewport,
+                      init_script=tauri_init_script(options))
+
+
+DRIVER_FACTORIES = {
+    "playwright": lambda headless, viewport, options=None: _default_driver_factory(headless,
+                                                                                   viewport),
+    "tauri": _tauri_driver_factory,
+}
+
+
+def resolve_surface_options(surface, project_root: Path) -> dict:
+    """A tauri surface's mocks_file made absolute against project_root, so the factory (which
+    runs in the serve subprocess, or under replay) never needs project_root itself."""
+    options = dict(surface.options)
+    if surface.driver == "tauri":
+        mocks = Path(options.get("mocks_file") or ".flow-review/tauri-mocks.json")
+        options["mocks_file"] = str(mocks if mocks.is_absolute() else project_root / mocks)
+    return options
+
+
+def prove_tauri_dev_server(dev_url: str) -> None:
+    # No health_path for tauri: the dev server is the app's own root, so it answers at "/".
+    try:
+        with urllib.request.urlopen(dev_url, timeout=2):
+            return
+    except urllib.error.HTTPError:
+        return  # any HTTP answer means the server is up
+    except (urllib.error.URLError, OSError):
+        raise RuntimeError(f"tauri dev server not reachable at {dev_url}; start it first") from None
 
 
 class _ActionHandler(BaseHTTPRequestHandler):
@@ -460,20 +534,30 @@ def cmd_start(args: argparse.Namespace) -> dict:
     surface = next((s for s in cfg.surfaces if s.id == args.surface), None)
     if surface is None:
         raise ValueError(f"no surface {args.surface!r} in config")
-    base_url = surface.options.get("base_url")
-    if not base_url:
-        raise ValueError(f"surface {args.surface!r} has no options.base_url")
+    options = resolve_surface_options(surface, project_root)
+    if surface.driver == "tauri":
+        base_url = options.get("dev_url")
+        if not base_url:
+            raise ValueError(f"surface {args.surface!r} has no options.dev_url")
+        prove_tauri_dev_server(base_url)
+        _load_tauri_mocks(options["mocks_file"])  # a corrupt mocks file fails here, not silently
+                                                  # inside the detached serve process
+    else:
+        base_url = options.get("base_url")
+        if not base_url:
+            raise ValueError(f"surface {args.surface!r} has no options.base_url")
     record_enabled = bool(args.record or surface.record)
-    viewport_list = surface.options.get("viewport") or []
+    viewport_list = options.get("viewport") or []
     viewport = viewport_list[0] if viewport_list else None
-    tokens_file = surface.options.get("tokens_file")
+    tokens_file = options.get("tokens_file")
     tokens_path = (project_root / tokens_file) if tokens_file else None
 
     (run_dir / "drive").mkdir(parents=True, exist_ok=True)
     cmd = [
         sys.executable, "-m", "flow_review.web.drive", "serve",
         "--surface", args.surface, "--run", str(run_dir), "--project", str(project_root),
-        "--base-url", base_url,
+        "--base-url", base_url, "--driver", surface.driver,
+        "--options-json", json.dumps(options),
     ]
     if record_enabled:
         cmd.append("--record")
@@ -567,8 +651,11 @@ def cmd_serve(args: argparse.Namespace) -> None:
     tokens = None
     if args.tokens_file:
         tokens = measure.load_tokens(Path(args.tokens_file))  # B4, A-25
+    factory = DRIVER_FACTORIES[args.driver]
+    options = json.loads(args.options_json)
     serve(args.surface, Path(args.run_dir), Path(args.project_root), args.base_url,
-          record_enabled=args.record, headless=args.headless, viewport=viewport, tokens=tokens)
+          record_enabled=args.record, headless=args.headless, viewport=viewport, tokens=tokens,
+          driver_factory=lambda headless, vp: factory(headless, vp, options=options))
 
 
 def build_drive_parser() -> argparse.ArgumentParser:
@@ -651,6 +738,8 @@ def build_drive_parser() -> argparse.ArgumentParser:
     p.add_argument("--viewport-width", type=int, default=None)
     p.add_argument("--viewport-height", type=int, default=None)
     p.add_argument("--tokens-file", default=None)
+    p.add_argument("--driver", default="playwright")
+    p.add_argument("--options-json", default="{}")
     p.set_defaults(func=cmd_serve)
 
     return parser

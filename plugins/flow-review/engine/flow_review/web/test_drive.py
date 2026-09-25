@@ -990,3 +990,208 @@ def test_is_self_inflicted_keeps_real_app_console_errors_during_a_fault(tmp_path
         {"rule": "console.error",
          "text": "Failed to load resource: the server responded with a status of 503 ()"}) is True
     assert session._is_self_inflicted(app_crash) is False
+
+
+def test_driver_factories_dict_has_tauri_entry():
+    from flow_review.web.drive import DRIVER_FACTORIES
+    assert "playwright" in DRIVER_FACTORIES
+    assert "tauri" in DRIVER_FACTORIES
+
+
+class _LazyPageFakeDriver:
+    """Unlike this file's shared FakeDriver, page is None until launch() -- matching the real
+    WebDriver contract that made the CRITICAL init_script fix above necessary."""
+    def __init__(self, headless=True, viewport=None, init_script=None):
+        self.headless = headless
+        self.viewport = viewport
+        self.init_script = init_script
+        self.page = None
+        self.launched_url = None
+
+    def launch(self, base_url):
+        self.launched_url = base_url
+        self.page = FakePage()
+        if self.init_script is not None:
+            self.page.applied_init_script = self.init_script
+
+
+def test_tauri_driver_factory_passes_init_script_to_webdriver(monkeypatch, tmp_path):
+    from flow_review.web import drive
+    mocks_file = tmp_path / "tauri-mocks.json"
+    mocks_file.write_text('{"load_items": [{"id": 1}]}', encoding="utf-8")
+    monkeypatch.setattr(drive, "WebDriver", _LazyPageFakeDriver)
+    options = {"dev_url": "http://127.0.0.1:1421", "mocks_file": str(mocks_file)}
+    d = drive.DRIVER_FACTORIES["tauri"](headless=True, viewport=None, options=options)
+    d.launch(options["dev_url"])
+    assert "load_items" in d.page.applied_init_script
+    assert d.launched_url == "http://127.0.0.1:1421"
+
+
+def test_note_mock_invocation_fires_once_per_command_per_flow(tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    project_root = tmp_path / "project"
+    (project_root / ".flow-review").mkdir(parents=True)
+    session = DriveSession(FakeDriver(), "desktop", run_dir, project_root, False)
+    session.flow_begin("flow-1")
+    session._note_mock_invocation("save_note")
+    session._note_mock_invocation("save_note")
+    session._note_mock_invocation("load_items")
+    lines = (run_dir / "events.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    statuses = [json.loads(l) for l in lines if json.loads(l).get("type") == "status"]
+    assert len(statuses) == 2
+    assert all(s["reason"] == "mock-missing" for s in statuses)
+    assert all(s["state"] == "not-exercised" and s["flow_id"] == "flow-1" for s in statuses)
+
+
+def test_result_polls_missing_mocks_only_for_an_init_script_driver(tmp_path):
+    run_dir, project_root = _dirs(tmp_path)
+    driver = FakeDriver()
+    evaluated = []
+    driver.page.evaluate = lambda js: evaluated.append(js) or ["save_note"]
+    session = DriveSession(driver, "desktop", run_dir, project_root, False)
+    session.flow_begin("f")
+    session.goto("/")
+    assert evaluated == []  # a plain playwright driver has no mocks to poll
+    driver.init_script = "window.__TAURI_INTERNALS__ = {};"
+    session.goto("/")
+    session.goto("/")
+    assert evaluated == ["window.__flowReviewMissingMocks || []"] * 2
+    lines = (run_dir / "events.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    statuses = [json.loads(l) for l in lines if json.loads(l).get("type") == "status"]
+    assert [(s["step"], s["reason"]) for s in statuses] == [("save_note", "mock-missing")]
+
+
+def _tauri_project(tmp_path, dev_url, mocks_file=None):
+    project_root = tmp_path / "project"
+    (project_root / ".flow-review").mkdir(parents=True)
+    options = {"dev_url": dev_url}
+    if mocks_file is not None:
+        options["mocks_file"] = mocks_file
+    (project_root / ".flow-review" / "config.json").write_text(json.dumps({
+        "schema_version": 2, "generator_version": "2.0.0", "model_profile": "default",
+        "role_overrides": {}, "budget": {"cap_tokens": None}, "test_inbox": None,
+        "flows_hash": "", "surfaces": [{
+            "id": "desktop", "name": "Desktop", "kind": "ui", "driver": "tauri",
+            "launch": "npm run tauri dev", "cwd": ".", "env": {}, "options": options,
+            "preconditions": [], "state": "disposable", "reset": None, "creds": {},
+            "record": False, "provenance": {}, "declined": False,
+        }],
+    }))
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    return project_root, run_dir
+
+
+def test_start_tauri_surface_errors_cleanly_when_dev_server_unreachable(tmp_path, monkeypatch,
+                                                                        capsys):
+    import socket
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    dead = s.getsockname()[1]
+    s.close()
+    dev_url = f"http://127.0.0.1:{dead}"
+    project_root, run_dir = _tauri_project(tmp_path, dev_url)
+    monkeypatch.setattr(drive.subprocess, "Popen",
+                        lambda *a, **k: pytest.fail("must not spawn without a dev server"))
+    code = drive.main(["start", "--surface", "desktop", "--run", str(run_dir)],
+                      project_root=project_root)
+    assert code == 1
+    err = json.loads(capsys.readouterr().err)
+    assert err["error"] == f"tauri dev server not reachable at {dev_url}; start it first"
+
+
+def test_start_tauri_surface_spawns_with_dev_url_driver_and_absolute_mocks(tmp_path,
+                                                                           monkeypatch):
+    project_root, run_dir = _tauri_project(tmp_path, "http://127.0.0.1:1421")
+
+    class _Resp:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            return False
+
+    probed = []
+    monkeypatch.setattr(drive.urllib.request, "urlopen",
+                        lambda url, timeout: probed.append((url, timeout)) or _Resp())
+    captured = {}
+
+    def _fake_popen(cmd, **kw):
+        captured["cmd"] = cmd
+        (run_dir / "drive").mkdir(parents=True, exist_ok=True)
+        (run_dir / "drive" / "desktop.json").write_text(
+            json.dumps({"port": 4321, "pid": os.getpid()}))
+
+    monkeypatch.setattr(drive.subprocess, "Popen", _fake_popen)
+    ns = argparse.Namespace(surface="desktop", run_dir=str(run_dir),
+                            project_root=str(project_root), record=False)
+    assert drive.cmd_start(ns) == {"surface_id": "desktop", "port": 4321}
+    assert probed == [("http://127.0.0.1:1421", 2)]
+    cmd = captured["cmd"]
+    assert cmd[cmd.index("--base-url") + 1] == "http://127.0.0.1:1421"
+    assert cmd[cmd.index("--driver") + 1] == "tauri"
+    options = json.loads(cmd[cmd.index("--options-json") + 1])
+    assert Path(options["mocks_file"]) == project_root / ".flow-review" / "tauri-mocks.json"
+
+
+def test_serve_builds_the_driver_through_driver_factories(tmp_path, monkeypatch):
+    seen = {}
+
+    def _fake_factory(headless, viewport, options=None):
+        seen["options"] = options
+        return FakeDriver()
+
+    def _fake_serve(surface_id, run_dir, project_root, base_url, **kw):
+        seen["driver"] = kw["driver_factory"](True, None)
+        seen["base_url"] = base_url
+
+    monkeypatch.setitem(drive.DRIVER_FACTORIES, "tauri", _fake_factory)
+    monkeypatch.setattr(drive, "serve", _fake_serve)
+    options = {"dev_url": "http://127.0.0.1:1421", "mocks_file": "/abs/m.json"}
+    drive.main(["serve", "--surface", "desktop", "--run", str(tmp_path), "--project",
+                str(tmp_path), "--base-url", "http://127.0.0.1:1421", "--driver", "tauri",
+                "--options-json", json.dumps(options)])
+    assert seen["options"] == options
+    assert isinstance(seen["driver"], FakeDriver)
+
+
+@pytest.mark.web
+def test_tauri_web_first_drive_mocks_invoke_and_files_mock_missing(tmp_path):
+    # Real browser against the tauriapp fixture's static frontend: load_items is answered by the
+    # mock, save_note is an unfilled stub (null) and must surface as a not-exercised status.
+    import functools
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+    src = Path(__file__).resolve().parents[2] / "fixtures" / "tauriapp" / "src"
+    class _Quiet(SimpleHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+    handler = functools.partial(_Quiet, directory=str(src))
+    server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    dev_url = f"http://127.0.0.1:{server.server_address[1]}"
+    mocks_file = tmp_path / "tauri-mocks.json"
+    mocks_file.write_text(json.dumps({"load_items": [{"label": "Milk"}], "save_note": None}),
+                          encoding="utf-8")
+    run_dir, project_root = _dirs(tmp_path)
+    drive.prove_tauri_dev_server(dev_url)
+    driver = drive.DRIVER_FACTORIES["tauri"](True, None,
+                                             options={"dev_url": dev_url,
+                                                      "mocks_file": str(mocks_file)})
+    driver.launch(dev_url)
+    try:
+        session = DriveSession(driver, "desktop", run_dir, project_root, False)
+        session.flow_begin("notes")
+        session.goto("/")
+        result = session.click({"css": "#load-items"})
+        assert "Milk" in result["snapshot"]
+        session.click({"css": "#save-note-button"})
+        session.click({"css": "#save-note-button"})
+    finally:
+        driver.close()
+        server.shutdown()
+    lines = (run_dir / "events.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    statuses = [json.loads(l) for l in lines if json.loads(l).get("type") == "status"]
+    assert [(s["step"], s["reason"], s["flow_id"]) for s in statuses] == [
+        ("save_note", "mock-missing", "notes")]

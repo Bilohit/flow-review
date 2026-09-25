@@ -1198,3 +1198,53 @@ def test_replay_e2e_visual_baseline_saved_then_diffed_after_css_change(tmp_path,
     ledger_ = ledger.load(ledger_path)
     entry2 = ledger_.findings[entry.id]
     assert entry2.state == "fixed"
+
+
+def test_replay_tauri_surface_launches_through_driver_factories_with_mocks(tmp_path,
+                                                                           monkeypatch):
+    from flow_review.web import drive
+    project_root = tmp_path / "project"
+    rec = project_root / ".flow-review" / "recordings" / "desktop"
+    rec.mkdir(parents=True)
+    log = actionlog.new_log("desktop", "f")
+    actionlog.record_step(log, "goto", url="/")
+    (rec / "f.json").write_text(json.dumps(log), encoding="utf-8")
+
+    drv = _FakeDriver(click_target="/")
+    drv.close = lambda: None
+    calls = []
+
+    def _fake_factory(headless, viewport, options=None):
+        calls.append(options)
+        drv.launch = lambda url: calls.append(url)
+        return drv
+
+    monkeypatch.setitem(drive.DRIVER_FACTORIES, "tauri", _fake_factory)
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+    surface = config.Surface(id="desktop", name="Desktop", kind="ui", driver="tauri", launch="",
+                             options={"dev_url": "http://127.0.0.1:1421"})
+    cfg = config.Config(schema_version=2, generator_version="test", surfaces=[surface])
+    assert replay_mod.replay(cfg, project_root) == 0
+    options, launched_url = calls
+    assert options["dev_url"] == "http://127.0.0.1:1421"
+    assert options["mocks_file"] == str(project_root / ".flow-review" / "tauri-mocks.json")
+    assert launched_url == "http://127.0.0.1:1421"
+
+
+def test_run_variants_installs_invoke_mocks_for_a_tauri_surface(tmp_path, monkeypatch):
+    from flow_review.web import variants as variants_mod
+    mocks_file = tmp_path / "tauri-mocks.json"
+    mocks_file.write_text('{"load_items": []}', encoding="utf-8")
+    built = []
+    monkeypatch.setattr(replay_mod, "WebDriver", lambda **kw: built.append(kw))
+
+    def fake_run_all(driver_factory, *a, **k):
+        driver_factory(viewport=None)
+        return []
+
+    monkeypatch.setattr(variants_mod, "run_all", fake_run_all)
+    surface = config.Surface(id="desktop", name="Desktop", kind="ui", driver="tauri", launch="",
+                             options={"dev_url": "http://x", "mocks_file": str(mocks_file)})
+    replay_mod._run_variants(surface, "http://x", {}, "goal", None)
+    assert "load_items" in built[0]["init_script"]

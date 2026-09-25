@@ -1,3 +1,4 @@
+import dataclasses
 import json
 import sys
 from contextlib import contextmanager
@@ -8,7 +9,7 @@ from urllib.parse import urlparse
 from PIL import Image
 
 from flow_review import drift, envsetup, events, ledger
-from flow_review.web import actionlog
+from flow_review.web import actionlog, drive
 from flow_review.web import measure as measure_mod
 from flow_review.web.driver import LocatorNotFound, WebDriver
 
@@ -155,6 +156,8 @@ def _run_variants(surface, base_url: str, log: dict, mode: str,
     from flow_review.web import variants as variants_mod
 
     def driver_factory(**kwargs):
+        if surface.driver == "tauri":  # every variant needs the same invoke mocks as the base
+            kwargs["init_script"] = drive.tauri_init_script(surface.options)
         return WebDriver(headless=True, **kwargs)
 
     # Keyed on the full finding, not just (rule, route, locator): console.error/http.5xx carry
@@ -296,7 +299,7 @@ def _health_ok(surface) -> bool:
     import urllib.error
     import urllib.request
 
-    url = surface.options["base_url"].rstrip("/") + (surface.options.get("health_path") or "/")
+    url = _app_url(surface).rstrip("/") + (surface.options.get("health_path") or "/")
     timeout = surface.options.get("ready_timeout_s") or 5
     try:
         with urllib.request.urlopen(url, timeout=timeout):
@@ -307,15 +310,25 @@ def _health_ok(surface) -> bool:
         return False
 
 
+def _app_url(surface) -> str:
+    # A tauri surface is replayed web-first against its dev server, with invoke mocked (A-37).
+    if surface.driver == "tauri":
+        return surface.options["dev_url"]
+    return surface.options["base_url"]
+
+
 def _launch_driver(surface) -> WebDriver:
     viewport = (surface.options.get("viewport") or [None])[0]
-    driver = WebDriver(headless=True, viewport=viewport)
-    driver.launch(surface.options["base_url"])
+    driver = drive.DRIVER_FACTORIES[surface.driver](True, viewport, options=surface.options)
+    driver.launch(_app_url(surface))
     return driver
 
 
-def _playwright_surfaces(cfg, surface_id: str | None):
-    surfaces = [s for s in drift.runnable_surfaces(cfg) if s.driver == "playwright"]
+def _browser_surfaces(cfg, surface_id: str | None, project_root: Path):
+    # Every browser-driven surface (playwright, and tauri via its dev server); a tauri
+    # surface's mocks_file comes back absolute so the driver factory never needs project_root.
+    surfaces = [dataclasses.replace(s, options=drive.resolve_surface_options(s, project_root))
+                for s in drift.runnable_surfaces(cfg) if s.driver in ("playwright", "tauri")]
     if surface_id is not None:
         surfaces = [s for s in surfaces if s.id == surface_id]
     return surfaces
@@ -324,9 +337,9 @@ def _playwright_surfaces(cfg, surface_id: str | None):
 def replay(cfg, project_root: Path, surface_id: str | None = None,
            flow_id: str | None = None, variants: bool = False, mode: str = "goal",
            update_baselines: bool = False) -> int:
-    surfaces = _playwright_surfaces(cfg, surface_id)
+    surfaces = _browser_surfaces(cfg, surface_id, project_root)
     if surface_id is not None and not surfaces:
-        print(f"no playwright surface named {surface_id!r} in config", file=sys.stderr)
+        print(f"no browser surface named {surface_id!r} in config", file=sys.stderr)
         return 3
 
     recordings_root = project_root / ".flow-review" / "recordings"
@@ -352,7 +365,7 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
 
         if not _health_ok(surface):
             print(f"app for surface {surface.id!r} is unreachable at "
-                  f"{surface.options['base_url']}; start it and re-run", file=sys.stderr)
+                  f"{_app_url(surface)}; start it and re-run", file=sys.stderr)
             return 3
         try:
             driver = _launch_driver(surface)
@@ -394,7 +407,7 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
                         storage_state_dir = run_dir / "variants" / surface.id
                         base_viewport = (surface.options.get("viewport") or [None])[0]
                         variant_findings, variant_flow_ids = _run_variants(
-                            surface, surface.options["base_url"], log, mode, storage_state_dir,
+                            surface, _app_url(surface), log, mode, storage_state_dir,
                             measure=hook, base_findings=result["findings"],
                             base_viewport=base_viewport,
                         )
@@ -453,15 +466,15 @@ def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path,
                variants: bool = False, mode: str = "goal") -> int:
     log = actionlog.load(log_path)
     surfaces = [
-        s for s in _playwright_surfaces(cfg, None) if s.id == log["surface_id"]
+        s for s in _browser_surfaces(cfg, None, project_root) if s.id == log["surface_id"]
     ]
     if not surfaces:
-        print(f"no playwright surface named {log['surface_id']!r} in config", file=sys.stderr)
+        print(f"no browser surface named {log['surface_id']!r} in config", file=sys.stderr)
         return 3
 
     if not _health_ok(surfaces[0]):
         print(f"app for surface {surfaces[0].id!r} is unreachable at "
-              f"{surfaces[0].options['base_url']}; start it and re-run", file=sys.stderr)
+              f"{_app_url(surfaces[0])}; start it and re-run", file=sys.stderr)
         return 3
     try:
         driver = _launch_driver(surfaces[0])
@@ -485,7 +498,7 @@ def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path,
         storage_state_dir = run_dir / "variants" / surfaces[0].id
         base_viewport = (surfaces[0].options.get("viewport") or [None])[0]
         variant_findings, variant_flow_ids = _run_variants(
-            surfaces[0], surfaces[0].options["base_url"], log, mode, storage_state_dir,
+            surfaces[0], _app_url(surfaces[0]), log, mode, storage_state_dir,
             measure=hook, base_findings=result["findings"], base_viewport=base_viewport,
         )
         for finding in variant_findings:

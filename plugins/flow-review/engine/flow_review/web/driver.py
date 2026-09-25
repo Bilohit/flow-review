@@ -28,8 +28,9 @@ class LocatorNotFound(Exception):
 class WebDriver:
     def __init__(self, headless: bool = True, viewport: dict | None = None,
                  color_scheme: str | None = None, reduced_motion: str | None = None,
-                 storage_state: str | None = None):
+                 storage_state: str | None = None, init_script: str | None = None):
         self.headless = headless
+        self.init_script = init_script
         self.viewport = viewport
         self.color_scheme = color_scheme
         self.reduced_motion = reduced_motion
@@ -58,6 +59,8 @@ class WebDriver:
         if self.storage_state_path is not None:
             page_kwargs["storage_state"] = self.storage_state_path
         self.page = self.browser.new_page(**page_kwargs)
+        if self.init_script is not None:
+            self.page.add_init_script(self.init_script)
         self.page.on("console", self._on_console)
         self.page.on("response", self._on_response)
         self.page.on("request", self._on_request_start)

@@ -48,8 +48,15 @@ def write_stubs(path: Path, commands: list[str]) -> int:
 def init_script(mocks: dict) -> str:
     payload = json.dumps(mocks)
     return (
+        "window.__flowReviewMissingMocks = [];\n"
         "window.__TAURI_INTERNALS__ = {\n"
-        f"  invoke: (cmd, args) => Promise.resolve(({payload})[cmd] ?? null),\n"
+        f"  invoke: (cmd, args) => {{\n"
+        f"    const mocks = {payload};\n"
+        "    const has = Object.prototype.hasOwnProperty.call(mocks, cmd);\n"
+        "    const value = has ? mocks[cmd] : null;\n"
+        "    if (has && value === null) { window.__flowReviewMissingMocks.push(cmd); }\n"
+        "    return Promise.resolve(value);\n"
+        "  },\n"
         "  transformCallback: (callback) => callback,\n"
         "  convertFileSrc: (path) => path,\n"
         "};"
