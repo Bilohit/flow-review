@@ -253,6 +253,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--rule", required=True)
     p.set_defaults(func=_run_ledger_suppressions)
 
+    audit_parser = sub.add_parser("audit", parents=[project_after_verb],
+                                   help="print detected surface candidates as JSON (setup)")
+    audit_parser.set_defaults(func=_run_audit)
+
     confirm_parser = sub.add_parser("confirm", parents=[project_after_verb],
                                      help="replay P0/P1 findings on the native app over CDP (A-35)")
     confirm_parser.add_argument("--run", required=True, dest="run_dir", type=Path)
@@ -381,6 +385,15 @@ def _run_confirm(args: argparse.Namespace) -> int:
         return 3
     return confirmmod.confirm(Path(project_root), args.run_dir, surface_id=args.surface,
                                finding_id=args.finding, port=args.port)
+
+
+def _run_audit(args: argparse.Namespace) -> int:
+    from dataclasses import asdict
+    from flow_review import audit as auditmod
+    # setup runs before .flow-review/ exists, so the walk-up finds nothing: fall back to cwd
+    root = args.project_root if args.project_root is not None else Path.cwd()
+    print(json.dumps([asdict(c) for c in auditmod.detect(root)]))
+    return 0
 
 
 def _run_tauri_mocks(args: argparse.Namespace) -> int:

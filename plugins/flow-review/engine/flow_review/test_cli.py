@@ -688,3 +688,16 @@ def test_confirm_cli_dispatches_to_confirm_module(tmp_path, monkeypatch):
                      "--surface", "desktop", "--finding", "f1", "--port", "9444"])
     assert code == 0
     assert (called["surface_id"], called["finding_id"], called["port"]) == ("desktop", "f1", 9444)
+
+
+def test_audit_prints_detected_candidates_with_options_as_json(capsys):
+    # I8: setup reaches audit.detect through a verb (python -c is banned); the tauri candidate's
+    # options (dev_url/binary/native) must survive into the JSON the setup agent reads
+    from dataclasses import asdict
+    from flow_review import audit
+    root = Path(__file__).resolve().parents[1] / "fixtures" / "tauriapp"
+    assert cli.main(["audit", "--project", str(root)]) == 0
+    out = json.loads(capsys.readouterr().out)
+    assert out == [asdict(c) for c in audit.detect(root)]
+    tauri = [c for c in out if c["driver"] == "tauri"]
+    assert tauri and {"dev_url", "binary", "native"} <= set(tauri[0]["options"])

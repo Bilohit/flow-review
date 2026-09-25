@@ -24,15 +24,19 @@ Neither path is recommended over the other -- which one applies is a fact about 
 
 ## 2. Audit
 
-Run `fr.audit.detect(root)`. It proposes candidates from what the repository actually contains --
+Run `flow-review audit --project <root>`. It prints the detected candidates as a JSON list (each
+with `name`, `kind`, `driver`, `launch`, `evidence`, `options`) proposed from what the repository
+actually contains --
 a `package.json` `dev`/`start`/`serve` script becomes a `ui` surface driven by `playwright`, a
 `src-tauri/tauri.conf.json` with `build.devUrl` becomes a `ui` surface driven by `tauri`, a
 `pyproject.toml` `[project.scripts]` entry becomes a `cli` surface driven by `shell`, an OpenAPI or
-Swagger file becomes an `api` surface driven by `http`. `fr.audit` only proposes; it never launches
+Swagger file becomes an `api` surface driven by `http`. `flow-review audit` only proposes; it never launches
 anything itself -- that split is what lets drift detection later reuse the same detection without
-re-running a launch.
+re-running a launch. An accepted candidate's `options` are copied verbatim into that surface's
+`options` in `config.json` -- for a `tauri` candidate that is `dev_url`, `binary` and `native`
+(`webview2` or `pending`); never re-derive them by hand.
 
-Print every candidate with its citation exactly as `fr.audit` formatted it:
+Print every candidate with its citation (`evidence`) exactly as `flow-review audit` formatted it:
 
 - `path:line -> snippet` for a finding that came from one line of a file.
 - `path (file present)` for a finding whose evidence is the file's mere existence -- an OpenAPI
@@ -40,7 +44,7 @@ Print every candidate with its citation exactly as `fr.audit` formatted it:
   not a bug in the detector** -- do not invent a fake line number to make it look like the other
   form.
 
-If `fr.audit.detect(root)` returns an empty list, say so plainly and move straight to the
+If `flow-review audit` prints an empty list, say so plainly and move straight to the
 interview -- do not print an empty list and stop. Nothing was detected because this repository
 does not declare a runnable entry point in a form the detector reads: no npm `dev`/`start`/`serve`
 script, no `pyproject.toml` `[project.scripts]` table, no OpenAPI or Swagger document. That is a
@@ -118,7 +122,7 @@ direction and the drift gate breaks in one of two ways:
 
 - **Miss the stamp on an audited surface** -> its removal from the repo is never detected. The
   config silently keeps trying to prove a surface that no longer exists.
-- **Stamp a hand-added surface anyway** -> `fr.audit.detect` can never see it in the repository
+- **Stamp a hand-added surface anyway** -> `flow-review audit` can never see it in the repository
   (it wasn't found there in the first place), so it is reported as newly "removed" on every single
   run. The gate cries wolf and the user learns to click through it -- which loses the gate
   entirely for the surfaces that actually matter.
