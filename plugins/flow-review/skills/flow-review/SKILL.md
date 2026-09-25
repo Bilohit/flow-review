@@ -133,8 +133,9 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
      every `tauri` surface this run drove, run `flow-review confirm --run DIR --surface ID`. It is
      engine-only and replays only this run's open P0/P1 findings that have a repro log. Exit codes:
      `0` -- all reproduced; continue. `1` -- some did not reproduce; continue: those findings keep
-     their verdict path, `fr-verifier` gets each `native/<id>/result.json` as replay evidence
-     (`flow-review validate resolve --kind replay --ref native/<id>/result.json`). `3` -- the
+     their verdict path; `native/<id>/result.json` is attached to the ledger entry as evidence
+     (confirm.py appends it) and shown in the dashboard -- this run's `fr-verifier` already ran in
+     Validation, before reconcile/confirm, so it never consumes it. `3` -- the
      native app could not be launched or attached (binary not built, CDP port in use, attach
      timeout); continue, file `flow-review event --run DIR --type status state=not-exercised
      surface_id=ID step=confirm reason=native-unavailable` and report native confirm as

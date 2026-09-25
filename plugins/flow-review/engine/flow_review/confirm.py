@@ -1,7 +1,7 @@
 """Native confirm (A-35, M2): replay each P0/P1 finding's repro log on the native app over CDP.
 
 `flow-review confirm --run DIR [--surface ID] [--finding ID] [--port 9333]` walks the ledger for
-open P0/P1 findings on tauri-driver surfaces, run after `ledger reconcile` so this run's findings
+open (or regressed) P0/P1 findings on tauri-driver surfaces, run after `ledger reconcile` so this run's findings
 are in it. Candidate rule: an entry is confirmed only if this run saw it (`last_run` == the run
 dir's name, which reconcile stamps; `--finding` names one explicitly and skips this check) and a
 repro log exists for its flow -- `<run_dir>/repro/<flow_slug>.json`, else the recording
@@ -127,7 +127,7 @@ def confirm(project_root: Path, run_dir: Path, surface_id: str | None = None,
 
     candidates = [
         entry for entry in lgr.findings.values()
-        if entry.state == "open" and entry.sev in ("P0", "P1")
+        if entry.state in ("open", "regressed") and entry.sev in ("P0", "P1")
         and entry.surface_id in surfaces_by_id
         and (finding_id is not None or entry.last_run == run_dir.name)
     ]

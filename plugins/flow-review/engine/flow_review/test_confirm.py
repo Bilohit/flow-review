@@ -19,11 +19,11 @@ def _write_config(project_root: Path, native) -> None:
     (project_root / "app.exe").write_bytes(b"")  # confirm refuses a binary that is not built
 
 
-def _write_ledger(project_root: Path, last_run: str = "run1") -> None:
+def _write_ledger(project_root: Path, last_run: str = "run1", state: str = "open") -> None:
     entry = ledger_mod.LedgerEntry(
         id="f1", fingerprint="fp1", surface_id="desktop", flow_id="flow-1",
         rule="console.error", route="/", locator="css:#save-note-button", sev="P1",
-        text="save_note swallowed into console.error", last_run=last_run,
+        text="save_note swallowed into console.error", last_run=last_run, state=state,
     )
     ledger_mod.save(ledger_mod.Ledger(findings={"f1": entry}),
                      project_root / ".flow-review" / "findings.json")
@@ -192,6 +192,24 @@ def test_confirm_skips_entries_not_seen_this_run(tmp_path, monkeypatch):
     monkeypatch.setattr(confirmmod.tauri_launch, "launch_native", _boom)
     assert confirmmod.confirm(tmp_path, run_dir) == 0
     assert not (run_dir / "native").exists()
+
+
+def test_confirm_confirms_regressed_p0_p1_too(tmp_path, monkeypatch):
+    # N2: reconcile marks a reappearing fixed finding "regressed", not "open" -- confirm must
+    # still replay it, not just entries left in state "open"
+    _write_config(tmp_path, native="webview2")
+    _write_ledger(tmp_path, state="regressed")
+    run_dir = tmp_path / "run1"
+    _write_repro(run_dir, [{"action": "goto", "url": "/"}])
+
+    driver = FakeDriver()
+    monkeypatch.setattr(confirmmod.tauri_launch, "launch_native", lambda binary, port: FakeProc())
+    monkeypatch.setattr(confirmmod.tauri_launch, "stop_native", lambda proc: None)
+    monkeypatch.setattr(confirmmod.WebDriver, "attach", staticmethod(lambda cdp_url: driver))
+    monkeypatch.setattr(confirmmod.measure, "check_page", _fake_check_page("console.error"))
+
+    assert confirmmod.confirm(tmp_path, run_dir) == 0
+    assert (run_dir / "native" / "f1" / "result.json").exists()
 
 
 def test_confirm_falls_back_to_the_recordings_path(tmp_path, monkeypatch):
