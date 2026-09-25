@@ -7,6 +7,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
+import os
+import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -49,9 +51,26 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+# a file ref ends in an extension that starts with a letter (`shot.png`, not `ratio=2.10`)
+_FILE_EXT = re.compile(r"\.[A-Za-z][A-Za-z0-9]{0,7}$")
+
+
+def _keep_evidence(e: str, run_dir: Path) -> bool:
+    """Engine text evidence (`ratio=2.10`, JSON console/network entries) is always kept. A file
+    ref is kept only if it is run-relative, stays inside run_dir and exists: an absolute or `..`
+    path is never served from the run dir, so it is dropped even if the file exists."""
+    if not isinstance(e, str) or not _FILE_EXT.search(e) or "=" in e or e[:1] in "{[":
+        return True
+    if os.path.isabs(e) or e[:1] in "/\\" or ".." in re.split(r"[/\\]", e):
+        return False
+    if any(c.isspace() for c in e):
+        return True  # free text that happens to end in `.png` etc.
+    return (run_dir / e).is_file()
+
+
 def _drop_missing_evidence(findings: list[dict], run_dir: Path) -> None:
     for f in findings:
-        f["evidence"] = [e for e in f.get("evidence", []) if (run_dir / e).is_file()]
+        f["evidence"] = [e for e in f.get("evidence", []) if _keep_evidence(e, run_dir)]
 
 
 def _confirmed_state(run_dir: Path, finding_id: str) -> bool | None:

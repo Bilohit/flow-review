@@ -89,3 +89,7 @@ body{
 .goal-status[aria-label="reached"]{ color:var(--accent); }
 .goal-ratio{ color:var(--text-2); margin-left:auto; }
 .not-exercised-row{ color:var(--text-2); padding:var(--space-1) 0; }
+.native-shot{ position:relative; }
+.native-status{ position:absolute; top:var(--space-1); right:var(--space-1); }
+.native-shot.confirmed-yes .native-status{ color:var(--accent); }
+.native-shot.confirmed-no .native-status{ color:var(--sev-p0); }

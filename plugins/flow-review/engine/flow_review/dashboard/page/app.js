@@ -320,6 +320,10 @@ function hydrateDrawer(findingId) {
 // text first for API/CLI (spec §11).
 function renderEvidence(finding, container) {
   _emptyEl(container);
+  const nativeShot = `native/${finding.id}/shot.png`;
+  // a web shot is any image evidence other than the native confirm shot -- rule ids don't say
+  // (contrast.aa carries ratio= text, visual.changed carries crops)
+  const webShot = finding.evidence.find(e => _isImage(e) && e !== nativeShot);
   if (finding.rule === 'regression' && finding.evidence.length >= 2) {
     const wrap = document.createElement('div');
     wrap.className = 'before-after';
@@ -331,39 +335,48 @@ function renderEvidence(finding, container) {
       wrap.appendChild(img);
     });
     container.appendChild(wrap);
-  } else if (finding.surface_id && isVisual(finding)) {
+  } else if (webShot) {
     const img = document.createElement('img');
     img.className = 'annotated-shot';
-    img.src = _assetUrl(finding.evidence[0]);
+    img.src = _assetUrl(webShot);
     img.alt = finding.text || `${finding.surface_id} evidence`;
     container.appendChild(img);
   } else {
     const pre = document.createElement('pre');
     pre.className = 'mono';
-    pre.textContent = (finding.evidence[0] || '');   // API/CLI text first, textContent only
+    // API/CLI text first, textContent only; every text entry (ratio=, required=, JSON console)
+    pre.textContent = finding.evidence.filter(e => !_isImage(e)).join('\n');
     container.appendChild(pre);
   }
 
-  // Native confirm pair: wrap the just-rendered web-shot img with the native/<id>/shot.png
-  // evidence ref, side by side, reusing .before-after. Absent when confirmed is null (no
-  // native run yet) -- no placeholder per the dashboard's no-subheadings/descriptions rule.
-  const nativeShot = `native/${finding.id}/shot.png`;
-  const webImg = container.firstChild;
-  if (finding.confirmed != null && finding.evidence.includes(nativeShot) && webImg && webImg.tagName === 'IMG') {
-    const wrap = document.createElement('div');
-    wrap.className = 'before-after';
-    container.removeChild(webImg);
+  // Native confirm pair: the native/<id>/shot.png evidence ref, beside the web shot when there
+  // is one (reusing .before-after), alone otherwise. A check/x icon (the goal-card icons) marks
+  // reproduced vs not. Absent when confirmed is null (no native run yet) -- no placeholder per
+  // the dashboard's no-subheadings/descriptions rule.
+  if (finding.confirmed != null && finding.evidence.includes(nativeShot)) {
+    const label = finding.confirmed ? 'reproduced natively' : 'not reproduced natively';
+    const cell = document.createElement('div');
+    cell.className = `native-shot confirmed-${finding.confirmed ? 'yes' : 'no'}`;
     const nativeImg = document.createElement('img');
     nativeImg.src = _assetUrl(nativeShot);
-    nativeImg.alt = 'native confirm';
-    nativeImg.title = 'native confirm';
-    wrap.append(webImg, nativeImg);
-    container.appendChild(wrap);
+    nativeImg.alt = label;
+    nativeImg.title = label;
+    cell.append(nativeImg, _goalIcon(finding.confirmed ? 'check' : 'x', label, 'native-status'));
+    const webImg = container.firstChild;
+    if (webImg && webImg.tagName === 'IMG') {
+      const wrap = document.createElement('div');
+      wrap.className = 'before-after';
+      container.removeChild(webImg);
+      wrap.append(webImg, cell);
+      container.appendChild(wrap);
+    } else {
+      container.appendChild(cell);
+    }
   }
 }
 
-function isVisual(finding) {
-  return ['contrast', 'layout', 'visual-diff'].includes(finding.rule);
+function _isImage(ref) {
+  return /\.(png|jpe?g|webp|gif)$/i.test(ref);
 }
 
 function triage(findingId, newState) {

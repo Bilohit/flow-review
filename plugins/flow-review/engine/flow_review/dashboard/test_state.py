@@ -320,3 +320,30 @@ def test_repeat_finding_matching_a_ledger_fingerprint_is_counted_once(tmp_path, 
     report_ids = [f["id"] for group in body["report"].values() if isinstance(group, list)
                   for f in group if isinstance(f, dict)]
     assert report_ids.count("fresh-id") == 0
+
+
+def test_fold_keeps_text_evidence_and_drops_only_missing_or_escaping_file_refs(tmp_path,
+                                                                             monkeypatch):
+    from flow_review.dashboard.state import fold
+    _patch_common(monkeypatch)
+    run_dir = tmp_path / "run"
+    (run_dir / "shots").mkdir(parents=True)
+    (run_dir / "shots" / "real.png").write_bytes(b"\x89PNG\r\n")
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(b"\x89PNG\r\n")
+    console = json.dumps({"level": "error", "text": "save failed"})
+    evidence = ["ratio=2.10", "required=4.5", console, "nearest_token=--color-primary",
+                "shots/real.png", "shots/missing.png", str(outside), "/etc/shot.png",
+                "../outside.png"]
+    _write_events(run_dir, [
+        {"ts": "2026-09-24T10:00:00.000Z", "id": "e1", "type": "run", "mode": "goal",
+         "surfaces": [{"id": "web-app", "kind": "web"}]},
+        {"ts": "2026-09-24T10:00:01.000Z", "id": "f1", "type": "finding", "sev": "P1",
+         "surface_id": "web-app", "flow_id": "checkout", "text": "contrast", "rule": "contrast.aa",
+         "disposition": "engine", "evidence": evidence},
+    ])
+    state = fold(tmp_path, run_dir, _FakeCfg())
+    findings = {f["id"]: f for f in state["findings"]}
+    # text evidence stays; a missing run-relative file and any absolute or `..` path are dropped
+    assert findings["f1"]["evidence"] == ["ratio=2.10", "required=4.5", console,
+                                          "nearest_token=--color-primary", "shots/real.png"]
