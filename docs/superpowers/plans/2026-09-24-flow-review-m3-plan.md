@@ -368,7 +368,7 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 
 // Planted defect 1 (rect.target-size, benchmarked in planted.json): a 32x32dp icon button,
 // below the 48dp minimum. "Refresh" is a judgment finding only (README): wired to nothing, but
-// not mechanically checkable, so it is deliberately absent from planted.json (A-59 dead-control
+// not mechanically checkable, so it is deliberately absent from planted.json (A-70 dead-control
 // note). The "Home" heading is the screen's first visible text, top-left -- mobile/measure.py's
 // screen_route() reads it as this screen's route, so it must stay first in this file's layout
 // and its literal text must stay exactly "Home" to match planted.json's route.
@@ -2284,7 +2284,7 @@ continuing; do not attempt to start an emulator yourself.
 
 ## Appendix A: Decisions log
 
-Extends the M2 plan's Appendix A (A-35..A-47).
+Extends the M2 plan's Appendix A (A-35..A-52). Rows A-70..A-72 were added at review time; A-59..A-69 belong to the M4 and M5 plans.
 
 | # | Topic | Decision |
 |---|---|---|
@@ -2294,9 +2294,9 @@ Extends the M2 plan's Appendix A (A-35..A-47).
 | A-56 | (drafter proposal, confirm at review) `is_password` on mobile | `MobileDriver.is_password` reads a hierarchy node's `password` attribute (Maestro exposes this for `EditText` fields marked as password input) rather than trying to type into the field first; a locator that resolves to no node returns `False`, matching `WebDriver.is_password`'s fail-open-to-false behavior for an unresolved locator. |
 | A-57 | (drafter proposal, confirm at review) No console/network signal on mobile | `MobileDriver.console_errors_since_check()`/`network_log_since_check()` always return `[]`; `console.error` and `http.5xx` findings never fire for a `maestro` surface in M3. A future milestone could wire `adb logcat` for the former if a real run shows the gap matters; out of scope here (ponytail: no speculative logcat parser before a concrete need). |
 | A-58 | (drafter proposal, confirm at review) `--variants` on maestro | `replay`'s `--variants` flag is accepted but produces one `not-exercised` status event with `reason=variants-unsupported` for every maestro flow, rather than raising or silently doing nothing -- consistent with A-37's "an unfilled input reports rather than guesses" precedent. |
-| A-59 | (drafter proposal, confirm at review) Secret fills on mobile never touch a flow file | `MobileDriver.fill`/`mobile/yaml.py::to_maestro` write `inputText: ${<ENV_NAME>}` for a secret/`from_env` fill, never the resolved value; the live driver passes the value only via `mobile/maestro.py::run_flow`'s `env` (`maestro -e KEY=VALUE`), so no `.flow-review-mobile-tmp`/`<run_dir>/maestro/**` file or committed `<recordings>/**/*.yaml` ever contains a secret in plain text. |
-| A-60 | (drafter proposal, confirm at review) `screen_route` heuristic | A mobile finding's `route` is the current screen's first node with non-empty `text` and parseable `bounds`, ordered top-left (`(y, x)` ascending); the mobileapp fixture (T2) gives every screen an explicit heading Text with exactly that screen's name ("Home"/"List"/"Detail") as its first child, specifically so this heuristic is stable and matches `planted.json`'s `route` values without depending on a real device's font metrics or layout timing. |
-| A-61 | (drafter proposal, confirm at review) Dead-control findings are never benchmarked | `planted.json` never lists a rule the engine cannot check mechanically (e.g. "this button does nothing"); the mobileapp fixture's dead "Refresh" button stays in the app as a judgment-finding exercise for the lens/cold-eyes agents (README), but `bench` (M5) only ever scores rule ids `planted.json` names. |
+| A-70 | (drafter proposal, confirm at review) Secret fills on mobile never touch a flow file | `MobileDriver.fill`/`mobile/yaml.py::to_maestro` write `inputText: ${<ENV_NAME>}` for a secret/`from_env` fill, never the resolved value; the live driver passes the value only via `mobile/maestro.py::run_flow`'s `env` (`maestro -e KEY=VALUE`), so no `.flow-review-mobile-tmp`/`<run_dir>/maestro/**` file or committed `<recordings>/**/*.yaml` ever contains a secret in plain text. |
+| A-71 | (drafter proposal, confirm at review) `screen_route` heuristic | A mobile finding's `route` is the current screen's first node with non-empty `text` and parseable `bounds`, ordered top-left (`(y, x)` ascending); the mobileapp fixture (T2) gives every screen an explicit heading Text with exactly that screen's name ("Home"/"List"/"Detail") as its first child, specifically so this heuristic is stable and matches `planted.json`'s `route` values without depending on a real device's font metrics or layout timing. |
+| A-72 | (drafter proposal, confirm at review) Dead-control findings are never benchmarked | `planted.json` never lists a rule the engine cannot check mechanically (e.g. "this button does nothing"); the mobileapp fixture's dead "Refresh" button stays in the app as a judgment-finding exercise for the lens/cold-eyes agents (README), but `bench` (M5) only ever scores rule ids `planted.json` names. |
 
 ## QUESTIONS
 
