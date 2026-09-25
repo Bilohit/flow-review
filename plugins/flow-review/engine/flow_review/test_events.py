@@ -75,7 +75,7 @@ def test_redaction_applies_to_nested_values(tmp_path):
 
 
 def test_longer_secret_redacted_before_a_shorter_substring_of_it(tmp_path):
-    events.register_secret("ab")
+    events.register_secret("abcd")
     events.register_secret("abcdef")
     written = events.append(tmp_path, {"type": "step", "text": "value is abcdef exactly"})
     assert written["text"] == f"value is {events.REDACTED} exactly"
@@ -93,3 +93,24 @@ def test_multiple_appends_are_all_present_and_line_delimited(tmp_path):
     events.append(tmp_path, {"type": "step", "n": 2})
     lines = (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()
     assert [json.loads(l)["n"] for l in lines] == [1, 2]
+
+
+def test_new_run_id_replaces_colons(monkeypatch):
+    from flow_review import events
+    monkeypatch.setattr(events, "now_iso", lambda: "2026-09-24T10:00:00")
+    assert events.new_run_id() == "2026-09-24T10-00-00"
+
+
+def test_register_secret_silently_skips_a_value_shorter_than_the_minimum(tmp_path):
+    # A-26: never register a value shorter than 4 chars -- but callers (drive.fill,
+    # envsetup.resolve_env, actionlog.record_step) have no length guard of their own, so
+    # register_secret must not raise for a short value; it just doesn't register it.
+    events.register_secret("ab")
+    written = events.append(tmp_path, {"type": "step", "text": "value is ab here"})
+    assert written["text"] == "value is ab here"
+
+
+def test_register_secret_registers_a_value_at_the_minimum_length(tmp_path):
+    events.register_secret("abcd")
+    written = events.append(tmp_path, {"type": "step", "text": "value is abcd here"})
+    assert written["text"] == f"value is {events.REDACTED} here"

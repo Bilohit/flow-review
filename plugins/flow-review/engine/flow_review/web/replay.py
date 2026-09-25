@@ -223,13 +223,6 @@ def _measure_hook(tokens: dict[str, str] | None) -> MeasureHook:
     return hook
 
 
-def _new_run_id() -> str:
-    """`events.now_iso()` contains ':', invalid in a Windows directory name, so it is replaced
-    with '-' here. This id doubles as the `.flow-review/runs/<run_id>/` folder name, matching
-    the convention `dashboard/state.py` already assumes (`run["id"] = run_dir.name`)."""
-    return events.now_iso().replace(":", "-")
-
-
 def _visual_baseline_check(driver, surface_dir: Path, run_dir: Path, flow_slug: str,
                            surface_id: str, flow_id: str, route: str,
                            update_baselines: bool) -> dict | None:
@@ -337,7 +330,7 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
         return 3
 
     recordings_root = project_root / ".flow-review" / "recordings"
-    run_id = _new_run_id()
+    run_id = events.new_run_id()
     run_dir = project_root / ".flow-review" / "runs" / run_id
     all_findings: list[dict] = []
     divergences: list[dict] = []

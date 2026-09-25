@@ -219,6 +219,11 @@ def build_parser() -> argparse.ArgumentParser:
     drive_parser.add_argument("drive_args", nargs=argparse.REMAINDER)
     drive_parser.set_defaults(func=_run_drive)
 
+    run_parser = sub.add_parser("run", parents=[project_after_verb])
+    run_sub = run_parser.add_subparsers(dest="run_cmd", required=True)
+    run_new_parser = run_sub.add_parser("new", parents=[project_after_verb])
+    run_new_parser.set_defaults(func=_run_run_new)
+
     serve_parser = sub.add_parser(
         "serve", parents=[project_after_verb],
         help="serve the live dashboard (or render a static snapshot with --static)",
@@ -422,6 +427,20 @@ def _run_serve(args: argparse.Namespace) -> int:
 def _run_drive(args: argparse.Namespace) -> int:
     from flow_review.web import drive
     return drive.main(args.drive_args, project_root=args.project_root)
+
+
+def _run_run_new(args: argparse.Namespace) -> int:
+    from flow_review import events as eventsmod
+    project_root = args.project_root
+    if project_root is None:
+        print("no .flow-review/ found; run /flow-review setup first, or pass --project",
+              file=sys.stderr)
+        return 3
+    run_id = eventsmod.new_run_id()
+    run_dir = Path(project_root) / ".flow-review" / "runs" / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    print(json.dumps({"run_id": run_id, "run_dir": str(run_dir)}))
+    return 0
 
 
 def _run_plan(args: argparse.Namespace) -> int:

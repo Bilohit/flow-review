@@ -15,12 +15,20 @@ from pathlib import Path
 
 REDACTED = "[redacted]"
 
+# A-26: never register a value shorter than this floor, so a 1-3 char "secret" doesn't blank
+# that substring out of every event ever written. The single constant every caller shares
+# (drive.fill, envsetup.load_dotenv/resolve_env, actionlog.record_step) -- none of them guard
+# length themselves, so register_secret enforces it by silently skipping short values rather
+# than raising (a short fill value must not hard-fail the action that produced it).
+MIN_SECRET_LEN = 4
+
 _secrets: set[str] = set()
 
 
 def register_secret(value: str) -> None:
-    if value:
-        _secrets.add(value)
+    if not value or len(value) < MIN_SECRET_LEN:
+        return
+    _secrets.add(value)
 
 
 def clear_secrets() -> None:
@@ -30,6 +38,11 @@ def clear_secrets() -> None:
 def now_iso() -> str:
     now = datetime.now(timezone.utc)
     return now.strftime("%Y-%m-%dT%H:%M:%S.") + f"{now.microsecond // 1000:03d}Z"
+
+
+def new_run_id() -> str:
+    """Windows directory names cannot contain ':'; every run-dir creator uses this id."""
+    return now_iso().replace(":", "-")
 
 
 def _redact_str(text: str) -> str:

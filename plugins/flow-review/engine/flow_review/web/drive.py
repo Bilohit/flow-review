@@ -3,7 +3,6 @@ through the engine (A-24). The engine records, redacts and measures every action
 from __future__ import annotations
 
 import argparse
-import fnmatch
 import json
 import os
 import subprocess
@@ -18,6 +17,7 @@ from urllib.parse import urlparse
 
 from flow_review import envsetup, events, ledger
 from flow_review.web import actionlog, faults, measure
+from flow_review.web.faults import url_matches
 
 MAX_BODY = 64 * 1024  # an action POST is a few hundred bytes to a few KiB (a fill value)
 
@@ -36,6 +36,7 @@ class DriveSession:
         self.step_index = 0
         self._offline_active = False
         self._active_5xx_patterns: list[str] = []
+        self._active_fault = False
         self._seen_fingerprints: set[str] = set()
 
     def flow_begin(self, flow_id: str) -> dict:
@@ -45,8 +46,11 @@ class DriveSession:
         # The fingerprint includes flow_id anyway, so a new flow must re-report a finding that
         # looked identical in an earlier flow -- reset the seen-set here, not per-run.
         self._seen_fingerprints = set()
-        # A fault injected during an earlier flow must not leak into this one.
-        self.clear_faults()
+        # A fault injected during an earlier flow must not leak into this one -- but only
+        # clear (and append a "fault" event) when one is actually active, or a no-op flow-begin
+        # would spam an empty fault-clear event into every flow's log (A-44).
+        if self._active_fault:
+            self.clear_faults()
         events.append(self.run_dir, {
             "type": "step", "surface_id": self.surface_id, "flow_id": flow_id,
             "step": "flow-begin",
@@ -117,6 +121,7 @@ class DriveSession:
             faults.inject_slow(page, pattern, delay_ms)
         else:
             raise ValueError(f"unknown fault kind {kind!r}")
+        self._active_fault = True
         spec = {"kind": kind, "pattern": pattern, "delay_ms": delay_ms}
         events.append(self.run_dir, {
             "type": "fault", "surface_id": self.surface_id, "flow_id": self.flow_id,
@@ -128,6 +133,7 @@ class DriveSession:
         faults.clear_faults(self.driver.page)
         self._offline_active = False
         self._active_5xx_patterns = []
+        self._active_fault = False
         spec = {"kind": "clear"}
         events.append(self.run_dir, {
             "type": "fault", "surface_id": self.surface_id, "flow_id": self.flow_id,
@@ -204,7 +210,7 @@ class DriveSession:
         if rule == "http.5xx" and self._active_5xx_patterns:
             url = self._finding_url(finding)
             if url is not None:
-                return any(fnmatch.fnmatch(url, pattern)
+                return any(url_matches(url, pattern)
                            for pattern in self._active_5xx_patterns)
         return False
 

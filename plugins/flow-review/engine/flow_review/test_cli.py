@@ -41,6 +41,20 @@ def test_replay_update_baselines_with_log_is_rejected(tmp_path):
     assert code == 3
 
 
+def test_run_new_creates_the_run_dir_and_prints_run_id_and_dir(tmp_path, capsys, monkeypatch):
+    (tmp_path / ".flow-review").mkdir()
+    from flow_review import events as eventsmod
+    monkeypatch.setattr(eventsmod, "now_iso", lambda: "2026-09-24T10:00:00")
+
+    code = cli.main(["run", "new", "--project", str(tmp_path)])
+    assert code == 0
+
+    out = json.loads(capsys.readouterr().out)
+    expected_run_dir = tmp_path / ".flow-review" / "runs" / "2026-09-24T10-00-00"
+    assert out == {"run_id": "2026-09-24T10-00-00", "run_dir": str(expected_run_dir)}
+    assert expected_run_dir.is_dir()
+
+
 def test_triage_cli_applies_the_state_via_flow_review_triage_apply(tmp_path, capsys):
     from flow_review import ledger as ledger_mod
     (tmp_path / ".flow-review").mkdir()

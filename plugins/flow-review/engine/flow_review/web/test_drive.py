@@ -29,6 +29,9 @@ class FakePage:
     def title(self):
         return "Fake Page"
 
+    def route(self, pattern, handler):
+        self._route_handler = handler
+
     def unroute_all(self):
         pass
 
@@ -107,6 +110,19 @@ def test_fill_password_redacts_even_with_text(tmp_path):
     assert "hunter2" not in dumped
     assert saved["steps"][0]["value"] == events.REDACTED
     assert driver.filled[0][1] == "hunter2"  # the real page still got filled
+
+
+def test_fill_password_shorter_than_secret_floor_does_not_raise(tmp_path):
+    # register_secret silently skips values shorter than events.MIN_SECRET_LEN (A-26) instead of
+    # raising -- a 3-char password must still fill successfully, just without redaction.
+    run_dir, project_root = _dirs(tmp_path)
+    driver = FakeDriver()
+    session = DriveSession(driver, "webapp", run_dir, project_root, record_enabled=True)
+    session.flow_begin("login")
+    session.fill({"testid": "pw-input"}, text="abc")
+    result = session.flow_end("login", "ok")
+    saved = actionlog.load(Path(result["log_path"]))
+    assert driver.filled[0][1] == "abc"
 
 
 def test_fill_from_env_reads_environ_and_redacts(tmp_path, monkeypatch):
@@ -350,6 +366,52 @@ def test_start_resolves_base_url_tokens_and_record_from_config(tmp_path, monkeyp
     assert "http://localhost:5173" in captured["cmd"]
     assert "--record" in captured["cmd"]  # from surface.record, not args.record
     assert "--viewport-width" in captured["cmd"]
+
+
+def test_start_spawns_the_server_fully_detached_from_this_process(tmp_path, monkeypatch):
+    # M1 debt row 14: the detached-process flags cmd_start already passes to Popen were never
+    # asserted by a test -- a drive server must outlive the CLI invocation that spawned it
+    # (the agent process exits right after `drive start` returns the port), so a regression
+    # here would silently kill every session the moment its parent CLI call returned.
+    project_root = tmp_path / "project"
+    (project_root / ".flow-review").mkdir(parents=True)
+    (project_root / ".flow-review" / "config.json").write_text(json.dumps({
+        "schema_version": 2, "generator_version": "2.0.0", "model_profile": "default",
+        "role_overrides": {}, "budget": {"cap_tokens": None}, "test_inbox": None,
+        "flows_hash": "", "surfaces": [{
+            "id": "webapp", "name": "Web app", "kind": "ui", "driver": "playwright",
+            "launch": "npm run dev", "cwd": ".", "env": {},
+            "options": {
+                "base_url": "http://localhost:5173", "health_path": "/healthz",
+                "ready_timeout_s": 15, "exit_timeout_s": 60,
+                "viewport": [], "tokens_file": None,
+            },
+            "preconditions": [], "state": "disposable", "reset": None, "creds": {},
+            "record": False, "provenance": {}, "declined": False,
+        }],
+    }))
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+
+    captured = {}
+
+    def _fake_popen(cmd, **kw):
+        captured["kwargs"] = kw
+        (run_dir / "drive").mkdir(parents=True, exist_ok=True)
+        (run_dir / "drive" / "webapp.json").write_text(
+            json.dumps({"port": 4321, "pid": os.getpid()})
+        )
+        return None
+
+    monkeypatch.setattr(drive.subprocess, "Popen", _fake_popen)
+
+    ns = argparse.Namespace(surface="webapp", run_dir=str(run_dir),
+                             project_root=str(project_root), record=False)
+    drive.cmd_start(ns)
+    if os.name == "nt":
+        assert captured["kwargs"].get("creationflags") == drive.subprocess.DETACHED_PROCESS
+    else:
+        assert captured["kwargs"].get("start_new_session") is True
 
 # appended to plugins/flow-review/engine/flow_review/web/test_drive.py
 import pytest
@@ -750,6 +812,27 @@ def test_unchanged_finding_emitted_once_across_two_actions(tmp_path, monkeypatch
     assert len(_findings(run_dir, "contrast.aa")) == 1
 
 
+def test_drive_does_not_re_emit_an_already_seen_finding(tmp_path, monkeypatch):
+    # M1 debt row 16: locks in that DriveSession._result's new_findings list only reports ids
+    # new to self._seen_fingerprints this session -- the ledger already dedups by fingerprint at
+    # its own layer, but the live event stream must not re-announce a finding twice either.
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    project_root = tmp_path / "project"
+    (project_root / ".flow-review").mkdir(parents=True)
+    driver = FakeDriver()
+    session = DriveSession(driver, "web-app", run_dir, project_root, False)
+    same_finding = {"surface_id": "web-app", "flow_id": "f1", "rule": "contrast.aa",
+                     "route": "/", "locator": "#x", "sev": "P2", "text": "low contrast",
+                     "evidence": [], "disposition": "engine"}
+    monkeypatch.setattr(drive.measure, "check_page", lambda *a, **k: [dict(same_finding)])
+    session.flow_begin("f1")
+    first = session.click({"testid": "go"})
+    second = session.click({"testid": "go"})
+    assert len(first["new_findings"]) == 1
+    assert second["new_findings"] == []
+
+
 def test_new_finding_on_second_action_still_emits(tmp_path, monkeypatch):
     run_dir, project_root = _dirs(tmp_path)
     repeated = {
@@ -830,13 +913,14 @@ def test_flow_begin_clears_faults_from_an_earlier_flow(tmp_path):
     run_dir, project_root = _dirs(tmp_path)
     session = DriveSession(FakeDriver(), "webapp", run_dir, project_root, record_enabled=False)
     session.flow_begin("f1")
-    session._offline_active = True
-    session._active_5xx_patterns = ["**/api/broken"]
+    session.fault("offline", pattern=None, delay_ms=None)
+    session.fault("5xx", pattern="**/api/broken", delay_ms=None)
 
     session.flow_begin("f2")
 
     assert session._offline_active is False
     assert session._active_5xx_patterns == []
+    assert session._active_fault is False
 
 
 def test_new_flow_re_reports_a_finding_seen_in_a_prior_flow(tmp_path, monkeypatch):
@@ -874,6 +958,20 @@ def test_is_self_inflicted_matches_active_5xx_pattern_via_evidence_url(tmp_path)
         "evidence": [json.dumps({"method": "GET", "url": "http://x/api/fail", "status": 500})],
     }
     assert session._is_self_inflicted(other) is False
+
+
+def test_flow_begin_without_active_fault_appends_only_step_event(tmp_path):
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    project_root = tmp_path / "project"
+    (project_root / ".flow-review").mkdir(parents=True)
+    driver = FakeDriver()
+    session = DriveSession(driver, "web-app", run_dir, project_root, False)
+    session.flow_begin("flow-1")
+    lines = (run_dir / "events.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    types = [json.loads(line)["type"] for line in lines]
+    assert types.count("step") == 1
+    assert "fault" not in types
 
 
 def test_is_self_inflicted_keeps_real_app_console_errors_during_a_fault(tmp_path):
