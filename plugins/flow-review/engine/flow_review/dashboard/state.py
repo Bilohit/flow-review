@@ -49,6 +49,11 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
+def _drop_missing_evidence(findings: list[dict], run_dir: Path) -> None:
+    for f in findings:
+        f["evidence"] = [e for e in f.get("evidence", []) if (run_dir / e).is_file()]
+
+
 def fold(project_root: Path, run_dir: Path, cfg) -> dict:
     events_path = run_dir / "events.jsonl"
     text = events_path.read_text(encoding="utf-8") if events_path.exists() else ""
@@ -179,6 +184,7 @@ def fold(project_root: Path, run_dir: Path, cfg) -> dict:
     # carries a fresh event id but the ledger's fingerprint -- either way the ledger has it.
     ledger_keys = {f["id"] for f in ledger_findings} | {f["fingerprint"] for f in ledger_findings}
     findings = ledger_findings + _unreconciled(live_findings, ledger_keys, withdrawn)
+    _drop_missing_evidence(findings, run_dir)
 
     counts = {s: 0 for s in SEVERITIES}
     for f in findings:

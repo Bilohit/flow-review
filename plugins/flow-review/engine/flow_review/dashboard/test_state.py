@@ -174,6 +174,27 @@ def test_report_only_includes_findings_seen_this_run(tmp_path, monkeypatch):
     assert {"f_this", "f_other", "f_live"} <= all_ids
 
 
+def test_fold_drops_evidence_missing_from_current_run_dir(tmp_path, monkeypatch):
+    from flow_review.dashboard.state import fold
+    _patch_common(monkeypatch)
+    run_dir = tmp_path / "run"
+    run_dir.mkdir(parents=True)
+    (run_dir / "shots").mkdir()
+    (run_dir / "shots" / "real.png").write_bytes(b"\x89PNG\r\n")
+    _write_events(run_dir, [
+        {"ts": "2026-09-24T10:00:00.000Z", "id": "e1", "type": "run", "mode": "goal",
+         "surfaces": [{"id": "web-app", "kind": "web"}]},
+        {"ts": "2026-09-24T10:00:01.000Z", "id": "f1", "type": "finding", "sev": "P2",
+         "surface_id": "web-app", "flow_id": "checkout", "text": "stale crop from an old run",
+         "disposition": "engine",
+         "evidence": ["shots/real.png", "shots/gone-from-a-different-run.png"]},
+    ])
+    state = fold(tmp_path, run_dir, _FakeCfg())
+    findings = {f["id"]: f for f in state["findings"]}
+    assert "f1" in findings
+    assert findings["f1"]["evidence"] == ["shots/real.png"]
+
+
 def test_run_event_flows_total_arrives_as_string_from_cli_and_still_counts(tmp_path, monkeypatch):
     # RC2: `flow-review event --run DIR --type run mode=quick flows_total=1` writes flows_total
     # as a string (cli.py's `event` verb never coerces k=v values) -- fold must still surface it

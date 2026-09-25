@@ -1,6 +1,7 @@
 # plugins/flow-review/engine/flow_review/dashboard/test_serve.py
 from __future__ import annotations
 
+import dataclasses
 import json
 import threading
 import urllib.error
@@ -78,9 +79,11 @@ def test_state_endpoint_returns_json_with_required_keys(tmp_path):
 def test_triage_post_invokes_apply_and_returns_ok(tmp_path, monkeypatch):
     server, port = _start(tmp_path)
 
+    @dataclasses.dataclass
     class _FakeEntry:
-        def __init__(self):
-            self.id, self.state, self.reason = "f1", "false-positive", None
+        id: str = "f1"
+        state: str = "false-positive"
+        reason: str | None = None
 
     calls = []
 

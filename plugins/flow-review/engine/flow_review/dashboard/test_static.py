@@ -85,6 +85,33 @@ def test_static_thumbnails_are_downscaled_jpeg_data_uris_linking_to_full_res(tmp
     assert max(thumb.size) <= 320  # proposed max edge
 
 
+def test_static_module_has_no_placeholder_or_fake_asset_fallback():
+    import flow_review.dashboard.static as static_mod
+    from pathlib import Path
+    src = Path(static_mod.__file__).read_text(encoding="utf-8").lower()
+    assert "placeholder" not in src
+    assert "fake" not in src
+
+
+def test_static_render_round_trips_non_ascii_finding_text_as_utf8(tmp_path, monkeypatch):
+    non_ascii = "café — 你好 \U0001f600"
+    finding_ev = json.dumps({"ts": "2026-09-23T10:00:01.000Z", "id": "f1", "type": "finding",
+                              "sev": "P2", "surface_id": "s", "text": non_ascii})
+    project_root, run_dir = _seed(tmp_path, extra_events=finding_ev + "\n")
+    monkeypatch.setattr("flow_review.dashboard.static.ledger.load", lambda p: _FakeLedger([]))
+    monkeypatch.setattr("flow_review.dashboard.static.budget.used", lambda rd: 0)
+    out_path = tmp_path / "dashboard.html"
+    render_static(project_root, run_dir, _FakeCfg(), out_path)
+    # static.py's own write path: strict utf-8 decode of the written bytes must succeed and
+    # the embedded #state-data JSON (json.dumps escapes non-ASCII to \uXXXX) must decode back
+    # to the exact original text -- locks in the `Path.write_text(html, encoding="utf-8")` call.
+    raw = out_path.read_bytes().decode("utf-8")
+    payload = raw.split('<script id="state-data" type="application/json">')[1].split("</script>")[0]
+    state = json.loads(payload.replace("<\\/", "</"))
+    texts = [f["text"] for f in state["findings"]]
+    assert non_ascii in texts
+
+
 def test_thumbnail_link_escapes_the_path(tmp_path):
     from PIL import Image
     from flow_review.dashboard import static

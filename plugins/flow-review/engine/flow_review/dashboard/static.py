@@ -7,7 +7,7 @@ full-resolution file in the run folder, never inlined at full size.
 The served dashboard's real page assets (app.css/app.js/fonts/icon sprite)
 live under `dashboard/page/` (E1 page skeleton + live serve, E3 font
 subsetting, E4 the built page) and are always present alongside this module
-in the repo, so this reads them directly -- no placeholder fallback.
+in the repo, so this reads them directly -- there is no built-in fallback.
 """
 from __future__ import annotations
 

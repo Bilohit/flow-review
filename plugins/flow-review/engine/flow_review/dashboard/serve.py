@@ -145,7 +145,7 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as exc:  # triage.apply's own errors are user-facing (bad state name etc.)
             self._send_json({"error": str(exc)}, status=400)
             return
-        finding = dataclasses.asdict(entry) if dataclasses.is_dataclass(entry) else vars(entry)
+        finding = dataclasses.asdict(entry)
         self._send_json({"ok": True, "finding": finding})
 
 
