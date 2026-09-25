@@ -136,6 +136,8 @@ def _validate_surface(surface: Surface) -> None:
         raise ValueError(
             f"surface {surface.id!r} has unknown state {surface.state!r}; expected one of {VALID_STATE}"
         )
+    if not isinstance(surface.provenance, dict):
+        raise ValueError(f"surface {surface.id!r} field 'provenance' must be an object")
     for key, value in surface.provenance.items():
         if value not in VALID_PROVENANCE:
             raise ValueError(

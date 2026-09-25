@@ -191,6 +191,65 @@ def test_save_redacts_registered_secrets(tmp_path):
         events.clear_secrets()
 
 
+def test_route_template_replaces_numeric_and_uuid_segments():
+    from flow_review.ledger import route_template
+    assert route_template("/orders/41") == "/orders/:id"
+    assert route_template("/users/3fa85f64-5717-4562-b3fc-2c963f66afa6/edit") == "/users/:id/edit"
+    assert route_template("/") == "/"
+    assert route_template("/settings") == "/settings"
+
+
+def test_fingerprint_uses_route_template_for_numeric_ids():
+    from flow_review.ledger import fingerprint, route_template
+    fp_a = fingerprint("flow-1", "contrast.aa", route_template("/orders/41"), "#save")
+    fp_b = fingerprint("flow-1", "contrast.aa", route_template("/orders/42"), "#save")
+    assert fp_a == fp_b
+    fp_static = fingerprint("flow-1", "contrast.aa", route_template("/settings"), "#save")
+    assert fp_static == fingerprint("flow-1", "contrast.aa", "/settings", "#save")
+
+
+def test_severity_order_is_an_explicit_tuple_not_string_comparison():
+    # A-44 row 6 (A5): locks in that severity ranking goes through SEVERITY_ORDER's index,
+    # not a bare string comparison of "P0"/"P1"/"P2" (which happens to sort right today but
+    # is not the intended rule).
+    assert ledger.SEVERITY_ORDER == ("P0", "P1", "P2")
+    assert ledger.SEVERITY_ORDER.index("P0") < ledger.SEVERITY_ORDER.index("P2")
+
+
+def test_same_run_duplicate_keeps_p0_over_p2_via_explicit_severity_order():
+    led = ledger.reconcile(ledger.Ledger(), [
+        _finding(sev="P2", text="minor", evidence=["a"]),
+        _finding(sev="P0", text="critical", evidence=["b"]),
+    ], {"checkout"}, "run-1")
+    (entry,) = led.findings.values()
+    assert entry.sev == "P0"
+    assert entry.text == "critical"
+
+
+def test_reconcile_upgrades_legacy_raw_route_fingerprint_to_templated_one(tmp_path):
+    # Legacy entry: fingerprinted from the raw route (e.g. "/orders/41") before route_template
+    # existed. After the upgrade, current findings fingerprint from the templated route
+    # ("/orders/:id"), so a stale ledger entry must be migrated on load or it silently gets
+    # marked "fixed" while the same defect is re-inserted as a duplicate.
+    raw_fp = ledger.fingerprint("checkout", "contrast", "/orders/41", "button[name=Pay]")
+    entry = ledger.LedgerEntry(
+        id="legacy-1", fingerprint=raw_fp, surface_id="web-app", flow_id="checkout",
+        rule="contrast", route="/orders/41", locator="button[name=Pay]", sev="P1",
+        text="low contrast", state="open", runs_seen=1, first_run="run-1", last_run="run-1",
+    )
+    led = ledger.Ledger(findings={"legacy-1": entry})
+    path = tmp_path / "findings.json"
+    ledger.save(led, path)
+    led = ledger.load(path)
+
+    finding = _finding(route=ledger.route_template("/orders/41"))
+    led = ledger.reconcile(led, [finding], {"checkout"}, "run-2")
+
+    assert list(led.findings) == ["legacy-1"]
+    assert led.findings["legacy-1"].runs_seen == 2
+    assert led.findings["legacy-1"].state != "fixed"
+
+
 def test_a_new_entry_keeps_the_finding_event_id():
     led = ledger.reconcile(ledger.Ledger(), [dict(_finding(), id="evt-123")], {"checkout"}, "run-1")
     assert list(led.findings) == ["evt-123"]

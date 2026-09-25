@@ -120,3 +120,9 @@ def test_migrate_file_prints_the_summary_when_not_quiet(tmp_path, capsys):
     path.write_text(json.dumps(_v1_raw()), encoding="utf-8")
     migrate.migrate_file(path, quiet=False)
     assert "migrated config from schema v1 to v2" in capsys.readouterr().out
+
+
+def test_is_v1_returns_false_for_non_numeric_schema_version():
+    # A-44 row 4 (A3): a non-numeric schema_version raised TypeError on comparison instead of
+    # being treated as "not v1".
+    assert migrate.is_v1({"schema_version": "not-a-number"}) is False

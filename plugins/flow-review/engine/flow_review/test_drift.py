@@ -92,3 +92,16 @@ def test_runnable_surfaces_excludes_pending_driver():
 def test_runnable_surfaces_keeps_config_order():
     cfg = _cfg(_web(surface_id="z"), _web(surface_id="a"))
     assert [s.id for s in drift.runnable_surfaces(cfg)] == ["z", "a"]
+
+
+def test_declined_surface_is_not_reported_as_vanished_evidence(tmp_path):
+    # A-44 row 3 (A7): a declined surface with matching provenance previously still got
+    # reported as "evidence is gone" even though a human explicitly declined it.
+    surface = cfgmod.Surface(
+        id="old", name="Old", kind="ui", driver="pending", launch="", declined=True,
+        provenance={"origin": "audited"},
+    )
+    cfg = cfgmod.Config(schema_version=cfgmod.SCHEMA_VERSION, generator_version="t",
+                         surfaces=[surface])
+    messages = drift.detect_drift(cfg, tmp_path)
+    assert not any("old" in m for m in messages)

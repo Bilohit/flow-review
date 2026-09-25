@@ -61,14 +61,17 @@ def replay_one(driver, log: dict, measure: MeasureHook | None = None,
                 with _step_window(driver, index):
                     driver.goto(step["url"])
                 if measure is not None:
-                    route = _current_path(driver) or _url_path(step["url"])
+                    # route_template collapses numeric/uuid segments so a fingerprint built
+                    # here agrees with drive's (final-review Important #5, A-44).
+                    route = ledger.route_template(_current_path(driver) or _url_path(step["url"]))
                     findings.extend(measure(driver, surface_id, flow_id, route, index))
             elif action == "click":
                 with _step_window(driver, index):
                     driver.click(step["locator"])
                 if measure is not None:
+                    route = ledger.route_template(_current_path(driver))
                     findings.extend(
-                        measure(driver, surface_id, flow_id, _current_path(driver), index)
+                        measure(driver, surface_id, flow_id, route, index)
                     )
             elif action == "fill":
                 if step.get("from_env"):

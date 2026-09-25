@@ -60,6 +60,9 @@ def append(run_dir: Path, event: dict) -> dict:
 
     run_dir = Path(run_dir)
     line = json.dumps(out, ensure_ascii=True)
+    # A4/A-44 row 5: concurrent same-millisecond appends on Windows are not lock-guarded;
+    # accepted per spec (single-writer-per-run in practice). Revisit if multi-process writers
+    # to one run dir become real.
     with (run_dir / "events.jsonl").open("a", encoding="utf-8") as handle:
         handle.write(line + "\n")
     return out

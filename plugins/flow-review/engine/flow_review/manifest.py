@@ -86,6 +86,14 @@ def _replace_annotation_block(existing: str, body: str) -> str:
 
 
 def apply_learnings(path: Path, recorded_hash: str, learnings: list[str]) -> str:
+    # A-44 row 7 (A6): recorded_hash's one remaining job is the no-op guard right below --
+    # returning it unchanged so a run with nothing to say never transfers ownership of a
+    # human-edited file. It is deliberately NOT compared against the current file's hash to
+    # gate the write path below: that comparison is what is_human_edited() is for, and once
+    # apply_learnings moved to always splicing its own header/footer block (see the comment
+    # on _replace_annotation_block's call below), every byte outside that block stays
+    # untouched regardless of who last wrote the file -- so there is nothing left for a
+    # second comparison here to protect.
     if not learnings:
         # A no-op run must never transfer ownership: return the recorded hash unchanged,
         # before reading or writing anything, so a human-owned file stays human-owned.

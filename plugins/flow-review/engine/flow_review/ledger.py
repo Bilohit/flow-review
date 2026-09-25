@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re as _re
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
@@ -22,9 +23,38 @@ STATES = ("open", "fixed", "regressed", "refuted", "false-positive", "wont-fix",
 _REAPPEARING_STAYS = {"open", "regressed", "accepted", "refuted", "false-positive", "wont-fix"}
 _FIXABLE = {"open", "regressed"}
 
+# A-44 row 6 (A5): the only three valid severities, in most-to-least severe order. A severity
+# comparison must rank through this tuple's index, never compare the "P0"/"P1"/"P2" strings
+# directly -- string comparison happens to sort these three literals correctly today, but that
+# is an accident of their shared "P" prefix and single trailing digit, not an intended rule.
+SEVERITY_ORDER = ("P0", "P1", "P2")
+
+
+def _severity_rank(sev: str) -> int:
+    return SEVERITY_ORDER.index(sev)
+
 
 def fingerprint(flow_id: str, rule: str, route: str, locator: str) -> str:
     return hashlib.sha1("|".join((flow_id, rule, route, locator)).encode("utf-8")).hexdigest()
+
+
+_NUMERIC_SEGMENT = _re.compile(r"^\d+$")
+_UUID_SEGMENT = _re.compile(
+    r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+)
+
+
+def route_template(path: str) -> str:
+    """Collapse numeric ids and UUIDs in a route so /orders/41 and /orders/42 fingerprint to the
+    same finding instead of two (final-review Important #5, A-6/A-44)."""
+    segments = path.split("/")
+    out = []
+    for segment in segments:
+        if _NUMERIC_SEGMENT.match(segment) or _UUID_SEGMENT.match(segment):
+            out.append(":id")
+        else:
+            out.append(segment)
+    return "/".join(out)
 
 
 @dataclass
@@ -60,6 +90,26 @@ def load(path: Path) -> Ledger:
         return Ledger()
     raw = json.loads(path.read_text(encoding="utf-8"))
     findings = {k: LedgerEntry(**v) for k, v in raw.get("findings", {}).items()}
+    # ponytail: one-time legacy-ledger upgrade (final-review Important, T2 Fix 1). Entries
+    # written before route_template existed were fingerprinted from the raw route (e.g.
+    # "/orders/41"). Current findings now fingerprint from the templated route ("/orders/:id"),
+    # so a stale entry would otherwise miss every match in reconcile()'s `entry.fingerprint in
+    # current_fps` check -- silently marked "fixed" while the same defect is re-inserted as a
+    # duplicate. Re-point the fingerprint at the templated shape and keep the old one as an
+    # alias, but only when the stored fingerprint proves it was a plain raw-route fingerprint
+    # (recomputing it from the entry's own fields reproduces it exactly); anything else, e.g. a
+    # fingerprint already recorded as an alias variant, is left untouched.
+    for entry in findings.values():
+        templated = route_template(entry.route)
+        if templated == entry.route:
+            continue
+        raw_fp = fingerprint(entry.flow_id, entry.rule, entry.route, entry.locator)
+        if raw_fp != entry.fingerprint:
+            continue
+        new_fp = fingerprint(entry.flow_id, entry.rule, templated, entry.locator)
+        if raw_fp not in entry.aliases:
+            entry.aliases.append(raw_fp)
+        entry.fingerprint = new_fp
     return Ledger(findings=findings, discoverability_misses=raw.get("discoverability_misses", {}))
 
 
@@ -86,8 +136,9 @@ def reconcile(
             current_fps[fp] = dict(f, evidence=list(f.get("evidence", [])))
             continue
         # Same-run duplicate: keep the most severe sev (P0 < P1 < P2) + its text; union evidence.
+        # Ranked through SEVERITY_ORDER's index, never compared as raw strings (A-44 row 6).
         evidence = prev["evidence"] + [e for e in f.get("evidence", []) if e not in prev["evidence"]]
-        if f["sev"] < prev["sev"]:
+        if _severity_rank(f["sev"]) < _severity_rank(prev["sev"]):
             prev = dict(f)
         current_fps[fp] = dict(prev, evidence=evidence)
 
@@ -132,6 +183,15 @@ def reconcile(
     return ledger_
 
 
+# A-44 row 6 (A5): this raw helper deliberately still returns an exact self-match (an entry
+# whose own locator is byte-for-byte the finding's locator, which makes its fingerprint equal
+# the finding's own) -- the canonical signature (interfaces.md) takes no locator to filter by,
+# so the exclusion lives one layer up, in triage.alias_candidates, which drops any candidate
+# whose fingerprint equals the caller's exclude_fingerprint. Since fingerprint is a pure function
+# of (flow_id, rule, route, locator) and all four already match here, a fingerprint match is
+# exactly a locator match -- so that filter is the "not a rename" exclusion, just expressed at
+# the layer that actually has the finding's own fingerprint to compare against. See
+# test_triage.py::test_alias_candidates_excludes_the_exact_match_entry_itself.
 def find_alias_candidates(ledger_: Ledger, flow_id: str, rule: str, route: str) -> list[LedgerEntry]:
     return [
         e for e in ledger_.findings.values()

@@ -73,6 +73,39 @@ def test_replay_one_clean_flow_calls_measure_after_goto_and_click():
     assert calls == [("webapp", "load-and-click", "/", 0), ("webapp", "load-and-click", "/", 1)]
 
 
+def test_replay_one_uses_route_template_for_numeric_ids_before_measure():
+    # A-44 Important #5: the route replay builds for the measure hook (which feeds
+    # ledger.fingerprint via reconcile) must already be route_template()'d, matching drive.
+    from flow_review import ledger as ledger_mod
+
+    log = actionlog.new_log("webapp", "view-order")
+    actionlog.record_step(log, "goto", url="/orders/41")
+    actionlog.record_step(log, "click", locator={"testid": "next"}, url="/orders/41")
+
+    calls = []
+
+    def spy_measure(driver, surface_id, flow_id, route, step_index):
+        calls.append(route)
+        return [{
+            "surface_id": surface_id, "flow_id": flow_id, "rule": "contrast.aa",
+            "route": route, "locator": "#save", "sev": "P1", "text": "low contrast",
+            "evidence": [], "disposition": "engine",
+        }]
+
+    driver = _FakeDriver(click_target="/orders/41")
+    driver.page.url = "http://x/orders/41"
+    result = replay_mod.replay_one(driver, log, measure=spy_measure)
+
+    assert calls == ["/orders/:id", "/orders/:id"]
+    (finding,) = [f for f in result["findings"] if f["rule"] == "contrast.aa"][:1]
+    emitted_fp = ledger_mod.fingerprint(finding["flow_id"], finding["rule"], finding["route"],
+                                        finding["locator"])
+    expected_fp = ledger_mod.fingerprint(
+        "view-order", "contrast.aa", ledger_mod.route_template("/orders/41"), "#save",
+    )
+    assert emitted_fp == expected_fp
+
+
 def test_replay_one_without_measure_hook_still_runs():
     log = actionlog.new_log("webapp", "no-hook")
     actionlog.record_step(log, "goto", url="/")

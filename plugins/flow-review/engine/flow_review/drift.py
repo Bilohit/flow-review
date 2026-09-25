@@ -47,6 +47,10 @@ def detect_drift(cfg: Config, root: Path) -> list[str]:
 
     detected_ids = {slug(c.name) for c in detected}
     for surface in cfg.surfaces:
+        if surface.declined:
+            # A-44 row 3 (A7): a human explicitly declined this surface -- its evidence going
+            # away is not drift to report, it is the expected state of something turned off.
+            continue
         if surface.provenance.get(DETECTED_PROVENANCE_KEY) != DETECTED_PROVENANCE_VALUE:
             continue
         if surface.id not in detected_ids:

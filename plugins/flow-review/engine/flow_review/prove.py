@@ -81,6 +81,8 @@ _UNLINK_RETRY_DELAY_S = 0.1
 # to _teardown as a best-effort cross-check, and still helps if the job could not be created or
 # assigned (accepted race: it is assigned immediately after Popen, not before, since Popen
 # offers no CREATE_SUSPENDED hook).
+# A8/A-44 row 8: the E5 flake this ceiling caused was fixed upstream; a Job Object-based
+# upgrade (no polling ceiling at all) is tracked as future work, not required for M2.
 _DESCENDANT_SNAPSHOT_S = 1.0
 
 if _IS_WINDOWS:

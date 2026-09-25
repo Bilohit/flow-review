@@ -163,8 +163,9 @@ class DriveSession:
 
     def _run_checks(self, step_index) -> list:
         # A-6: the route is the URL path only, so fingerprints match replay's and survive a
-        # port change between runs.
-        route = urlparse(self._current_url() or "").path or "/"
+        # port change between runs. route_template collapses numeric/uuid segments so
+        # /orders/41 and /orders/42 fingerprint identically (final-review Important #5, A-44).
+        route = ledger.route_template(urlparse(self._current_url() or "").path or "/")
         findings = measure.check_page(
             self.driver, self.surface_id, self.flow_id, route, self.tokens, step_index,
         )

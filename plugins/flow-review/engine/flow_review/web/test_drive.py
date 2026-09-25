@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 from flow_review import events
+from flow_review import ledger as ledger_mod
 from flow_review.web import actionlog, drive
 from flow_review.web.drive import DriveSession
 
@@ -697,6 +698,35 @@ def test_fault_offline_suppresses_self_inflicted_console_error(
 
 
 # --- fingerprint-based dedup of re-emitted findings --------------------------------------
+
+
+def test_fingerprint_uses_route_template_for_numeric_ids(tmp_path, monkeypatch):
+    # A-44 Important #5: the route drive builds for ledger.fingerprint must already be
+    # route_template()'d, or /orders/41 and /orders/42 file as two distinct findings.
+    run_dir, project_root = _dirs(tmp_path)
+    captured_routes = []
+
+    def _fake_check_page(driver, surface_id, flow_id, route, tokens, step_index):
+        captured_routes.append(route)
+        return [{
+            "rule": "contrast.aa", "sev": "P1", "locator": "#save", "route": route,
+            "text": "low contrast", "evidence": [], "disposition": "engine",
+        }]
+
+    monkeypatch.setattr(drive.measure, "check_page", _fake_check_page)
+    driver = FakeDriver()
+    session = DriveSession(driver, "webapp", run_dir, project_root, record_enabled=False)
+    session.flow_begin("f1")
+    session.goto("/orders/41")
+
+    assert captured_routes == ["/orders/:id"]
+    (event,) = _findings(run_dir, "contrast.aa")
+    emitted_fp = ledger_mod.fingerprint(event["flow_id"], event["rule"], event["route"],
+                                        event["locator"])
+    expected_fp = ledger_mod.fingerprint(
+        "f1", "contrast.aa", ledger_mod.route_template("/orders/41"), "#save",
+    )
+    assert emitted_fp == expected_fp
 
 
 def test_unchanged_finding_emitted_once_across_two_actions(tmp_path, monkeypatch):

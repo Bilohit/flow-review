@@ -231,3 +231,18 @@ def test_electron_dependency_is_pending_driver(tmp_path):
 def test_pending_driver_is_valid_per_config():
     from flow_review.config import VALID_DRIVERS
     assert "pending" in VALID_DRIVERS
+
+
+def test_audit_module_has_no_unused_subprocess_import():
+    # A-44 row 1 (A1): audit.py never launches a process (it only proposes candidates by
+    # reading files), so an `import subprocess` here would be dead weight.
+    import ast
+    from pathlib import Path
+    import flow_review.audit as m
+    tree = ast.parse(Path(m.__file__).read_text(encoding="utf-8"))
+    imported = any(
+        isinstance(n, ast.Import) and any(a.name == "subprocess" for a in n.names)
+        for n in ast.walk(tree)
+    )
+    used = "subprocess." in Path(m.__file__).read_text(encoding="utf-8").split("import subprocess", 1)[-1]
+    assert not (imported and not used)

@@ -25,7 +25,12 @@ _V1_TOP_KNOWN = {
 
 
 def is_v1(raw: dict) -> bool:
-    return raw.get("schema_version", 1) <= 1
+    value = raw.get("schema_version", 1)
+    # A-44 row 4 (A3): a non-numeric schema_version (e.g. a string) raised TypeError on the
+    # comparison below instead of being treated as simply "not v1".
+    if not isinstance(value, (int, float)):
+        return False
+    return value <= 1
 
 
 @dataclass

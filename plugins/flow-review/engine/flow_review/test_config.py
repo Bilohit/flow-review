@@ -195,3 +195,12 @@ def test_saved_json_is_stable_and_human_editable(tmp_path):
     text = path.read_text(encoding="utf-8")
     assert text.endswith("\n")
     assert '  "schema_version"' in text
+
+
+def test_validate_surface_raises_value_error_for_non_dict_provenance():
+    # A-44 row 2 (A2): a non-dict surface.provenance raised a bare AttributeError instead of
+    # the library's normal ValueError.
+    surface = cfgmod.Surface(id="a", name="a", kind="ui", driver="playwright", launch="")
+    surface.provenance = "not-a-dict"
+    with pytest.raises(ValueError):
+        cfgmod._validate_surface(surface)
