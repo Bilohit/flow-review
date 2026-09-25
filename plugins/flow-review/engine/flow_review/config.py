@@ -27,7 +27,7 @@ def slug(name: str) -> str:
 
 VALID_KINDS = ("ui", "cli", "api", "library")
 VALID_PROVENANCE = ("audited", "proven", "user")
-VALID_DRIVERS = ("cdp", "playwright", "adb", "ios-sim", "shell", "http", "custom", "pending")
+VALID_DRIVERS = ("cdp", "playwright", "tauri", "adb", "ios-sim", "shell", "http", "custom", "pending")
 VALID_STATE = ("disposable", "persistent")
 VALID_MODEL_PROFILE = ("lean", "default", "max")
 VALID_ROLES = ("explorer", "replay-repair", "lens", "cold-eyes", "triage", "verifier")
@@ -36,6 +36,7 @@ VALID_ROLE_MODELS = ("haiku", "sonnet", "opus")
 WEB_OPTION_KEYS = (
     "base_url", "health_path", "ready_timeout_s", "exit_timeout_s", "viewport", "tokens_file",
 )
+TAURI_OPTION_KEYS = ("dev_url", "mocks_file", "binary", "native")
 
 _SURFACE_KEYS = {
     "id", "name", "kind", "driver", "launch", "cwd", "env", "options", "preconditions",
@@ -119,6 +120,8 @@ def _validate_options(surface: Surface) -> None:
     where = f"surfaces[{surface.id!r}].options"
     if surface.driver == "playwright":
         _check_keys(surface.options, set(WEB_OPTION_KEYS), where)
+    elif surface.driver == "tauri":
+        _check_keys(surface.options, set(TAURI_OPTION_KEYS), where)
     elif surface.options:
         _check_keys(surface.options, set(), where)
 

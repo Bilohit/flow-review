@@ -126,3 +126,13 @@ def test_is_v1_returns_false_for_non_numeric_schema_version():
     # A-44 row 4 (A3): a non-numeric schema_version raised TypeError on comparison instead of
     # being treated as "not v1".
     assert migrate.is_v1({"schema_version": "not-a-number"}) is False
+
+
+def test_migrate_keeps_pending_driver_unchanged():
+    # brief's migrate.migrate(old) returning a dict does not match the real signature
+    # (raw dict -> tuple[Config, MigrationSummary]); adapted per T4-brief.md deviation note.
+    from flow_review import migrate
+    old = {"schema_version": 1, "surfaces": [{"id": "desktop", "driver": "pending", "name": "Desktop", "kind": "ui", "launch": ""}]}
+    cfg, _summary = migrate.migrate(old)
+    surface = next(s for s in cfg.surfaces if s.id == "desktop")
+    assert surface.driver == "pending"

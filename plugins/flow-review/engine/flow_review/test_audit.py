@@ -246,3 +246,15 @@ def test_audit_module_has_no_unused_subprocess_import():
     )
     used = "subprocess." in Path(m.__file__).read_text(encoding="utf-8").split("import subprocess", 1)[-1]
     assert not (imported and not used)
+
+
+def test_from_tauri_promotes_to_tauri_driver(tmp_path):
+    from flow_review.audit import _from_tauri
+    src_tauri = tmp_path / "src-tauri"
+    src_tauri.mkdir()
+    (src_tauri / "tauri.conf.json").write_text(
+        '{"productName": "app", "build": {"devUrl": "http://localhost:1420"}}', encoding="utf-8"
+    )
+    candidates = _from_tauri(tmp_path)
+    assert len(candidates) == 1
+    assert candidates[0].driver == "tauri"

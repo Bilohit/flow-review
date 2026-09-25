@@ -204,3 +204,26 @@ def test_validate_surface_raises_value_error_for_non_dict_provenance():
     surface.provenance = "not-a-dict"
     with pytest.raises(ValueError):
         cfgmod._validate_surface(surface)
+
+
+def test_tauri_driver_is_valid_with_its_option_keys():
+    from flow_review import config
+    surface = config.Surface(
+        id="desktop", name="Desktop", kind="ui", driver="tauri", launch="",
+        options={"dev_url": "http://localhost:1420", "mocks_file": ".flow-review/tauri-mocks.json",
+                 "binary": "src-tauri/target/release/app.exe", "native": "webview2"},
+    )
+    config._validate_surface(surface)  # must not raise
+
+
+def test_tauri_driver_rejects_unknown_option_key():
+    from flow_review import config
+    surface = config.Surface(
+        id="desktop", name="Desktop", kind="ui", driver="tauri", launch="",
+        options={"bogus": True},
+    )
+    try:
+        config._validate_surface(surface)
+        assert False, "expected ConfigKeyError"
+    except config.ConfigKeyError:
+        pass

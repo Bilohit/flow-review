@@ -13,8 +13,9 @@ single-package case always was.
 from __future__ import annotations
 
 import json
+import platform
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 EVIDENCE_FORMAT = "{path}:{line} -> {snippet}"
@@ -32,6 +33,7 @@ class Candidate:
     driver: str
     launch: str
     evidence: str
+    options: dict = field(default_factory=dict)
 
 
 def _evidence(path: Path, root: Path, line: int | None, snippet: str) -> str:
@@ -162,9 +164,26 @@ def _from_tauri(root: Path) -> list[Candidate]:
     src_tauri = root / "src-tauri"
     if not src_tauri.is_dir():
         return []
-    conf = src_tauri / "tauri.conf.json"
-    evidence = _evidence(conf, root, None, "") if conf.is_file() else _evidence(src_tauri, root, None, "")
-    return [Candidate(name="desktop", kind="ui", driver="pending", launch="", evidence=evidence)]
+    conf_path = src_tauri / "tauri.conf.json"
+    dev_url = None
+    product_name = "app"
+    if conf_path.is_file():
+        try:
+            conf = json.loads(conf_path.read_text(encoding="utf-8"))
+        except ValueError:
+            conf = {}
+        dev_url = conf.get("build", {}).get("devUrl")
+        product_name = conf.get("productName", product_name)
+    native = "webview2" if platform.system() == "Windows" else "pending"
+    options = {"native": native}
+    if dev_url:
+        options["dev_url"] = dev_url
+        options["binary"] = f"src-tauri/target/release/{product_name}.exe"
+        driver = "tauri"
+    else:
+        driver = "pending"  # no dev server configured yet -- nothing runnable to point at
+    evidence = _evidence(conf_path, root, None, "") if conf_path.is_file() else _evidence(src_tauri, root, None, "")
+    return [Candidate(name="desktop", kind="ui", driver=driver, launch="", evidence=evidence, options=options)]
 
 
 def _from_expo(root: Path) -> list[Candidate]:

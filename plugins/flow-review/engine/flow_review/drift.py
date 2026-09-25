@@ -22,6 +22,10 @@ DETECTED_PROVENANCE_VALUE = "audited"
 # itself is the contract.
 _PENDING_DRIVER = "pending"
 
+# The full target set from A-45; only playwright/tauri exist as drivers this milestone, but the
+# tuple names the whole set so M3/M4 only add code, not touch this tuple's shape.
+RUNNABLE_DRIVERS = ("playwright", "tauri", "maestro", "http", "shell")
+
 
 def detect_drift(cfg: Config, root: Path) -> list[str]:
     detected = audit.detect(Path(root))
@@ -63,4 +67,4 @@ def detect_drift(cfg: Config, root: Path) -> list[str]:
 
 
 def runnable_surfaces(cfg: Config) -> list[Surface]:
-    return [s for s in cfg.surfaces if not s.declined and s.driver != _PENDING_DRIVER]
+    return [s for s in cfg.surfaces if not s.declined and s.driver in RUNNABLE_DRIVERS]
