@@ -283,6 +283,8 @@ def test_webdriver_attach_uses_connect_over_cdp(monkeypatch):
         url = "http://tauri.localhost/index.html"
         def on(self, event, handler):
             calls["on"].append(event)
+        def wait_for_url(self, url, wait_until=None, timeout=None):
+            assert url(self.url)
 
     the_page = FakePage()
 
@@ -309,3 +311,39 @@ def test_webdriver_attach_uses_connect_over_cdp(monkeypatch):
     assert d.base_url == "http://tauri.localhost"
     assert {"console", "response", "request"} <= set(calls["on"])
     assert d.console_errors_since_check() == []
+
+
+def test_webdriver_attach_waits_for_the_app_page_before_deriving_base_url(monkeypatch):
+    """CP1: under load WebView2 is still on about:blank when CDP first answers; deriving
+    base_url then gave 'about://', so goto('/') landed on an empty page."""
+    from flow_review.web import driver as driver_mod
+
+    calls = {}
+
+    class FakePage:
+        url = "about:blank"
+        def on(self, event, handler):
+            pass
+        def wait_for_url(self, url, wait_until=None, timeout=None):
+            assert not url("about:blank")
+            self.url = "http://tauri.localhost/index.html"  # the app navigates meanwhile
+            assert url(self.url)
+            calls["wait"] = (wait_until, timeout)
+
+    class FakeContext:
+        pages = [FakePage()]
+
+    class FakeBrowser:
+        contexts = [FakeContext()]
+
+    class FakeChromium:
+        def connect_over_cdp(self, url):
+            return FakeBrowser()
+
+    class FakePlaywright:
+        chromium = FakeChromium()
+
+    monkeypatch.setattr(driver_mod, "sync_playwright", lambda: _StartCtx(FakePlaywright()))
+    d = driver_mod.WebDriver.attach("http://127.0.0.1:9333")
+    assert d.base_url == "http://tauri.localhost"
+    assert calls["wait"][0] == "load" and calls["wait"][1] > 0

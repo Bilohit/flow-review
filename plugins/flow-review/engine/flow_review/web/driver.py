@@ -11,6 +11,10 @@ from flow_review.events import REDACTED
 SETTLE_MS = 3000
 QUIET_MS = 300  # after the network looks idle, how long nothing may start before we call it settled
 POLL_MS = 50
+# ponytail: fixed cap on how long attach waits for the webview to leave about:blank and load
+# the app; a cold WebView2 under load takes seconds. Upgrade: make it configurable if a real
+# app needs longer.
+ATTACH_LOAD_MS = 15000
 
 
 class Locator(TypedDict, total=False):
@@ -73,6 +77,10 @@ class WebDriver:
         try:
             instance.browser = instance._playwright.chromium.connect_over_cdp(cdp_url)
             instance.page = instance.browser.contexts[0].pages[0]
+            # CDP answers before WebView2 has navigated to the app: the page is still
+            # about:blank, and base_url derived from it would be 'about://'.
+            instance.page.wait_for_url(lambda url: not url.startswith("about:"),
+                                       wait_until="load", timeout=ATTACH_LOAD_MS)
         except Exception:
             instance._playwright.stop()
             raise
