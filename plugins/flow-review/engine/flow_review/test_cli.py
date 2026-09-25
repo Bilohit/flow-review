@@ -668,3 +668,23 @@ def test_budget_fold_writes_usage_history(tmp_path):
     budget.record_usage(run, "web", "lens", 1234)
     assert cli.main(["--project", str(tmp_path), "budget", "fold", "--run", str(run)]) == 0
     assert (tmp_path / ".flow-review" / "usage_history.json").exists()
+
+
+def test_confirm_cli_dispatches_to_confirm_module(tmp_path, monkeypatch):
+    called = {}
+    monkeypatch.setattr(
+        "flow_review.confirm.confirm",
+        lambda project_root, run_dir, surface_id=None, finding_id=None, port=9333: (
+            called.update(project_root=project_root, run_dir=run_dir, port=port,
+                          surface_id=surface_id, finding_id=finding_id) or 0
+        ),
+    )
+    (tmp_path / ".flow-review").mkdir()
+    code = cli.main(["confirm", "--run", str(tmp_path / "run1"), "--project", str(tmp_path)])
+    assert code == 0
+    assert called["port"] == 9333
+    assert called["run_dir"] == tmp_path / "run1"
+    code = cli.main(["confirm", "--run", str(tmp_path / "run1"), "--project", str(tmp_path),
+                     "--surface", "desktop", "--finding", "f1", "--port", "9444"])
+    assert code == 0
+    assert (called["surface_id"], called["finding_id"], called["port"]) == ("desktop", "f1", 9444)

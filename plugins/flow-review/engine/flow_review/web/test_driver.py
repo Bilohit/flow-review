@@ -272,3 +272,40 @@ class _StartCtx:
         self._pw = pw
     def start(self):
         return self._pw
+
+
+def test_webdriver_attach_uses_connect_over_cdp(monkeypatch):
+    from flow_review.web import driver as driver_mod
+
+    calls = {"on": []}
+
+    class FakePage:
+        url = "http://tauri.localhost/index.html"
+        def on(self, event, handler):
+            calls["on"].append(event)
+
+    the_page = FakePage()
+
+    class FakeContext:
+        pages = [the_page]
+
+    class FakeBrowser:
+        contexts = [FakeContext()]
+
+    class FakeChromium:
+        def connect_over_cdp(self, url):
+            calls["url"] = url
+            return FakeBrowser()
+
+    class FakePlaywright:
+        chromium = FakeChromium()
+
+    monkeypatch.setattr(driver_mod, "sync_playwright", lambda: _StartCtx(FakePlaywright()))
+    d = driver_mod.WebDriver.attach("http://127.0.0.1:9333")
+    assert calls["url"] == "http://127.0.0.1:9333"
+    assert d.page is the_page
+    # goto() stays on the attached app's own origin, and check_page's console/network checks
+    # see events: attach wires the same page listeners launch() does.
+    assert d.base_url == "http://tauri.localhost"
+    assert {"console", "response", "request"} <= set(calls["on"])
+    assert d.console_errors_since_check() == []

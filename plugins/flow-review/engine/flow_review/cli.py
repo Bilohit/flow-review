@@ -253,6 +253,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--rule", required=True)
     p.set_defaults(func=_run_ledger_suppressions)
 
+    confirm_parser = sub.add_parser("confirm", parents=[project_after_verb],
+                                     help="replay P0/P1 findings on the native app over CDP (A-35)")
+    confirm_parser.add_argument("--run", required=True, dest="run_dir", type=Path)
+    confirm_parser.add_argument("--surface", default=None)
+    confirm_parser.add_argument("--finding", default=None)
+    confirm_parser.add_argument("--port", type=int, default=9333)
+    confirm_parser.set_defaults(func=_run_confirm)
+
     tauri_parser = sub.add_parser("tauri", parents=[project_after_verb])
     tauri_sub = tauri_parser.add_subparsers(dest="tauri_cmd", required=True)
     p = tauri_sub.add_parser("mocks", parents=[project_after_verb])
@@ -363,6 +371,16 @@ def _run_ledger_suppressions(args: argparse.Namespace) -> int:
         return 3
     print(json.dumps(ledgermod.suppressions_for(ledgermod.load(path), args.rule)))
     return 0
+
+
+def _run_confirm(args: argparse.Namespace) -> int:
+    from flow_review import confirm as confirmmod
+    project_root = args.project_root
+    if project_root is None:
+        print("no .flow-review/ found; pass --project", file=sys.stderr)
+        return 3
+    return confirmmod.confirm(Path(project_root), args.run_dir, surface_id=args.surface,
+                               finding_id=args.finding, port=args.port)
 
 
 def _run_tauri_mocks(args: argparse.Namespace) -> int:

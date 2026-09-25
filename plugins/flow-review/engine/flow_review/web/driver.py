@@ -1,6 +1,7 @@
 import time
 from pathlib import Path
 from typing import TypedDict
+from urllib.parse import urlsplit
 
 from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import sync_playwright
@@ -61,6 +62,27 @@ class WebDriver:
         self.page = self.browser.new_page(**page_kwargs)
         if self.init_script is not None:
             self.page.add_init_script(self.init_script)
+        self._wire_page()
+
+    @classmethod
+    def attach(cls, cdp_url: str) -> "WebDriver":
+        """Attach to an already-running WebView2/Chromium over CDP (A-35 native confirm).
+        close() disconnects; the caller owns (and kills) the app process."""
+        instance = cls()
+        instance._playwright = sync_playwright().start()
+        try:
+            instance.browser = instance._playwright.chromium.connect_over_cdp(cdp_url)
+            instance.page = instance.browser.contexts[0].pages[0]
+        except Exception:
+            instance._playwright.stop()
+            raise
+        # goto(path) stays on the app's own origin (e.g. http://tauri.localhost).
+        parts = urlsplit(instance.page.url)
+        instance.base_url = f"{parts.scheme}://{parts.netloc}"
+        instance._wire_page()
+        return instance
+
+    def _wire_page(self) -> None:
         self.page.on("console", self._on_console)
         self.page.on("response", self._on_response)
         self.page.on("request", self._on_request_start)
