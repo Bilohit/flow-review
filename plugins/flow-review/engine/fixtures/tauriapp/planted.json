@@ -1,0 +1,3 @@
+[
+  {"rule": "console.error", "route": "/", "locator": "#save-note-button"}
+]

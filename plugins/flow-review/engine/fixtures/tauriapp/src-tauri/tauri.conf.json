@@ -1,0 +1,16 @@
+{
+  "productName": "tauriapp",
+  "version": "0.1.0",
+  "identifier": "com.flowreview.tauriapp",
+  "build": {
+    "devUrl": "http://127.0.0.1:1421",
+    "beforeDevCommand": "python -m http.server 1421 --directory src",
+    "frontendDist": "../src"
+  },
+  "app": {
+    "windows": [{ "title": "tauriapp", "width": 1024, "height": 768 }]
+  },
+  "bundle": {
+    "icon": ["icons/icon.png", "icons/icon.ico"]
+  }
+}
