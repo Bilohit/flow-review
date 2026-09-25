@@ -1195,3 +1195,45 @@ def test_tauri_web_first_drive_mocks_invoke_and_files_mock_missing(tmp_path):
     statuses = [json.loads(l) for l in lines if json.loads(l).get("type") == "status"]
     assert [(s["step"], s["reason"], s["flow_id"]) for s in statuses] == [
         ("save_note", "mock-missing", "notes")]
+
+
+@pytest.mark.web
+def test_tauri_reject_sentinel_mock_surfaces_swallowed_error_as_console_finding(tmp_path,
+                                                                              monkeypatch):
+    # I1: a mock shaped {"$reject": msg} makes invoke reject, so the fixture's planted bug (the
+    # rejection swallowed into console.error) is found in the web-first run.
+    import functools
+    monkeypatch.setattr(drive.measure, "check_page", _REAL_CHECK_PAGE)
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+    src = Path(__file__).resolve().parents[2] / "fixtures" / "tauriapp" / "src"
+
+    class _Quiet(SimpleHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0),
+                                 functools.partial(_Quiet, directory=str(src)))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    dev_url = f"http://127.0.0.1:{server.server_address[1]}"
+    mocks_file = tmp_path / "tauri-mocks.json"
+    mocks_file.write_text(json.dumps({"load_items": [], "save_note": {"$reject": "disk full"}}),
+                          encoding="utf-8")
+    run_dir, project_root = _dirs(tmp_path)
+    driver = drive.DRIVER_FACTORIES["tauri"](True, None,
+                                             options={"dev_url": dev_url,
+                                                      "mocks_file": str(mocks_file)})
+    driver.launch(dev_url)
+    try:
+        session = DriveSession(driver, "desktop", run_dir, project_root, False)
+        session.flow_begin("notes")
+        session.goto("/")
+        session.click({"css": "#save-note-button"})
+    finally:
+        driver.close()
+        server.shutdown()
+    payloads = [json.loads(l) for l in
+                (run_dir / "events.jsonl").read_text(encoding="utf-8").strip().splitlines()]
+    findings = [p for p in payloads if p.get("type") == "finding"]
+    assert any(f["rule"] == "console.error" and "disk full" in f["text"] for f in findings), findings
+    assert not [p for p in payloads if p.get("reason") == "mock-missing"]

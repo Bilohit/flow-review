@@ -105,3 +105,12 @@ def test_init_script_shape_matches_mock_ipc():
     assert "__TAURI_INTERNALS__" in script
     assert "invoke" in script
     assert "load_items" in script
+
+
+def test_init_script_reject_sentinel_rejects_and_null_still_resolves():
+    from flow_review.tauri.mocks import init_script
+    script = init_script({"save_note": {"$reject": "disk full"}, "load_items": None})
+    assert "Promise.reject" in script
+    assert '"$reject"' in script
+    # null stubs still resolve null and are tracked as mock-missing
+    assert "Promise.resolve(value)" in script and "__flowReviewMissingMocks.push" in script

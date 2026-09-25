@@ -137,7 +137,8 @@ For a `tauri` driver surface, three extra steps precede proving:
    `.flow-review/tauri-mocks.json` with a `{command: null}` stub for each unfilled command, never
    overwrites an already-filled value, and reports how many new stubs were added. Fill each stub's
    value by hand with plausible test data -- unfilled commands resolve to `null` and are reported
-   as not-exercised with reason `mock-missing`, once per command per flow.
+   as not-exercised with reason `mock-missing`, once per command per flow. Fill a command with
+   `{"$reject": "..."}` to exercise its error path (invoke rejects with that message).
 
 3. **Record the binary path.** Once `cargo tauri build` (or `npm run tauri build`) produces the
    release binary, set the surface's `binary` config option to its path -- relative paths resolve

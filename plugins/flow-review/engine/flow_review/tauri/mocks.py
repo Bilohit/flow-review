@@ -1,6 +1,7 @@
 """Invoke mocks for a Tauri surface (A-37). The engine only writes stubs it can discover from
 the Rust source; a human or the setup agent fills plausible responses. An unfilled command
-resolves to null at runtime and drive.py files a not-exercised status once per flow."""
+resolves to null at runtime and drive.py files a not-exercised status once per flow. A value
+shaped exactly `{"$reject": msg}` makes invoke reject with msg, to exercise the error path."""
 from __future__ import annotations
 
 import json
@@ -55,6 +56,11 @@ def init_script(mocks: dict) -> str:
         "    const has = Object.prototype.hasOwnProperty.call(mocks, cmd);\n"
         "    const value = has ? mocks[cmd] : null;\n"
         "    if (has && value === null) { window.__flowReviewMissingMocks.push(cmd); }\n"
+        # {"$reject": msg} -> the command's Err path (a Result<_, E> backend failing), A-36
+        "    if (value !== null && typeof value === 'object' && !Array.isArray(value)\n"
+        "        && Object.keys(value).length === 1 && '$reject' in value) {\n"
+        "      return Promise.reject(value['$reject']);\n"
+        "    }\n"
         "    return Promise.resolve(value);\n"
         "  },\n"
         "  transformCallback: (callback) => callback,\n"
