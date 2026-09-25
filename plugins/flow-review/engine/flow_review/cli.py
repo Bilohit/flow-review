@@ -253,6 +253,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--rule", required=True)
     p.set_defaults(func=_run_ledger_suppressions)
 
+    tauri_parser = sub.add_parser("tauri", parents=[project_after_verb])
+    tauri_sub = tauri_parser.add_subparsers(dest="tauri_cmd", required=True)
+    p = tauri_sub.add_parser("mocks", parents=[project_after_verb])
+    p.set_defaults(func=_run_tauri_mocks)
+
     manifest_parser = sub.add_parser("manifest", parents=[project_after_verb])
     manifest_sub = manifest_parser.add_subparsers(dest="manifest_cmd", required=True)
     p = manifest_sub.add_parser("apply-learnings", parents=[project_after_verb])
@@ -357,6 +362,28 @@ def _run_ledger_suppressions(args: argparse.Namespace) -> int:
     if path is None:
         return 3
     print(json.dumps(ledgermod.suppressions_for(ledgermod.load(path), args.rule)))
+    return 0
+
+
+def _run_tauri_mocks(args: argparse.Namespace) -> int:
+    from flow_review.tauri import mocks as mocksmod
+    project_root = args.project_root
+    if project_root is None:
+        print("no .flow-review/ found; run /flow-review setup first, or pass --project",
+              file=sys.stderr)
+        return 3
+    src_tauri = Path(project_root) / "src-tauri"
+    if not src_tauri.is_dir():
+        print(f"no src-tauri/ found at {src_tauri}", file=sys.stderr)
+        return 1
+    commands = mocksmod.scan_commands(src_tauri)
+    mocks_path = Path(project_root) / ".flow-review" / "tauri-mocks.json"
+    try:
+        added = mocksmod.write_stubs(mocks_path, commands)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    print(json.dumps({"added": added, "path": str(mocks_path)}))
     return 0
 
 

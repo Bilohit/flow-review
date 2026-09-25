@@ -98,6 +98,56 @@ def test_model_prints_resolved_model_for_role(tmp_path, capsys):
     assert capsys.readouterr().out.strip() == "opus"
 
 
+def test_tauri_mocks_cli_writes_stub_file(tmp_path, capsys):
+    from flow_review import cli
+    src_tauri = tmp_path / "src-tauri" / "src"
+    src_tauri.mkdir(parents=True)
+    (src_tauri / "commands.rs").write_text(
+        "#[tauri::command]\nfn load_items() {}\n", encoding="utf-8"
+    )
+    code = cli.main(["tauri", "mocks", "--project", str(tmp_path)])
+    assert code == 0
+    mocks_path = tmp_path / ".flow-review" / "tauri-mocks.json"
+    assert mocks_path.is_file()
+
+
+def test_tauri_mocks_cli_prints_added_and_path(tmp_path, capsys):
+    src_tauri = tmp_path / "src-tauri" / "src"
+    src_tauri.mkdir(parents=True)
+    (src_tauri / "commands.rs").write_text(
+        "#[tauri::command]\nfn load_items() {}\n", encoding="utf-8"
+    )
+    code = cli.main(["tauri", "mocks", "--project", str(tmp_path)])
+    assert code == 0
+    mocks_path = tmp_path / ".flow-review" / "tauri-mocks.json"
+    out = json.loads(capsys.readouterr().out)
+    assert out == {"added": 1, "path": str(mocks_path)}
+
+
+def test_tauri_mocks_cli_errors_when_src_tauri_missing(tmp_path, capsys):
+    code = cli.main(["tauri", "mocks", "--project", str(tmp_path)])
+    assert code == 1
+    assert "src-tauri" in capsys.readouterr().err
+
+
+def test_tauri_mocks_cli_errors_when_mocks_file_is_corrupt_json(tmp_path, capsys):
+    src_tauri = tmp_path / "src-tauri" / "src"
+    src_tauri.mkdir(parents=True)
+    (src_tauri / "commands.rs").write_text(
+        "#[tauri::command]\nfn load_items() {}\n", encoding="utf-8"
+    )
+    mocks_path = tmp_path / ".flow-review" / "tauri-mocks.json"
+    mocks_path.parent.mkdir(parents=True)
+    original = b"{not valid json"
+    mocks_path.write_bytes(original)
+
+    code = cli.main(["tauri", "mocks", "--project", str(tmp_path)])
+
+    assert code == 1
+    assert str(mocks_path) in capsys.readouterr().err
+    assert mocks_path.read_bytes() == original
+
+
 def test_model_honours_role_overrides(tmp_path, capsys):
     (tmp_path / ".flow-review").mkdir()
     (tmp_path / ".flow-review" / "config.json").write_text(
