@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 
+import pytest
+
 from flow_review import audit
 
 
@@ -258,3 +260,51 @@ def test_from_tauri_promotes_to_tauri_driver(tmp_path):
     candidates = _from_tauri(tmp_path)
     assert len(candidates) == 1
     assert candidates[0].driver == "tauri"
+
+
+def test_from_tauri_pending_candidate_has_options_config_accepts(tmp_path):
+    # a pending driver allows no option keys; setup copies options verbatim into config
+    from flow_review import config
+    (tmp_path / "src-tauri").mkdir()
+    (candidate,) = audit._from_tauri(tmp_path)
+    assert candidate.driver == "pending"
+    config._validate_options(config.Surface(id="desktop", name="desktop", kind="ui",
+                                            driver="pending", launch="",
+                                            options=candidate.options))
+
+
+def _tauri_project(tmp_path, conf: dict, cargo: str | None = None) -> None:
+    src_tauri = tmp_path / "src-tauri"
+    src_tauri.mkdir()
+    (src_tauri / "tauri.conf.json").write_text(json.dumps(conf), encoding="utf-8")
+    if cargo is not None:
+        (src_tauri / "Cargo.toml").write_text(cargo, encoding="utf-8")
+
+
+def test_from_tauri_binary_is_named_after_cargo_package_not_product_name(tmp_path):
+    # Tauri v2 names target/release/<name>.exe after the Cargo package, not productName
+    _tauri_project(tmp_path, {"productName": "My App", "build": {"devUrl": "http://x:1420"}},
+                   '[package]\nname = "my-app"\nversion = "0.1.0"\n\n'
+                   '[dependencies]\nname = "decoy"\n')
+    (candidate,) = audit._from_tauri(tmp_path)
+    assert candidate.options["binary"] == "src-tauri/target/release/my-app.exe"
+
+
+@pytest.mark.parametrize("cargo", [
+    '[package] # app\nname = "my-app"\n',
+    '[package]\n  name = "my-app"\n',
+    "[package]\nname = 'my-app'\n",
+])
+def test_from_tauri_cargo_package_name_tolerates_valid_toml_shapes(tmp_path, cargo):
+    _tauri_project(tmp_path, {"productName": "My App", "build": {"devUrl": "http://x:1420"}},
+                   cargo)
+    (candidate,) = audit._from_tauri(tmp_path)
+    assert candidate.options["binary"] == "src-tauri/target/release/my-app.exe"
+
+
+def test_from_tauri_binary_prefers_main_binary_name(tmp_path):
+    _tauri_project(tmp_path, {"productName": "My App", "mainBinaryName": "mybin",
+                              "build": {"devUrl": "http://x:1420"}},
+                   '[package]\nname = "my-app"\n')
+    (candidate,) = audit._from_tauri(tmp_path)
+    assert candidate.options["binary"] == "src-tauri/target/release/mybin.exe"

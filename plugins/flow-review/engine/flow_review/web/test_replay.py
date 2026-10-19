@@ -1248,3 +1248,18 @@ def test_run_variants_installs_invoke_mocks_for_a_tauri_surface(tmp_path, monkey
                              options={"dev_url": "http://x", "mocks_file": str(mocks_file)})
     replay_mod._run_variants(surface, "http://x", {}, "goal", None)
     assert "load_items" in built[0]["init_script"]
+
+
+def test_replay_tauri_surface_without_dev_url_exits_three(tmp_path, monkeypatch, capsys):
+    project_root = tmp_path / "project"
+    log = actionlog.new_log("desktop", "f")
+    actionlog.record_step(log, "goto", url="/")
+    actionlog.save(log, tmp_path, project_root, record_enabled=True)
+    log_path = actionlog.save(log, tmp_path, project_root, record_enabled=False)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: pytest.fail("launched"))
+    surface = config.Surface(id="desktop", name="Desktop", kind="ui", driver="tauri", launch="",
+                             options={})
+    cfg = config.Config(schema_version=2, generator_version="test", surfaces=[surface])
+    assert replay_mod.replay(cfg, project_root) == 3
+    assert replay_mod.replay_log(cfg, project_root, log_path, tmp_path) == 3
+    assert capsys.readouterr().err.count("dev_url") == 2

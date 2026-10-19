@@ -60,7 +60,7 @@ def plan(project_root: Path, mode: str, goal: str | None = None,
         counts = _unit_counts_for(surface.id, mode, project_root)
         units = [{"role": role, "count": count} for role, count in counts.items() if count > 0]
         if surface.driver == "tauri" and any(
-            e.surface_id == surface.id and e.state == "open" and e.sev in ("P0", "P1")
+            e.surface_id == surface.id and e.state in ("open", "regressed") and e.sev in ("P0", "P1")
             for e in lgr.findings.values()
         ):
             units.append({"role": "confirm", "count": 1})

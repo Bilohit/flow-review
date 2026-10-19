@@ -160,6 +160,19 @@ def _from_openapi(root: Path) -> list[Candidate]:
     return []
 
 
+# py3.10 floor: no tomllib. `name` inside [package], before the next `[table]` header line.
+_CARGO_PACKAGE_NAME = re.compile(r'^\[\s*package\s*\][ \t]*(?:#.*)?$(?:(?!^\s*\[).)*?'
+                                 r'^\s*name\s*=\s*["\']([^"\']+)["\']',
+                                 re.MULTILINE | re.DOTALL)
+
+
+def _cargo_package_name(path: Path) -> str | None:
+    if not path.is_file():
+        return None
+    match = _CARGO_PACKAGE_NAME.search(path.read_text(encoding="utf-8", errors="replace"))
+    return match.group(1) if match else None
+
+
 def _from_tauri(root: Path) -> list[Candidate]:
     src_tauri = root / "src-tauri"
     if not src_tauri.is_dir():
@@ -167,6 +180,7 @@ def _from_tauri(root: Path) -> list[Candidate]:
     conf_path = src_tauri / "tauri.conf.json"
     dev_url = None
     product_name = "app"
+    main_binary_name = None
     if conf_path.is_file():
         try:
             conf = json.loads(conf_path.read_text(encoding="utf-8"))
@@ -174,13 +188,17 @@ def _from_tauri(root: Path) -> list[Candidate]:
             conf = {}
         dev_url = conf.get("build", {}).get("devUrl")
         product_name = conf.get("productName", product_name)
-    native = "webview2" if platform.system() == "Windows" else "pending"
-    options = {"native": native}
+        main_binary_name = conf.get("mainBinaryName")
+    # Tauri v2 names the exe after mainBinaryName, else the Cargo [package] name
+    binary_name = (main_binary_name or _cargo_package_name(src_tauri / "Cargo.toml")
+                   or product_name)
     if dev_url:
-        options["dev_url"] = dev_url
-        options["binary"] = f"src-tauri/target/release/{product_name}.exe"
+        native = "webview2" if platform.system() == "Windows" else "pending"
+        options = {"native": native, "dev_url": dev_url,
+                   "binary": f"src-tauri/target/release/{binary_name}.exe"}
         driver = "tauri"
     else:
+        options = {}  # a pending driver takes no options (config._validate_options)
         driver = "pending"  # no dev server configured yet -- nothing runnable to point at
     evidence = _evidence(conf_path, root, None, "") if conf_path.is_file() else _evidence(src_tauri, root, None, "")
     return [Candidate(name="desktop", kind="ui", driver=driver, launch="", evidence=evidence, options=options)]

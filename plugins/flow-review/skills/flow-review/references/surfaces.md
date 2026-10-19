@@ -49,7 +49,9 @@ over the dev server (same as `playwright`, using `goto`, `click`, `fill`, `press
 the app is running in dev mode, and over the Chrome DevTools Protocol when confirming P0/P1
 findings on the native Windows binary.
 
-**Launch.** `npm run tauri dev` (or `cargo tauri dev`) for development flows. For native
+**Launch.** The app's own dev server (`build.beforeDevCommand`, e.g. `npm run dev`) for
+development flows -- not `npm run tauri dev` / `cargo tauri dev`, which open the native window
+(see setup.md section 5.5). For native
 confirmation, `flow-review confirm --run DIR [--surface ID] [--finding ID]` launches the binary
 named in the `binary` config option.
 

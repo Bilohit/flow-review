@@ -61,7 +61,7 @@ def test_save_respects_record_flag_and_project_root(tmp_path):
     run_dir.mkdir(parents=True)
 
     p_ephemeral = actionlog.save(log, run_dir, project_root, record_enabled=False)
-    assert p_ephemeral == run_dir / "repro" / "login-happy-path.json"
+    assert p_ephemeral == run_dir / "repro" / "webapp" / "login-happy-path.json"
     assert p_ephemeral.exists()
 
     p_recorded = actionlog.save(log, run_dir, project_root, record_enabled=True)
@@ -69,3 +69,16 @@ def test_save_respects_record_flag_and_project_root(tmp_path):
     loaded = actionlog.load(p_recorded)
     assert loaded["schema_version"] == 1
     assert loaded["surface_id"] == "webapp"
+
+
+def test_save_ephemeral_repro_is_keyed_by_surface_so_same_flow_ids_do_not_collide(tmp_path):
+    # a web and a tauri surface can run the same flow id in one run
+    run_dir = tmp_path / "runs" / "run1"
+    run_dir.mkdir(parents=True)
+    paths = set()
+    for surface_id in ("webapp", "desktop"):
+        log = actionlog.new_log(surface_id, "checkout")
+        actionlog.record_step(log, "goto", url="/")
+        paths.add(actionlog.save(log, run_dir, tmp_path / "project", record_enabled=False))
+    assert paths == {run_dir / "repro" / "webapp" / "checkout.json",
+                     run_dir / "repro" / "desktop" / "checkout.json"}

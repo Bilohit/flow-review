@@ -9,6 +9,7 @@ def test_no_inline_python_dash_c_in_skills_or_agents_or_readme():
         _ROOT / "skills",
         _ROOT / "agents",
         _ROOT / "README.md",
+        _ROOT.parents[1] / "README.md",  # repo root
     ]
     offenders = []
     for target in targets:

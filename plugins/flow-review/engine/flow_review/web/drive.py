@@ -21,6 +21,8 @@ from flow_review.web.driver import WebDriver
 from flow_review.web.faults import url_matches
 
 MAX_BODY = 64 * 1024  # an action POST is a few hundred bytes to a few KiB (a fill value)
+_DRAIN_MISSING_MOCKS = ("(() => { const m = window.__flowReviewMissingMocks || [];"
+                        " window.__flowReviewMissingMocks = []; return m; })()")
 
 
 class DriveSession:
@@ -256,7 +258,9 @@ class DriveSession:
         # every stubbed invoke, so the missing-mock is recorded before any navigation can wipe
         # it, or poll this list before the action's own navigation runs instead of after.
         if page is not None and getattr(self.driver, "init_script", None) is not None:
-            for command in page.evaluate("window.__flowReviewMissingMocks || []"):
+            # read-and-clear in one evaluate: the list outlives a flow on the same document, and a
+            # later flow must not be charged for an earlier flow's null invokes
+            for command in page.evaluate(_DRAIN_MISSING_MOCKS):
                 self._note_mock_invocation(command)
         title = None
         if page is not None:

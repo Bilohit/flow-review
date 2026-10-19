@@ -4,7 +4,7 @@
 open (or regressed) P0/P1 findings on tauri-driver surfaces, run after `ledger reconcile` so this run's findings
 are in it. Candidate rule: an entry is confirmed only if this run saw it (`last_run` == the run
 dir's name, which reconcile stamps; `--finding` names one explicitly and skips this check) and a
-repro log exists for its flow -- `<run_dir>/repro/<flow_slug>.json`, else the recording
+repro log exists for its flow -- `<run_dir>/repro/<surface_slug>/<flow_slug>.json`, else the recording
 `.flow-review/recordings/<surface_slug>/<flow_slug>.json` (record mode). An entry with no repro log
 is skipped with a not-exercised/no-repro-log status event and does not count against the exit
 code. A `native: "pending"` surface (A-35: Linux
@@ -12,12 +12,11 @@ tauri-driver / macOS AX are parked) never reaches WebDriver.attach -- it only fi
 not-exercised/native-pending status event per finding and writes no result.json. Otherwise the
 native binary is launched once per surface (A-50: a fixed default CDP port, 9333, overridable
 with --port, since only one native confirm run happens at a time locally), attached to with a
-bounded retry poll, and each finding's flat repro log `<run_dir>/repro/<flow_slug>.json` is
-replayed against it.
+bounded retry poll, and each finding's repro log is replayed against it.
 
 Exit 0 = every attempted finding reproduced (skipped / native-pending findings do not count);
 1 = some did not; 3 = the native app could not be launched or attached -- `binary` option missing
-or not built, the CDP port already taken, or no attach within the retry window. No ledger write
+or not built, the binary not launchable (OSError), the CDP port already taken, or no attach within the retry window. No ledger write
 happens on an exit-3 path.
 """
 from __future__ import annotations
@@ -58,9 +57,9 @@ def _port_in_use(port: int) -> bool:
 def _repro_path(project_root: Path, run_dir: Path, entry) -> Path | None:
     # ponytail: reaches into actionlog._slug so the path matches what actionlog.save wrote;
     # upgrade: make it public if a third caller appears
-    flow_slug = actionlog._slug(entry.flow_id)
-    for path in (run_dir / "repro" / f"{flow_slug}.json",
-                 project_root / ".flow-review" / "recordings" / actionlog._slug(entry.surface_id)
+    surface_slug, flow_slug = actionlog._slug(entry.surface_id), actionlog._slug(entry.flow_id)
+    for path in (run_dir / "repro" / surface_slug / f"{flow_slug}.json",
+                 project_root / ".flow-review" / "recordings" / surface_slug
                  / f"{flow_slug}.json"):
         if path.exists():
             return path
@@ -172,7 +171,11 @@ def confirm(project_root: Path, run_dir: Path, surface_id: str | None = None,
                 # a relative binary path in config is relative to the project, not the cwd
                 binary = project_root / surface.options["binary"]
                 # held in session before attach so _stop kills it on every exit path
-                session["proc"] = tauri_launch.launch_native(binary, port)
+                try:
+                    session["proc"] = tauri_launch.launch_native(binary, port)
+                except OSError as exc:  # e.g. WinError 216: not a valid exe for this machine
+                    print(f"could not launch native binary {binary}: {exc}", file=sys.stderr)
+                    return 3
                 session["driver"] = _attach_with_retry(f"http://127.0.0.1:{port}")
                 if session["driver"] is None:
                     return 3

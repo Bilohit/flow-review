@@ -67,7 +67,8 @@ def save(log: dict, run_dir: Path, project_root: Path, record_enabled: bool) -> 
         out = (project_root / ".flow-review" / "recordings"
                / surface_slug / f"{flow_slug}.json")
     else:
-        out = run_dir / "repro" / f"{flow_slug}.json"
+        # keyed by surface too: a web and a tauri surface can run the same flow id in one run
+        out = run_dir / "repro" / surface_slug / f"{flow_slug}.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(log, ensure_ascii=False, indent=2), encoding="utf-8")
     return out

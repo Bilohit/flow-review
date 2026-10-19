@@ -48,7 +48,7 @@ disappeared, or that rested on an unverifiable claim, would be unfalsifiable.
 
 `native/<finding_id>/result.json` (written by `flow-review confirm --run DIR`) is a valid
 `replay`-kind evidence ref: `validate resolve --kind replay --ref native/<finding_id>/result.json`
-reads its `reproduced` boolean.
+only checks that the file exists -- read its `reproduced` boolean yourself before citing it.
 
 ## What this file does not decide
 

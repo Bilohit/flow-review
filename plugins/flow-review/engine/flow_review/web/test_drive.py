@@ -230,7 +230,7 @@ def test_flow_end_saves_ephemeral_repro_when_record_disabled(tmp_path):
     session.flow_begin("f1")
     session.goto("/")
     result = session.flow_end("f1", "ok")
-    assert Path(result["log_path"]) == run_dir / "repro" / "f1.json"
+    assert Path(result["log_path"]) == run_dir / "repro" / "webapp" / "f1.json"
 
 
 def test_press_and_click_return_compact_result_shape(tmp_path):
@@ -1056,7 +1056,7 @@ def test_result_polls_missing_mocks_only_for_an_init_script_driver(tmp_path):
     driver.init_script = "window.__TAURI_INTERNALS__ = {};"
     session.goto("/")
     session.goto("/")
-    assert evaluated == ["window.__flowReviewMissingMocks || []"] * 2
+    assert evaluated == [drive._DRAIN_MISSING_MOCKS] * 2
     lines = (run_dir / "events.jsonl").read_text(encoding="utf-8").strip().splitlines()
     statuses = [json.loads(l) for l in lines if json.loads(l).get("type") == "status"]
     assert [(s["step"], s["reason"]) for s in statuses] == [("save_note", "mock-missing")]
@@ -1237,3 +1237,45 @@ def test_tauri_reject_sentinel_mock_surfaces_swallowed_error_as_console_finding(
     findings = [p for p in payloads if p.get("type") == "finding"]
     assert any(f["rule"] == "console.error" and "disk full" in f["text"] for f in findings), findings
     assert not [p for p in payloads if p.get("reason") == "mock-missing"]
+
+
+@pytest.mark.web
+def test_tauri_absent_mock_is_missing_and_not_reattributed_to_the_next_flow(tmp_path):
+    # save_note is absent from the mocks file entirely (not a null stub): it still resolves null
+    # and must file mock-missing -- once, for the flow that invoked it. A later flow that never
+    # navigates must not inherit it from the page-global list.
+    import functools
+    from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+
+    src = Path(__file__).resolve().parents[2] / "fixtures" / "tauriapp" / "src"
+
+    class _Quiet(SimpleHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0),
+                                 functools.partial(_Quiet, directory=str(src)))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    dev_url = f"http://127.0.0.1:{server.server_address[1]}"
+    mocks_file = tmp_path / "tauri-mocks.json"
+    mocks_file.write_text(json.dumps({"load_items": [{"label": "Milk"}]}), encoding="utf-8")
+    run_dir, project_root = _dirs(tmp_path)
+    driver = drive.DRIVER_FACTORIES["tauri"](True, None,
+                                             options={"dev_url": dev_url,
+                                                      "mocks_file": str(mocks_file)})
+    driver.launch(dev_url)
+    try:
+        session = DriveSession(driver, "desktop", run_dir, project_root, False)
+        session.flow_begin("save")
+        session.goto("/")
+        session.click({"css": "#save-note-button"})
+        session.flow_end("save", "ok")
+        session.flow_begin("load")
+        session.click({"css": "#load-items"})
+    finally:
+        driver.close()
+        server.shutdown()
+    lines = (run_dir / "events.jsonl").read_text(encoding="utf-8").strip().splitlines()
+    statuses = [json.loads(l) for l in lines if json.loads(l).get("type") == "status"]
+    assert [(s["step"], s["reason"], s["flow_id"]) for s in statuses] == [
+        ("save_note", "mock-missing", "save")]

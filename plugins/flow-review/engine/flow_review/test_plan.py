@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from flow_review import plan as plan_mod
 
 
@@ -80,7 +82,8 @@ def test_plan_no_persistent_surfaces_omits_destructive_gap(tmp_path, monkeypatch
     assert result["gaps"] == []
 
 
-def test_plan_adds_zero_cost_confirm_unit_for_tauri_surface_with_open_p1(tmp_path):
+@pytest.mark.parametrize("state", ["open", "regressed"])
+def test_plan_adds_zero_cost_confirm_unit_for_tauri_surface_with_open_p1(tmp_path, state):
     from flow_review import config as configmod
     from flow_review import ledger as ledger_mod
     from flow_review import plan as planmod
@@ -96,7 +99,7 @@ def test_plan_adds_zero_cost_confirm_unit_for_tauri_surface_with_open_p1(tmp_pat
     entry = ledger_mod.LedgerEntry(
         id="f1", fingerprint="fp1", surface_id="desktop", flow_id="flow-1",
         rule="console.error", route="/", locator="css:#save-note-button", sev="P1",
-        text="swallowed",
+        text="swallowed", state=state,
     )
     ledger_mod.save(ledger_mod.Ledger(findings={"f1": entry}),
                      tmp_path / ".flow-review" / "findings.json")

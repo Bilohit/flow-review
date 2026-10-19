@@ -30,8 +30,8 @@ def _write_ledger(project_root: Path, last_run: str = "run1", state: str = "open
 
 
 def _write_repro(run_dir: Path, steps: list[dict]) -> None:
-    (run_dir / "repro").mkdir(parents=True)
-    (run_dir / "repro" / "flow-1.json").write_text(
+    (run_dir / "repro" / "desktop").mkdir(parents=True)
+    (run_dir / "repro" / "desktop" / "flow-1.json").write_text(
         json.dumps({"surface_id": "desktop", "flow_id": "flow-1", "steps": steps}),
         encoding="utf-8",
     )
@@ -334,8 +334,8 @@ def test_confirm_corrupt_repro_log_is_not_reproduced_not_a_crash(tmp_path, monke
     _write_config(tmp_path, native="webview2")
     _write_ledger(tmp_path)
     run_dir = tmp_path / "run1"
-    (run_dir / "repro").mkdir(parents=True)
-    (run_dir / "repro" / "flow-1.json").write_text("{not json", encoding="utf-8")
+    (run_dir / "repro" / "desktop").mkdir(parents=True)
+    (run_dir / "repro" / "desktop" / "flow-1.json").write_text("{not json", encoding="utf-8")
 
     stopped = []
     monkeypatch.setattr(confirmmod.tauri_launch, "launch_native", lambda binary, port: FakeProc())
@@ -352,8 +352,8 @@ def test_confirm_repro_log_missing_steps_is_not_reproduced(tmp_path, monkeypatch
     _write_config(tmp_path, native="webview2")
     _write_ledger(tmp_path)
     run_dir = tmp_path / "run1"
-    (run_dir / "repro").mkdir(parents=True)
-    (run_dir / "repro" / "flow-1.json").write_text('{"flow_id": "flow-1"}', encoding="utf-8")
+    (run_dir / "repro" / "desktop").mkdir(parents=True)
+    (run_dir / "repro" / "desktop" / "flow-1.json").write_text('{"flow_id": "flow-1"}', encoding="utf-8")
 
     monkeypatch.setattr(confirmmod.tauri_launch, "launch_native", lambda binary, port: FakeProc())
     monkeypatch.setattr(confirmmod.tauri_launch, "stop_native", lambda proc: None)
@@ -386,9 +386,9 @@ def test_confirm_two_surfaces_stops_first_app_before_launching_second(tmp_path, 
     }
     ledger_mod.save(ledger_mod.Ledger(findings=entries), tmp_path / ".flow-review" / "findings.json")
     run_dir = tmp_path / "run1"
-    (run_dir / "repro").mkdir(parents=True)
-    for i in (1, 2):
-        (run_dir / "repro" / f"flow-{i}.json").write_text(
+    for i, sid in ((1, "desk-a"), (2, "desk-b")):
+        (run_dir / "repro" / sid).mkdir(parents=True)
+        (run_dir / "repro" / sid / f"flow-{i}.json").write_text(
             json.dumps({"flow_id": f"flow-{i}", "steps": [{"action": "goto", "url": "/"}]}),
             encoding="utf-8")
 
@@ -409,3 +409,50 @@ def test_confirm_two_surfaces_stops_first_app_before_launching_second(tmp_path, 
     assert confirmmod.confirm(tmp_path, run_dir) == 0
     assert calls == [("launch", "desk-a"), ("stop", "desk-a"),
                      ("launch", "desk-b"), ("stop", "desk-b")]
+
+
+def test_confirm_launch_oserror_exits_3_with_message_and_no_ledger_write(tmp_path, monkeypatch,
+                                                                          capsys):
+    # e.g. WinError 216 (not a valid exe): a launch failure, not "did not reproduce" (exit 1)
+    _write_config(tmp_path, native="webview2")
+    _write_ledger(tmp_path)
+    run_dir = tmp_path / "run1"
+    _write_repro(run_dir, [{"action": "goto", "url": "/"}])
+    ledger_path = tmp_path / ".flow-review" / "findings.json"
+    before = ledger_path.read_bytes()
+
+    def _bad_exe(binary, port):
+        raise OSError(216, "This version of %1 is not compatible")
+
+    stopped = []
+    monkeypatch.setattr(confirmmod.tauri_launch, "launch_native", _bad_exe)
+    monkeypatch.setattr(confirmmod.tauri_launch, "stop_native", stopped.append)
+    monkeypatch.setattr(confirmmod.WebDriver, "attach",
+                         staticmethod(lambda cdp_url: (_ for _ in ()).throw(AssertionError())))
+
+    assert confirmmod.confirm(tmp_path, run_dir) == 3
+    assert "app.exe" in capsys.readouterr().err
+    assert ledger_path.read_bytes() == before
+    assert stopped == []  # nothing was started, so nothing to kill
+
+
+def test_confirm_replays_its_own_surfaces_repro_when_another_surface_ran_the_same_flow(
+        tmp_path, monkeypatch):
+    _write_config(tmp_path, native="webview2")
+    _write_ledger(tmp_path)
+    run_dir = tmp_path / "run1"
+    _write_repro(run_dir, [{"action": "goto", "url": "/"}])
+    web_repro = run_dir / "repro" / "webapp" / "flow-1.json"
+    web_repro.parent.mkdir(parents=True)
+    web_repro.write_text(json.dumps({"surface_id": "webapp", "flow_id": "flow-1",
+                                     "steps": [{"action": "goto", "url": "/web-only"}]}),
+                         encoding="utf-8")
+
+    driver = FakeDriver()
+    monkeypatch.setattr(confirmmod.tauri_launch, "launch_native", lambda binary, port: FakeProc())
+    monkeypatch.setattr(confirmmod.tauri_launch, "stop_native", lambda proc: None)
+    monkeypatch.setattr(confirmmod.WebDriver, "attach", staticmethod(lambda cdp_url: driver))
+    monkeypatch.setattr(confirmmod.measure, "check_page", _fake_check_page("console.error"))
+
+    assert confirmmod.confirm(tmp_path, run_dir) == 0
+    assert driver.actions == [("goto", "/")]

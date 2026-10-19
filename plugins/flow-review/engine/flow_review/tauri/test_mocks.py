@@ -48,6 +48,21 @@ def test_scan_commands_finds_tauri_command_fns(tmp_path):
             [],
             id="commented-out-not-matched",
         ),
+        pytest.param(
+            "#[tauri::command] // exposed to the UI\nfn load_items() {}\n",
+            ["load_items"],
+            id="trailing-comment",
+        ),
+        pytest.param(
+            "#[tauri::command] fn load_items() {}\n",
+            ["load_items"],
+            id="same-line-fn",
+        ),
+        pytest.param(
+            "#[tauri::command]\n/// Loads the items.\n/// Second line.\npub fn load_items() {}\n",
+            ["load_items"],
+            id="doc-comments-between",
+        ),
     ],
 )
 def test_scan_commands_handles_real_tauri_shapes(tmp_path, snippet, expected):
@@ -114,3 +129,35 @@ def test_init_script_reject_sentinel_rejects_and_null_still_resolves():
     assert '"$reject"' in script
     # null stubs still resolve null and are tracked as mock-missing
     assert "Promise.resolve(value)" in script and "__flowReviewMissingMocks.push" in script
+
+
+def test_scan_commands_skips_target_dir_and_tolerates_non_utf8(tmp_path):
+    from flow_review.tauri.mocks import scan_commands
+    src_tauri = tmp_path / "src-tauri"
+    (src_tauri / "src").mkdir(parents=True)
+    (src_tauri / "src" / "commands.rs").write_bytes(
+        b"// caf\xe9\n#[tauri::command]\nfn load_items() {}\n")
+    generated = src_tauri / "target" / "debug" / "build" / "x" / "out"
+    generated.mkdir(parents=True)
+    (generated / "gen.rs").write_text("#[tauri::command]\nfn generated_cmd() {}\n",
+                                      encoding="utf-8")
+    # only src-tauri/target is cargo's; an app module named target/ is still scanned
+    (src_tauri / "src" / "target").mkdir()
+    (src_tauri / "src" / "target" / "mod.rs").write_text("#[tauri::command]\nfn aim() {}\n",
+                                                         encoding="utf-8")
+    assert scan_commands(src_tauri) == ["load_items", "aim"]
+
+
+def test_init_script_tracks_absent_commands_as_missing_too():
+    from flow_review.tauri.mocks import init_script
+    script = init_script({"load_items": []})
+    # a command absent from the mocks resolves null and is tracked just like a null stub
+    assert "if (value === null && !String(cmd).startsWith('plugin:'))" in script
+
+
+def test_init_script_provides_current_window_metadata():
+    # @tauri-apps/api v2 getCurrentWindow() reads __TAURI_INTERNALS__.metadata and throws without it
+    from flow_review.tauri.mocks import init_script
+    script = init_script({})
+    assert "metadata: {currentWindow: {label: 'main'}," in script
+    assert "currentWebview: {windowLabel: 'main', label: 'main'}}" in script

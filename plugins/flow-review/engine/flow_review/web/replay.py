@@ -310,11 +310,22 @@ def _health_ok(surface) -> bool:
         return False
 
 
-def _app_url(surface) -> str:
+def _app_url_key(surface) -> str:
     # A tauri surface is replayed web-first against its dev server, with invoke mocked (A-37).
-    if surface.driver == "tauri":
-        return surface.options["dev_url"]
-    return surface.options["base_url"]
+    return "dev_url" if surface.driver == "tauri" else "base_url"
+
+
+def _app_url(surface) -> str | None:
+    return surface.options.get(_app_url_key(surface))
+
+
+def _no_app_url(surface) -> bool:
+    """A surface with no app URL configured is an environment error (exit 3), not a crash."""
+    if _app_url(surface):
+        return False
+    print(f"surface {surface.id!r} has no `{_app_url_key(surface)}` option; set it in "
+          f".flow-review/config.json", file=sys.stderr)
+    return True
 
 
 def _launch_driver(surface) -> WebDriver:
@@ -363,6 +374,8 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
         if not flow_files:
             continue
 
+        if _no_app_url(surface):
+            return 3
         if not _health_ok(surface):
             print(f"app for surface {surface.id!r} is unreachable at "
                   f"{_app_url(surface)}; start it and re-run", file=sys.stderr)
@@ -472,6 +485,8 @@ def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path,
         print(f"no browser surface named {log['surface_id']!r} in config", file=sys.stderr)
         return 3
 
+    if _no_app_url(surfaces[0]):
+        return 3
     if not _health_ok(surfaces[0]):
         print(f"app for surface {surfaces[0].id!r} is unreachable at "
               f"{_app_url(surfaces[0])}; start it and re-run", file=sys.stderr)
