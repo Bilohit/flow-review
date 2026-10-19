@@ -303,3 +303,12 @@ confirmed. It holds the bugs carried over from the M2 review, plus any the drift
 - The Expo planted-defect fixture app: M5 bench needs it, so it is built there.
 - Non-ASCII input: an ADBKeyboard-style IME, once a user needs it.
 - `app.config.js` evaluation: when a project has no static id and the user won't set `app_id`.
+
+## Execution notes (decisions made from real-device runs, 2026-10-19)
+
+| id | decision |
+|---|---|
+| A-85m | `prove` requires Metro only when the installed build is debuggable (`Adb.is_debuggable` reads `pkgFlags` for `DEBUGGABLE`). A release build of a dev-client project embeds its bundle; the reference device had one, and the first real `prove` wrongly asked for Metro. |
+| A-86m | `AndroidDriver.end_step` waits a fixed 1.0s for the screen to settle (ponytail: polling dumps until two match is the upgrade path; at ~2s per dump it costs more than it saves). |
+| A-87m | The post-action dump stays cached across `begin_step`. `click`/`fill` re-dump once on a locator miss. This takes a real click from ~5.5s to ~3.3s. |
+| A-88m | Hierarchy outline drops a text node that repeats its containing control's name, and `screen_route` prefers text over content-desc-only nodes, so an icon button above the title can't name the screen. |
