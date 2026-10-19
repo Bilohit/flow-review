@@ -1855,6 +1855,13 @@ def _confirmed_state(run_dir: Path, finding_id: str) -> bool | None:
 | A-50 | `confirm` port selection (resolved) | A fixed default port, 9333, overridable via `--port` on `confirm`, since only one native confirm run happens at a time locally. Implemented in T8's `confirm.py::DEFAULT_PORT` and the CLI's `--port` flag. |
 | A-51 | Run-id minting (resolved) | `flow-review run new --project P` is the only minting point: SKILL.md calls it before `serve`; `replay.py` calls `events.new_run_id()` directly; `drive start` never creates a run dir (it receives `--run DIR`). T1 covers all of it; no follow-up needed in M2. |
 | A-52 | Fixture frontend (resolved) | `fixtures/tauriapp` ships its own plain-static frontend (`src/index.html`, `src/app.js`, no build step) rather than reusing `fixtures/webapp`'s build output; `tauri.conf.json` sets `frontendDist` to `../src` and `build.devUrl`/`beforeDevCommand` to a stdlib `python -m http.server` on the same port. Implemented in T5. |
+| A-85 | Secret min length (implemented deviation) | Registered secrets shorter than 4 chars are silently skipped by redaction (`events.MIN_SECRET_LEN = 4`), not 8. |
+| A-86 | `?` in `url_matches` (implemented deviation) | `?` is a literal character in fault URL patterns (`web/faults.py`), not a one-char wildcard, since URLs use it for query strings. |
+| A-87 | `$reject` mock sentinel (implemented deviation) | A tauri mock value shaped exactly `{"$reject": msg}` makes `invoke` reject with msg (`tauri/mocks.py`), to exercise the Err path. |
+| A-88 | Confirm skips findings with no repro log (implemented deviation) | `confirm` files a not-exercised/no-repro-log status event and does not count the finding against the exit code. |
+| A-89 | Confirm scope = this run (implemented deviation) | `confirm` only takes entries whose `last_run` equals the run dir's name; `--finding` names one explicitly and skips the check. |
+| A-90 | Confirm exit-3 preflight (implemented deviation) | Missing/unbuilt binary, unlaunchable binary, taken CDP port or no attach in the retry window returns exit 3 before any replay; no ledger write. |
+| A-91 | Confirm runs after the verifier (implemented deviation) | SKILL.md order is Validation (`fr-verifier`), then `ledger reconcile`, then `confirm`; the verifier never consumes confirm's result. |
 
 ## QUESTIONS
 

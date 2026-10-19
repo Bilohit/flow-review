@@ -82,3 +82,11 @@ def test_save_ephemeral_repro_is_keyed_by_surface_so_same_flow_ids_do_not_collid
         paths.add(actionlog.save(log, run_dir, tmp_path / "project", record_enabled=False))
     assert paths == {run_dir / "repro" / "webapp" / "checkout.json",
                      run_dir / "repro" / "desktop" / "checkout.json"}
+
+
+def test_slug_leaves_safe_ids_unchanged_and_disambiguates_rewritten_ones():
+    assert actionlog._slug("login-happy_path.1") == "login-happy_path.1"
+    a, b = actionlog._slug("a/b"), actionlog._slug("a b")
+    assert a != b  # both would collapse to "a-b" without the hash suffix
+    assert a.startswith("a-b-") and len(a) == len("a-b-") + 6
+    assert "/" not in actionlog._slug("../../x") and not actionlog._slug("../../x").startswith(".")

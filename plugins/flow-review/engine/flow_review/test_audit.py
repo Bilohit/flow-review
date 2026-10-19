@@ -209,10 +209,84 @@ def test_tauri_src_tauri_dir_is_pending_driver(tmp_path):
     assert tauri[0].launch == ""
 
 
-def test_expo_app_json_is_pending_driver(tmp_path):
-    (tmp_path / "app.json").write_text(json.dumps({"expo": {"name": "demo"}}), encoding="utf-8")
-    found = audit.detect(tmp_path)
-    assert any(c.driver == "pending" and "app.json" in c.evidence for c in found)
+def _write(root, rel, text):
+    path = root / rel
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
+def _mobile(root):
+    return [c for c in audit.detect(root) if c.name == "mobile"]
+
+
+def test_expo_go_app_json_is_adb_with_host_exp_exponent(tmp_path):
+    _write(tmp_path, "app.json", json.dumps({"expo": {"name": "demo"}}))
+    _write(tmp_path, "package.json", json.dumps({"dependencies": {"expo": "^52"}}))
+    [c] = _mobile(tmp_path)
+    assert (c.driver, c.kind, c.launch) == ("adb", "ui", "")
+    assert "app.json" in c.evidence
+    assert c.options == {"app_id": "host.exp.exponent", "start_cmd": "npx expo start",
+                         "metro_url": "http://127.0.0.1:8081"}
+
+
+def test_expo_dev_client_with_android_folder_uses_gradle_id(tmp_path):
+    _write(tmp_path, "app.json", json.dumps({"expo": {"android": {"package": "com.json.id"}}}))
+    _write(tmp_path, "package.json", json.dumps({"dependencies": {"expo": "1", "expo-dev-client": "1"}}))
+    _write(tmp_path, "android/app/build.gradle", 'android {\n  defaultConfig {\n    applicationId "com.gradle.id"\n  }\n}\n')
+    [c] = _mobile(tmp_path)
+    assert c.driver == "adb"
+    assert c.options["app_id"] == "com.gradle.id"
+    assert c.options["start_cmd"] == "npx expo start --dev-client"
+
+
+def test_expo_dev_client_without_android_folder_uses_expo_android_package(tmp_path):
+    _write(tmp_path, "app.json", json.dumps({"expo": {"android": {"package": "com.json.id"}}}))
+    _write(tmp_path, "package.json", json.dumps({"dependencies": {"expo-dev-client": "1"}}))
+    [c] = _mobile(tmp_path)
+    assert c.options["app_id"] == "com.json.id"
+
+
+def test_expo_dev_client_with_no_id_anywhere_is_pending_with_hint(tmp_path):
+    _write(tmp_path, "app.json", json.dumps({"expo": {"name": "demo"}}))
+    _write(tmp_path, "package.json", json.dumps({"dependencies": {"expo-dev-client": "1"}}))
+    [c] = _mobile(tmp_path)
+    assert (c.driver, c.options) == ("pending", {})
+    assert "set options.app_id" in c.evidence
+
+
+def test_app_config_ts_without_static_id_is_pending(tmp_path):
+    _write(tmp_path, "app.config.ts", "export default {}")
+    [c] = _mobile(tmp_path)
+    assert c.driver == "pending" and c.options == {}
+    assert "app.config.ts" in c.evidence and "set options.app_id" in c.evidence
+
+
+def test_bare_react_native_reads_gradle_applicationid_equals_form(tmp_path):
+    _write(tmp_path, "package.json", json.dumps({"devDependencies": {"react-native": "0.76"}}))
+    _write(tmp_path, "android/app/build.gradle.kts", 'defaultConfig {\n    applicationId = "com.bare.rn"\n}\n')
+    [c] = _mobile(tmp_path)
+    assert c.options["app_id"] == "com.bare.rn"
+    assert c.options["start_cmd"] == "npx react-native start"
+
+
+def test_native_kts_app_uses_namespace_when_no_applicationid(tmp_path):
+    _write(tmp_path, "app/build.gradle.kts",
+           'plugins { id("com.android.application") }\nandroid {\n    namespace = "com.native.app"\n}\n')
+    [c] = _mobile(tmp_path)
+    assert (c.driver, c.launch) == ("adb", "")
+    assert c.options == {"app_id": "com.native.app"}  # native: no start_cmd, so no metro_url
+
+
+def test_app_gradle_library_module_is_not_an_android_app(tmp_path):
+    _write(tmp_path, "app/build.gradle", 'plugins { id "com.android.library" }\nnamespace "x.y"\n')
+    assert _mobile(tmp_path) == []
+
+
+def test_expo_scheme_string_and_list(tmp_path):
+    _write(tmp_path, "app.json", json.dumps({"expo": {"scheme": "myapp"}}))
+    assert _mobile(tmp_path)[0].options["scheme"] == "myapp"
+    _write(tmp_path, "app.json", json.dumps({"expo": {"scheme": ["com.example.app", "myapp"]}}))
+    assert _mobile(tmp_path)[0].options["scheme"] == "myapp"
 
 
 def test_a_plain_app_json_with_no_expo_key_is_not_detected(tmp_path):
@@ -308,3 +382,20 @@ def test_from_tauri_binary_prefers_main_binary_name(tmp_path):
                    '[package]\nname = "my-app"\n')
     (candidate,) = audit._from_tauri(tmp_path)
     assert candidate.options["binary"] == "src-tauri/target/release/mybin.exe"
+
+
+@pytest.mark.parametrize("dev", ["tauri dev", "react-native start --port 8081", "expo start --dev-client"])
+def test_dev_script_that_starts_a_non_web_server_is_skipped_for_the_next_script(tmp_path, dev):
+    _write(tmp_path, "package.json", json.dumps({"scripts": {"dev": dev, "start": "vite"}}))
+    web = [c for c in audit.detect(tmp_path) if c.name == "web"]
+    assert [c.launch for c in web] == ["npm run start"]
+
+
+def test_expo_start_web_dev_script_is_kept(tmp_path):
+    _write(tmp_path, "package.json", json.dumps({"scripts": {"dev": "expo start --web"}}))
+    assert [c.launch for c in audit.detect(tmp_path) if c.name == "web"] == ["npm run dev"]
+
+
+def test_only_a_tauri_dev_script_yields_no_web_candidate(tmp_path):
+    _write(tmp_path, "package.json", json.dumps({"scripts": {"dev": "tauri dev"}}))
+    assert [c for c in audit.detect(tmp_path) if c.name == "web"] == []

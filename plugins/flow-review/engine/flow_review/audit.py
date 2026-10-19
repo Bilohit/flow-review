@@ -56,6 +56,11 @@ def _from_package_json(pkg_dir: Path, evidence_root: Path, name: str = "web") ->
     lines = text.splitlines()
     first = next((i for i, line in enumerate(lines) if _SCRIPTS_KEY.search(line)), 0)
     for script_name in _DEV_SCRIPTS:
+        command = str(scripts.get(script_name, "")).strip()
+        # a native/mobile dev server is not a web surface (B1)
+        if command.startswith(("tauri dev", "react-native start")) or (
+                command.startswith("expo start") and "--web" not in command):
+            continue
         if script_name in scripts:
             key = re.compile(r'"%s"\s*:' % re.escape(script_name))
             number, snippet = next(
@@ -204,17 +209,69 @@ def _from_tauri(root: Path) -> list[Candidate]:
     return [Candidate(name="desktop", kind="ui", driver=driver, launch="", evidence=evidence, options=options)]
 
 
-def _from_expo(root: Path) -> list[Candidate]:
-    path = root / "app.json"
-    if not path.is_file():
+# `applicationId` wins over `namespace`; both `x "id"` (groovy) and `x = "id"` (kts) forms.
+_GRADLE_ID = re.compile(r"""^\s*(applicationId|namespace)\s*=?\s*["']([^"']+)["']""", re.MULTILINE)
+_GRADLE_FILES = ("android/app/build.gradle", "android/app/build.gradle.kts",
+                 "app/build.gradle", "app/build.gradle.kts")
+_METRO_URL = "http://127.0.0.1:8081"
+
+
+def _gradle_app(root: Path) -> tuple[Path | None, str | None]:
+    for rel in _GRADLE_FILES:
+        path = root / rel
+        if not path.is_file():
+            continue
+        text = path.read_text(encoding="utf-8", errors="replace")
+        if not rel.startswith("android/") and "com.android.application" not in text:
+            continue
+        ids = dict(_GRADLE_ID.findall(text))
+        return path, ids.get("applicationId") or ids.get("namespace")
+    return None, None
+
+
+def _from_android(root: Path) -> list[Candidate]:
+    gradle, gradle_id = _gradle_app(root)
+    expo, expo_path = None, None
+    app_json = root / "app.json"
+    if app_json.is_file():
+        try:
+            expo = json.loads(app_json.read_text(encoding="utf-8")).get("expo")
+        except (ValueError, AttributeError):
+            expo = None
+        if expo is not None:
+            expo_path = app_json
+            expo = expo if isinstance(expo, dict) else {}
+    if expo is None:
+        # ponytail: app.config.js/ts is code, never evaluated -- no static id, so no Expo Go fallback either
+        expo_path = next((p for p in (root / "app.config.js", root / "app.config.ts") if p.is_file()), None)
+        expo = {} if expo_path else None
+    if gradle is None and expo is None:
         return []
     try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except ValueError:
-        return []
-    if "expo" not in data:
-        return []
-    return [Candidate(name="mobile", kind="ui", driver="pending", launch="", evidence=_evidence(path, root, None, ""))]
+        pkg = json.loads((root / "package.json").read_text(encoding="utf-8"))
+        deps = {**(pkg.get("dependencies") or {}), **(pkg.get("devDependencies") or {})}
+    except (OSError, ValueError, AttributeError):
+        deps = {}
+    app_id = gradle_id or (expo or {}).get("android", {}).get("package")
+    if not app_id and expo_path == app_json and not (root / "android").is_dir() and "expo-dev-client" not in deps:
+        app_id = "host.exp.exponent"  # Expo Go hosts the project
+    if expo is not None:
+        start_cmd = "npx expo start --dev-client" if "expo-dev-client" in deps else "npx expo start"
+    elif "react-native" in deps:
+        start_cmd = "npx react-native start"
+    else:
+        start_cmd = ""
+    scheme = (expo or {}).get("scheme")
+    if isinstance(scheme, list):
+        scheme = next((x for x in scheme if "." not in x), None)
+    evidence = _evidence(gradle or expo_path, root, None, "")
+    if not app_id:
+        return [Candidate(name="mobile", kind="ui", driver="pending", launch="",
+                          evidence=f"{evidence}; set options.app_id")]
+    options = {"app_id": app_id, "start_cmd": start_cmd, "metro_url": _METRO_URL if start_cmd else "",
+               "scheme": scheme or ""}
+    options = {k: v for k, v in options.items() if v}
+    return [Candidate(name="mobile", kind="ui", driver="adb", launch="", evidence=evidence, options=options)]
 
 
 def _from_electron(root: Path) -> list[Candidate]:
@@ -248,6 +305,6 @@ def detect(root: Path) -> list[Candidate]:
     found.extend(_from_poetry(root, already={c.name for c in pyproject_found}))
     found.extend(_from_openapi(root))
     found.extend(_from_tauri(root))
-    found.extend(_from_expo(root))
+    found.extend(_from_android(root))
     found.extend(_from_electron(root))
     return found

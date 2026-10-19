@@ -37,6 +37,7 @@ WEB_OPTION_KEYS = (
     "base_url", "health_path", "ready_timeout_s", "exit_timeout_s", "viewport", "tokens_file",
 )
 TAURI_OPTION_KEYS = ("dev_url", "mocks_file", "binary", "native")
+ADB_OPTION_KEYS = ("app_id", "device", "start_cmd", "scheme", "metro_url")
 
 _SURFACE_KEYS = {
     "id", "name", "kind", "driver", "launch", "cwd", "env", "options", "preconditions",
@@ -122,6 +123,8 @@ def _validate_options(surface: Surface) -> None:
         _check_keys(surface.options, set(WEB_OPTION_KEYS), where)
     elif surface.driver == "tauri":
         _check_keys(surface.options, set(TAURI_OPTION_KEYS), where)
+    elif surface.driver == "adb":
+        _check_keys(surface.options, set(ADB_OPTION_KEYS), where)
     elif surface.options:
         _check_keys(surface.options, set(), where)
 

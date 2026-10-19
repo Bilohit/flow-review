@@ -24,7 +24,7 @@ _PENDING_DRIVER = "pending"
 
 # The full target set from A-45; only playwright/tauri exist as drivers this milestone, but the
 # tuple names the whole set so M3/M4 only add code, not touch this tuple's shape.
-RUNNABLE_DRIVERS = ("playwright", "tauri", "maestro", "http", "shell")
+RUNNABLE_DRIVERS = ("playwright", "tauri", "adb", "http", "shell")
 
 
 def detect_drift(cfg: Config, root: Path) -> list[str]:

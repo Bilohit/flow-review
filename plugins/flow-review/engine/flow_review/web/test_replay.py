@@ -274,7 +274,7 @@ def test_replay_log_mode_writes_result_json_and_never_touches_ledger(tmp_path, w
     # The result lands under the run dir, never next to the recorded log -- a
     # `<log>.result.json` sitting in recordings/ would be picked up by the next `replay()`
     # glob (which matches `*.json`) and crash it with a KeyError trying to parse it as a log.
-    result_path = run_dir / "replay" / f"{log_path.stem}.result.json"
+    result_path = run_dir / "replay" / "webapp" / f"{log_path.stem}.result.json"
     assert result_path.exists()
     assert not log_path.with_name(log_path.name + ".result.json").exists()
     data = json.loads(result_path.read_text())
@@ -1263,3 +1263,22 @@ def test_replay_tauri_surface_without_dev_url_exits_three(tmp_path, monkeypatch,
     assert replay_mod.replay(cfg, project_root) == 3
     assert replay_mod.replay_log(cfg, project_root, log_path, tmp_path) == 3
     assert capsys.readouterr().err.count("dev_url") == 2
+
+
+def test_replay_log_result_path_is_keyed_by_surface(tmp_path, monkeypatch):
+    # two surfaces can run the same flow id in one run; their results must not overwrite
+    project_root = tmp_path / "project"
+    run_dir = tmp_path / "runs" / "r1"
+    run_dir.mkdir(parents=True)
+    drv = _FakeDriver(click_target="/")
+    drv.close = lambda: None
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: True)
+    monkeypatch.setattr(replay_mod, "_launch_driver", lambda s: drv)
+    monkeypatch.setattr(replay_mod, "_measure_hook", lambda t: (lambda *a: []))
+    cfg = config.Config(schema_version=2, generator_version="test",
+                         surfaces=[_surface("http://x")])
+    log = actionlog.new_log("webapp", "f")
+    actionlog.record_step(log, "goto", url="/")
+    log_path = actionlog.save(log, run_dir, project_root, record_enabled=False)
+    replay_mod.replay_log(cfg, project_root, log_path, run_dir, mode="quick")
+    assert (run_dir / "replay" / actionlog._slug("webapp") / "f.result.json").exists()

@@ -24,10 +24,7 @@ class Locator(TypedDict, total=False):
     css: str
 
 
-class LocatorNotFound(Exception):
-    def __init__(self, locator: dict):
-        super().__init__(f"could not resolve locator: {locator!r}")
-        self.locator = locator
+from flow_review.locators import LocatorNotFound  # re-export
 
 
 class WebDriver:

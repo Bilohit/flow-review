@@ -107,7 +107,7 @@ def test_declined_surface_is_not_reported_as_vanished_evidence(tmp_path):
     assert not any("old" in m for m in messages)
 
 
-def test_runnable_surfaces_includes_tauri_but_excludes_cdp_adb_ios_sim_custom():
+def test_runnable_surfaces_includes_tauri_and_adb_but_excludes_cdp_ios_sim_custom():
     from flow_review import config, drift
     surfaces = [
         config.Surface(id="a", name="A", kind="ui", driver="tauri", launch=""),
@@ -121,4 +121,4 @@ def test_runnable_surfaces_includes_tauri_but_excludes_cdp_adb_ios_sim_custom():
     ]
     cfg = config.Config(schema_version=2, generator_version="t", surfaces=surfaces)
     runnable_ids = [s.id for s in drift.runnable_surfaces(cfg)]
-    assert runnable_ids == ["a", "b"]
+    assert runnable_ids == ["a", "b", "d"]

@@ -530,7 +530,8 @@ def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path,
 
     out = dict(result)
     out["variant_findings"] = variant_findings
-    replay_dir = run_dir / "replay"
+    # keyed by surface: two surfaces can run the same flow id in one run
+    replay_dir = run_dir / "replay" / actionlog._slug(surfaces[0].id)
     replay_dir.mkdir(parents=True, exist_ok=True)
     result_path = replay_dir / f"{log_path.stem}.result.json"
     result_path.write_text(json.dumps(out, ensure_ascii=False, indent=2), encoding="utf-8")

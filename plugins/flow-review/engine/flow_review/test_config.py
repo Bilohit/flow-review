@@ -227,3 +227,22 @@ def test_tauri_driver_rejects_unknown_option_key():
         assert False, "expected ConfigKeyError"
     except config.ConfigKeyError:
         pass
+
+
+def test_adb_driver_is_valid_with_its_option_keys():
+    from flow_review import config
+    surface = config.Surface(
+        id="mobile", name="Mobile", kind="ui", driver="adb", launch="",
+        options={"app_id": "com.x", "device": "emulator-5554", "start_cmd": "npx expo start",
+                 "scheme": "x", "metro_url": "http://127.0.0.1:8081"},
+    )
+    config._validate_surface(surface)  # must not raise
+    assert set(surface.options) == set(config.ADB_OPTION_KEYS)
+
+
+def test_adb_driver_rejects_unknown_option_key():
+    from flow_review import config
+    surface = config.Surface(id="mobile", name="Mobile", kind="ui", driver="adb", launch="",
+                             options={"bogus": True})
+    with pytest.raises(config.ConfigKeyError):
+        config._validate_surface(surface)

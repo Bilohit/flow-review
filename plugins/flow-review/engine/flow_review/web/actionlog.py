@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 from pathlib import Path
@@ -13,8 +14,11 @@ def _slug(value: str) -> str:
     """flow_id/surface_id come from `flow-begin --flow`/config, or over the unauthenticated
     drive socket -- used raw, a "../../x" id writes outside the run dir. Keep only
     [A-Za-z0-9._-], replace everything else (path separators included) with "-", and strip
-    leading dots so the result can never be "." or start a ".." traversal segment."""
+    leading dots so the result can never be "." or start a ".." traversal segment. A rewritten
+    id gets "-<6 hex of sha1(raw)>" so "a/b" and "a b" don't collapse onto the same file."""
     slug = _UNSAFE_CHARS.sub("-", value).lstrip(".")
+    if slug != value:
+        slug = f"{slug or '_'}-{hashlib.sha1(value.encode('utf-8')).hexdigest()[:6]}"
     return slug or "_"
 
 
