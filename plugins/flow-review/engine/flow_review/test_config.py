@@ -240,6 +240,14 @@ def test_adb_driver_is_valid_with_its_option_keys():
     assert set(surface.options) == set(config.ADB_OPTION_KEYS)
 
 
+def test_adb_driver_rejects_invalid_app_id():
+    from flow_review import config
+    surface = config.Surface(id="mobile", name="Mobile", kind="ui", driver="adb", launch="",
+                             options={"app_id": "x; rm -rf /"})
+    with pytest.raises(ValueError, match="app_id"):
+        config._validate_surface(surface)
+
+
 def test_adb_driver_rejects_unknown_option_key():
     from flow_review import config
     surface = config.Surface(id="mobile", name="Mobile", kind="ui", driver="adb", launch="",

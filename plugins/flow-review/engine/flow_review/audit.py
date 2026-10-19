@@ -22,6 +22,7 @@ EVIDENCE_FORMAT = "{path}:{line} -> {snippet}"
 EVIDENCE_FORMAT_NO_LINE = "{path} (file present)"
 
 _DEV_SCRIPTS = ("dev", "start", "serve")
+_NATIVE_DEV = re.compile(r"\b(tauri\s+dev|react-native\s+start|expo\s+start)\b")
 _SCRIPTS_KEY = re.compile(r'"scripts"\s*:')
 _OPENAPI_NAMES = ("openapi.yaml", "openapi.yml", "openapi.json", "swagger.yaml", "swagger.json")
 
@@ -58,8 +59,8 @@ def _from_package_json(pkg_dir: Path, evidence_root: Path, name: str = "web") ->
     for script_name in _DEV_SCRIPTS:
         command = str(scripts.get(script_name, "")).strip()
         # a native/mobile dev server is not a web surface (B1)
-        if command.startswith(("tauri dev", "react-native start")) or (
-                command.startswith("expo start") and "--web" not in command):
+        match = _NATIVE_DEV.search(command)
+        if match and not (match.group(1).startswith("expo") and "--web" in command):
             continue
         if script_name in scripts:
             key = re.compile(r'"%s"\s*:' % re.escape(script_name))
@@ -224,7 +225,9 @@ def _gradle_app(root: Path) -> tuple[Path | None, str | None]:
         text = path.read_text(encoding="utf-8", errors="replace")
         if not rel.startswith("android/") and "com.android.application" not in text:
             continue
-        ids = dict(_GRADLE_ID.findall(text))
+        ids: dict[str, str] = {}
+        for key, value in _GRADLE_ID.findall(text):
+            ids.setdefault(key, value)  # first wins: defaultConfig precedes any flavor override
         return path, ids.get("applicationId") or ids.get("namespace")
     return None, None
 

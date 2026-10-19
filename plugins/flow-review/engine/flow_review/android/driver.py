@@ -6,11 +6,11 @@ import re
 from pathlib import Path
 
 from flow_review.android import hierarchy
+from flow_review.android import adb as adbmod
 from flow_review.android.adb import Adb
 from flow_review.locators import LocatorNotFound
 
-_DEL = 67  # KEYCODE_DEL; Adb's key map keeps names only for Enter/Back/Del/MoveEnd
-_SECRET_NAME = re.compile(r"password|passcode|pin|secret", re.I)
+_SECRET_NAME = re.compile(r"(?<![a-z0-9])(password|passcode|secret|pin)(?![a-z0-9])", re.I)
 # ponytail: fixed wait for the screen to settle after an action; upgrade path is polling dumps
 # until two match, at ~2s per dump that costs more than it saves on most screens
 _SETTLE_S = 1.0
@@ -29,12 +29,12 @@ class AndroidDriver:
         self.density = 160
         self.screen_wh = (0, 0)
         self._nodes: list[dict] | None = None
+        self._secret_route: str | None = None  # set by a secret fill; blocks screenshots
 
     def launch(self, base_url=None) -> None:
         if self.options.get("metro_url"):
-            self.adb.reverse(8081)
-        if not self.adb.pidof(self.app_id):
-            self.adb.start(self.app_id)
+            self.adb.reverse(adbmod.metro_port(self.options["metro_url"]))
+        self.adb.start(self.app_id)  # monkey brings a running app to front without a restart
         self.adb.wait_foreground(self.app_id)
         self.density = self.adb.density()
         self.screen_wh = self.adb.screen_size()
@@ -42,6 +42,9 @@ class AndroidDriver:
     def nodes(self) -> list[dict]:
         if self._nodes is None:
             self._nodes = hierarchy.parse(self.adb.dump())
+            if self._secret_route is not None and self._secret_route != hierarchy.screen_route(
+                    self._nodes, self.app_id, self.screen_wh[1]):
+                self._secret_route = None
         return self._nodes
 
     def begin_step(self, step_index) -> None:
@@ -58,6 +61,19 @@ class AndroidDriver:
     @property
     def current_url(self) -> str:
         return f"android://{self.app_id}/{self.route}"
+
+    def return_to(self, route: str, tries: int = 4) -> bool:
+        """Back out to the screen `route` (a flow's start). Back never touches app data; at the
+        root it can leave the app, so the app is brought to front again before each look."""
+        for _ in range(tries + 1):
+            if self.adb.foreground_package() != self.app_id:
+                self.adb.start(self.app_id)
+                self.end_step()
+            if self.route == route:
+                return True
+            self.adb.key("Back")
+            self.end_step()
+        return False
 
     def goto(self, path: str) -> None:
         scheme = self.options.get("scheme")
@@ -82,10 +98,12 @@ class AndroidDriver:
 
     def fill(self, locator: dict, value: str, secret: bool = False) -> None:
         node = self._resolve(locator)
+        if secret:
+            self._secret_route = self.route
         self._tap(node)
         self.adb.key("MoveEnd")
         if node["text"]:
-            self.adb.keys(_DEL, len(node["text"]))
+            self.adb.keys(adbmod._KEYS["Del"], len(node["text"]))
         if value:
             self.adb.text(value)
         if self.adb.ime_shown():
@@ -94,7 +112,13 @@ class AndroidDriver:
     def press(self, key: str) -> None:
         self.adb.key(key)
 
-    def screenshot(self, path) -> Path:
+    def screenshot(self, path) -> Path | None:
+        """PNGs can't be redacted: after a secret fill, return None and write nothing until the
+        screen's route changes."""
+        if self._secret_route is not None:
+            self.nodes()  # a refresh may show the route moved on and clear the flag
+        if self._secret_route is not None:
+            return None
         return self.adb.screencap(path)
 
     def snapshot(self) -> dict:

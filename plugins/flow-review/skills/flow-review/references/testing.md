@@ -89,7 +89,19 @@ the extra gotchas that only show up once you are actually driving one.
 
 ### adb (android)
 
-pending-driver until M2/M3/M4 (A-14).
+- **Persistent data.** The device holds real app data. Never use destructive flows (delete,
+  reset, clear data, sign out of a synced account) unless the surface is `disposable` or the GO
+  opt-in allows it; file them `not-exercised` otherwise. The engine never wipes the app.
+- Budget about 3-5s per action; do not poll with repeated `look`.
+- A system permission dialog is outside the app: the `LocatorNotFound` message names the
+  foreground package. `click` the dialog's button by text ("Allow", "While using the app").
+- `goto /` foregrounds the app; `goto /x` is a deep link and works only if `scheme` is set.
+- A flow remembers the screen it began on; `replay` backs out to it with Back (never a restart or data clear) and reports `start_screen_unreached` as a divergence if it cannot.
+- `fill` is ASCII only, no `%`. For anything else, report it `not-exercised`.
+- Use `testid` locators for unlabeled controls; `css` does not exist here.
+- A step reporting `hierarchy-unavailable` is an animated screen; wait and retry once, do not
+  treat it as stuck.
+- No console/network signals and no `fault`; unhappy paths come from the app's own states.
 
 ### shell / http
 

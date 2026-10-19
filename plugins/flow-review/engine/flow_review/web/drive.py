@@ -48,6 +48,9 @@ class DriveSession:
     def flow_begin(self, flow_id: str) -> dict:
         self.flow_id = flow_id
         self.log = actionlog.new_log(self.surface_id, flow_id)
+        if getattr(self.driver, "kind", "") == "adb":
+            # an app has no URL to start a replay from: remember the screen this flow began on
+            self.log["start_route"] = self.driver.route
         self.step_index = 0
         # The fingerprint includes flow_id anyway, so a new flow must re-report a finding that
         # looked identical in an earlier flow -- reset the seen-set here, not per-run.
@@ -72,10 +75,23 @@ class DriveSession:
             "type": "step", "surface_id": self.surface_id, "flow_id": flow_id,
             "step": "flow-end", "status": status,
         })
+        extra = {}
+        if (log_path and self.record_enabled and getattr(self.driver, "kind", None) == "adb"):
+            try:  # best-effort: an export problem must never fail flow-end
+                from flow_review.android import maestro_export
+                options = getattr(self.driver, "options", None) or {}
+                app_id = getattr(self.driver, "app_id")  # getattr: instance attr, not class
+                maestro_path = log_path.with_suffix(".maestro.yaml")
+                maestro_path.write_text(
+                    maestro_export.to_maestro(self.log, app_id, options.get("scheme")),
+                    encoding="utf-8")
+                extra["maestro_path"] = str(maestro_path)
+            except Exception:
+                pass
         self.log = None
         self.flow_id = None
         return {"flow_id": flow_id, "status": status,
-                "log_path": str(log_path) if log_path else None}
+                "log_path": str(log_path) if log_path else None, **extra}
 
     def goto(self, path: str) -> dict:
         return self._act("goto", lambda: self.driver.goto(path), url_hint=path)
@@ -107,7 +123,10 @@ class DriveSession:
         if shot:
             self.step_index += 1
             path = self.run_dir / "drive" / self.surface_id / f"shot-{self.step_index:04d}.png"
-            self.driver.screenshot(path)
+            if self.driver.screenshot(path) is None and getattr(self.driver, "kind", "") == "adb":
+                result["shot"] = None  # AndroidDriver: secret on screen, nothing written
+                result["shot_skipped"] = "secret-on-screen"
+                return result
             events.append(self.run_dir, {
                 "type": "shot", "surface_id": self.surface_id, "step": self.step_index,
                 "path": str(path),
@@ -221,21 +240,18 @@ class DriveSession:
         return new_ids
 
     def _adb_findings(self) -> list:
-        d = self.driver
         try:
-            raw = hierarchy.check(d.nodes(), d.route, d.density, d.app_id, d.screen_wh)
+            return adb_findings(self.driver, self.surface_id, self.flow_id)
         except AdbError:
             self._note_hierarchy_down()
             return []
-        return [{"surface_id": self.surface_id, "flow_id": self.flow_id,
-                 **f, "locator": actionlog.locator_key(f["locator"]) if f["locator"] else ""}
-                for f in raw]
 
     def _adb_shot(self) -> str | None:
         self.step_index += 1
         path = self.run_dir / "drive" / self.surface_id / f"shot-{self.step_index:04d}.png"
         try:
-            self.driver.screenshot(path)
+            if self.driver.screenshot(path) is None:  # secret on screen: nothing written
+                return None
         except AdbError:
             return None
         return str(path)
@@ -365,6 +381,15 @@ def _tauri_driver_factory(headless: bool, viewport: dict | None, options: dict |
     options = options or {}
     return WebDriver(headless=headless, viewport=viewport,
                       init_script=tauri_init_script(options))
+
+
+def adb_findings(d, surface_id: str, flow_id: str) -> list:
+    """Hierarchy check of the current android screen, shaped as canonical findings. Shared by
+    drive and replay; raises AdbError when the dump is unavailable."""
+    raw = hierarchy.check(d.nodes(), d.route, d.density, d.app_id, d.screen_wh)
+    return [{"surface_id": surface_id, "flow_id": flow_id,
+             **f, "locator": actionlog.locator_key(f["locator"]) if f["locator"] else ""}
+            for f in raw]
 
 
 def _adb_driver_factory(headless: bool, viewport: dict | None, options: dict | None = None):
@@ -510,7 +535,7 @@ def serve(surface_id: str, run_dir, project_root, base_url: str | None, *,
     state_dir = run_dir / "drive"
     state_dir.mkdir(parents=True, exist_ok=True)
     state_path = state_dir / f"{surface_id}.json"
-    state_path.write_text(json.dumps({"port": port, "pid": os.getpid()}))
+    _write_state(state_path, {"port": port, "pid": os.getpid()})
 
     try:
         httpd.serve_forever(poll_interval=0.1)
@@ -526,11 +551,33 @@ def _state_path(run_dir, surface_id: str) -> Path:
     return Path(run_dir) / "drive" / f"{surface_id}.json"
 
 
+def _retry_perm(op, attempts: int = 8, delay: float = 0.05):
+    """Windows reports a transiently locked file (AV/indexer scan, a handle mid-replace, a
+    delete-pending file) as PermissionError [WinError 5]; retry briefly before giving up."""
+    for attempt in range(attempts):
+        try:
+            return op()
+        except PermissionError:
+            if attempt == attempts - 1:
+                raise
+            time.sleep(delay)
+
+
+def _write_state(path: Path, state: dict) -> None:
+    """Atomic: a reader never sees a half-written file."""
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(state))
+    _retry_perm(lambda: os.replace(tmp, path))
+
+
 def _read_state(run_dir, surface_id: str) -> dict | None:
     path = _state_path(run_dir, surface_id)
     if not path.exists():
         return None
-    return json.loads(path.read_text())
+    try:
+        return json.loads(_retry_perm(path.read_text))
+    except FileNotFoundError:
+        return None
 
 
 def _pid_alive(pid: int) -> bool:

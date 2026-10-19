@@ -482,8 +482,6 @@ def _cleanup_sink(path: Path) -> None:
 
 _DEV_LAUNCHER_TEXT = ("Could not connect to development server", "Unable to load script",
                       "Development servers")
-_METRO_PORT = 8081
-
 
 def _metro_running(metro_url: str) -> bool:
     import urllib.request
@@ -530,9 +528,8 @@ def prove_android(candidate: Candidate, runner=subprocess.run, sleep=time.sleep)
         if metro_url and adb.is_debuggable(app_id):
             if not _metro_running(metro_url):
                 return fail(f"start Metro: {start_cmd}")
-            adb.reverse(_METRO_PORT)
-        if not adb.pidof(app_id):
-            adb.start(app_id)
+            adb.reverse(adbmod.metro_port(metro_url))
+        adb.start(app_id)
         adb.wait_foreground(app_id, 60)
         xml = adb.dump()
     except adbmod.AdbError as exc:

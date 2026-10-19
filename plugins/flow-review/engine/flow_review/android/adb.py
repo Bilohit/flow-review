@@ -8,6 +8,7 @@ import shlex
 import shutil
 import subprocess
 import time
+from urllib.parse import urlparse
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
@@ -16,11 +17,30 @@ _PNG = b"\x89PNG\r\n\x1a\n"
 # ponytail: only the keys the driver uses; ints pass through for anything else.
 _KEYS = {"Enter": 66, "Back": 4, "Del": 67, "MoveEnd": 123}
 _XML = re.compile(r"(<\?xml|<hierarchy).*</hierarchy>|<hierarchy[^>]*/>", re.S)
+_PKG = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$")
 _LAUNCHER = "android.intent.category.LAUNCHER"
 
 
 class AdbError(RuntimeError):
     pass
+
+
+def valid_package(s) -> bool:
+    return isinstance(s, str) and bool(_PKG.fullmatch(s))
+
+
+def _pkg(app_id: str) -> str:
+    if not valid_package(app_id):
+        raise ValueError(f"invalid app id {app_id!r}")
+    return app_id
+
+
+def metro_port(url: str) -> int:
+    """Port of options.metro_url; 8081 (Metro's default) when absent or unparsable."""
+    try:
+        return urlparse(url).port or 8081
+    except ValueError:
+        return 8081
 
 
 def adb_path() -> str | None:
@@ -54,13 +74,24 @@ class Adb:
             raise AdbError("adb not found: install platform-tools or set ANDROID_HOME")
         cmd = [exe, *(["-s", self.device] if self.device else []), *args]
         kw = {} if binary else {"text": True, "encoding": "utf-8", "errors": "replace"}
+        # `input text` carries typed values (maybe secrets): never put them in an error message
+        shown = list(args)
+        for i in range(len(shown) - 2):
+            if shown[i:i + 2] == ["input", "text"]:
+                shown[i + 2:] = ["<redacted>"] * (len(shown) - i - 2)
+                break
+        label = "adb " + " ".join(shown)
         try:
             p = self.runner(cmd, capture_output=True, timeout=timeout, **kw)
-        except (FileNotFoundError, subprocess.TimeoutExpired) as e:
-            raise AdbError(f"adb {' '.join(args)}: {e}") from e
+        except FileNotFoundError as e:
+            raise AdbError(f"{label}: adb executable not found") from None
+        except subprocess.TimeoutExpired:
+            raise AdbError(f"{label}: timed out after {timeout}s") from None
         if p.returncode != 0:
             err = p.stderr if isinstance(p.stderr, str) else p.stderr.decode("utf-8", "replace")
-            raise AdbError(f"adb {' '.join(args)} exited {p.returncode}: {err.strip()}")
+            if shown != list(args):
+                err = ""  # device stderr may echo the typed value
+            raise AdbError(f"{label} exited {p.returncode}: {err.strip()}")
         return p.stdout
 
     def _wm(self, what: str) -> str | None:
@@ -129,13 +160,13 @@ class Adb:
         return path
 
     def start(self, app_id: str) -> None:
-        out = self.run("shell", "monkey", "-p", app_id, "-c", _LAUNCHER, "1")
+        out = self.run("shell", "monkey", "-p", _pkg(app_id), "-c", _LAUNCHER, "1")
         if "No activities found" in out:
             raise AdbError(f"No activities found for {app_id}")
 
     def open_link(self, url: str, app_id: str) -> None:
         self.run("shell", "am", "start", "-a", "android.intent.action.VIEW",
-                 "-d", shlex.quote(url), app_id)
+                 "-d", shlex.quote(url), _pkg(app_id))
 
     def foreground_package(self) -> str | None:
         out = self.run("shell", "dumpsys", "window")
@@ -146,6 +177,7 @@ class Adb:
         return None
 
     def wait_foreground(self, app_id: str, timeout: float = 60, poll: float = 0.5) -> None:
+        _pkg(app_id)
         for _ in range(int(timeout / poll) + 1):
             if self.foreground_package() == app_id:
                 return
@@ -154,14 +186,14 @@ class Adb:
 
     def pidof(self, app_id: str) -> bool:
         # `|| true`: pidof exits 1 when the app is not running; that is an answer, not an error.
-        return bool(self.run("shell", f"pidof {shlex.quote(app_id)} || true").strip())
+        return bool(self.run("shell", f"pidof {shlex.quote(_pkg(app_id))} || true").strip())
 
     def is_installed(self, app_id: str) -> bool:
-        return f"package:{app_id}" in self.run("shell", "pm", "list", "packages", app_id).split()
+        return f"package:{app_id}" in self.run("shell", "pm", "list", "packages", _pkg(app_id)).split()
 
     def is_debuggable(self, app_id: str) -> bool:
         # a release build embeds its JS bundle; only a debuggable one loads it from Metro
-        m = re.search(r"pkgFlags=\[([^\]]*)\]", self.run("shell", "dumpsys", "package", app_id))
+        m = re.search(r"pkgFlags=\[([^\]]*)\]", self.run("shell", "dumpsys", "package", _pkg(app_id)))
         return bool(m) and "DEBUGGABLE" in m.group(1).split()
 
     def ime_shown(self) -> bool:

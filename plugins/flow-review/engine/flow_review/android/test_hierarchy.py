@@ -91,6 +91,15 @@ def test_resolve_role_ignores_noninteractive():
         h.resolve(load("login"), {"role": "button", "name": "Sign in"})
 
 
+def test_resolve_skips_zero_area_nodes():
+    zero = node(rid="a:id/ok", text="OK", clickable=True, bounds=(10, 10, 10, 50))
+    real = node(rid="b:id/ok", text="OK", clickable=True, bounds=(0, 0, 50, 50))
+    assert h.resolve([zero, real], {"text": "OK"}) is real
+    assert h.resolve([zero, real], {"testid": "ok"}) is real
+    with pytest.raises(LocatorNotFound):
+        h.resolve([zero], {"role": "button", "name": "OK"})
+
+
 def test_resolve_css_raises():
     with pytest.raises(LocatorNotFound):
         h.resolve(load("home"), {"css": "#x"})

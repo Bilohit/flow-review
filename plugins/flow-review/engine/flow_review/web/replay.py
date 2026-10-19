@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from PIL import Image
 
 from flow_review import drift, envsetup, events, ledger
+from flow_review.android.adb import AdbError
 from flow_review.web import actionlog, drive
 from flow_review.web import measure as measure_mod
 from flow_review.web.driver import LocatorNotFound, WebDriver
@@ -36,6 +37,11 @@ def _url_path(url: str | None) -> str:
 
 
 def _current_path(driver) -> str:
+    if driver.page is None and hasattr(type(driver), "current_url"):  # adb: android://<app>/<route>
+        try:
+            return _url_path(driver.current_url)
+        except AdbError:  # a hierarchy hiccup is not a replay failure
+            return "/"
     return _url_path(getattr(driver.page, "url", None))
 
 
@@ -54,6 +60,15 @@ def replay_one(driver, log: dict, measure: MeasureHook | None = None,
     steps_run = 0
     findings: list[dict] = []
     surface_id, flow_id = log["surface_id"], log["flow_id"]
+
+    start_route = log.get("start_route")
+    if start_route and hasattr(driver, "return_to") and not driver.return_to(start_route):
+        return ReplayResult(
+            flow_id=flow_id, status="divergence", steps_run=0,
+            divergence={"step_index": 0, "locator": None, "reason": "start_screen_unreached",
+                        "url": start_route},
+            findings=findings,
+        )
 
     for index, step in enumerate(log["steps"]):
         action = step["action"]
@@ -74,6 +89,12 @@ def replay_one(driver, log: dict, measure: MeasureHook | None = None,
                     findings.extend(
                         measure(driver, surface_id, flow_id, route, index)
                     )
+            elif action == "press":
+                with _step_window(driver, index):
+                    driver.press(step["value"])
+                if measure is not None:
+                    route = ledger.route_template(_current_path(driver))
+                    findings.extend(measure(driver, surface_id, flow_id, route, index))
             elif action == "fill":
                 if step.get("from_env"):
                     value = envsetup.resolve_env(step["from_env"], project_root,
@@ -226,6 +247,26 @@ def _measure_hook(tokens: dict[str, str] | None) -> MeasureHook:
     return hook
 
 
+def _adb_measure_hook() -> MeasureHook:
+    def hook(driver, surface_id, flow_id, route, step_index):
+        try:
+            return drive.adb_findings(driver, surface_id, flow_id)
+        except AdbError:
+            return []
+    return hook
+
+
+def _launch_adb(surface):
+    driver = drive.DRIVER_FACTORIES["adb"](True, None, options=surface.options)
+    driver.launch(None)
+    return driver
+
+
+def _variants_unsupported(surface_id: str, flow_id: str) -> dict:
+    return {"type": "status", "state": "not-exercised", "reason": "variants-unsupported",
+            "surface_id": surface_id, "flow_id": flow_id}
+
+
 def _visual_baseline_check(driver, surface_dir: Path, run_dir: Path, flow_slug: str,
                            surface_id: str, flow_id: str, route: str,
                            update_baselines: bool) -> dict | None:
@@ -339,7 +380,7 @@ def _browser_surfaces(cfg, surface_id: str | None, project_root: Path):
     # Every browser-driven surface (playwright, and tauri via its dev server); a tauri
     # surface's mocks_file comes back absolute so the driver factory never needs project_root.
     surfaces = [dataclasses.replace(s, options=drive.resolve_surface_options(s, project_root))
-                for s in drift.runnable_surfaces(cfg) if s.driver in ("playwright", "tauri")]
+                for s in drift.runnable_surfaces(cfg) if s.driver in ("playwright", "tauri", "adb")]
     if surface_id is not None:
         surfaces = [s for s in surfaces if s.id == surface_id]
     return surfaces
@@ -374,19 +415,25 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
         if not flow_files:
             continue
 
-        if _no_app_url(surface):
-            return 3
-        if not _health_ok(surface):
-            print(f"app for surface {surface.id!r} is unreachable at "
-                  f"{_app_url(surface)}; start it and re-run", file=sys.stderr)
-            return 3
+        is_adb = surface.driver == "adb"
+        if is_adb:
+            launch = _launch_adb
+        else:
+            if _no_app_url(surface):
+                return 3
+            if not _health_ok(surface):
+                print(f"app for surface {surface.id!r} is unreachable at "
+                      f"{_app_url(surface)}; start it and re-run", file=sys.stderr)
+                return 3
+            launch = _launch_driver
         try:
-            driver = _launch_driver(surface)
+            driver = launch(surface)
         except Exception as exc:
             print(f"could not launch driver for surface {surface.id!r}: {exc}", file=sys.stderr)
             return 3
 
-        hook = _measure_hook(_load_tokens(surface, project_root))
+        hook = (_adb_measure_hook() if is_adb
+                else _measure_hook(_load_tokens(surface, project_root)))
         try:
             for flow_path in flow_files:
                 found_any_recording = True
@@ -407,14 +454,19 @@ def replay(cfg, project_root: Path, surface_id: str | None = None,
                     # covers an exception that cut the flow short (replay_one's step_failed
                     # path), so a checkpoint mismatch or a crash must never save or diff a
                     # baseline against a broken/incomplete page.
-                    if result["status"] == "clean":
+                    # adb is skipped: the status-bar clock/notifications make pixel diffs noise
+                    # and a screenshot could capture notification content.
+                    if result["status"] == "clean" and not is_adb:
                         visual_finding = _visual_baseline_check(
                             driver, surface_dir, run_dir, flow_path.stem, surface.id,
                             log["flow_id"], _current_path(driver), update_baselines,
                         )
                         if visual_finding is not None:
                             all_findings.append(visual_finding)
-                    if variants:
+                    if variants and is_adb:
+                        run_dir.mkdir(parents=True, exist_ok=True)
+                        events.append(run_dir, _variants_unsupported(surface.id, log["flow_id"]))
+                    elif variants:
                         # Under the run dir, never `.flow-review/variants/` -- that path is not
                         # gitignored, and a storage state can carry cookies/tokens.
                         storage_state_dir = run_dir / "variants" / surface.id
@@ -485,19 +537,25 @@ def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path,
         print(f"no browser surface named {log['surface_id']!r} in config", file=sys.stderr)
         return 3
 
-    if _no_app_url(surfaces[0]):
-        return 3
-    if not _health_ok(surfaces[0]):
-        print(f"app for surface {surfaces[0].id!r} is unreachable at "
-              f"{_app_url(surfaces[0])}; start it and re-run", file=sys.stderr)
-        return 3
+    is_adb = surfaces[0].driver == "adb"
+    if is_adb:
+        launch = _launch_adb
+    else:
+        if _no_app_url(surfaces[0]):
+            return 3
+        if not _health_ok(surfaces[0]):
+            print(f"app for surface {surfaces[0].id!r} is unreachable at "
+                  f"{_app_url(surfaces[0])}; start it and re-run", file=sys.stderr)
+            return 3
+        launch = _launch_driver
     try:
-        driver = _launch_driver(surfaces[0])
+        driver = launch(surfaces[0])
     except Exception as exc:
         print(f"could not launch driver for surface {surfaces[0].id!r}: {exc}", file=sys.stderr)
         return 3
 
-    hook = _measure_hook(_load_tokens(surfaces[0], project_root))
+    hook = (_adb_measure_hook() if is_adb
+            else _measure_hook(_load_tokens(surfaces[0], project_root)))
     try:
         result = replay_one(driver, log, measure=hook, project_root=project_root)
     except MissingEnv as exc:
@@ -509,7 +567,10 @@ def replay_log(cfg, project_root: Path, log_path: Path, run_dir: Path,
     variant_findings: list[dict] = []
     # Running the variant set on a base flow that never got past its own divergence would just
     # reproduce the same failure N more times, so it only runs after a base flow that completed.
-    if variants and result["status"] != "divergence":
+    if variants and is_adb:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        events.append(run_dir, _variants_unsupported(surfaces[0].id, log["flow_id"]))
+    elif variants and result["status"] != "divergence":
         storage_state_dir = run_dir / "variants" / surfaces[0].id
         base_viewport = (surfaces[0].options.get("viewport") or [None])[0]
         variant_findings, variant_flow_ids = _run_variants(

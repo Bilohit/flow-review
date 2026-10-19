@@ -479,7 +479,7 @@ def test_adb_ready_when_installed_foreground_and_clean_hierarchy(_adb_present):
     proof = _prove_adb(_adb_candidate(), fake)
     assert proof.outcome == provemod.RUNNING_READY
     assert provemod.outcome_to_provenance(proof.outcome) == provemod.PROVEN
-    assert not fake.ran("shell", "monkey")  # already running: attach, never relaunch
+    assert fake.ran("shell", "monkey")  # monkey fronts a running app without a restart
 
 
 def test_adb_starts_app_when_not_running(_adb_present):
@@ -537,6 +537,15 @@ def test_adb_release_build_needs_no_metro(_adb_present, monkeypatch):
                                   start_cmd="npx expo start --dev-client"), fake)
     assert p.outcome == provemod.RUNNING_READY
     assert not fake.ran("reverse")
+
+
+def test_adb_always_starts_and_uses_metro_url_port(_adb_present, monkeypatch):
+    monkeypatch.setattr(provemod, "_metro_running", lambda url: True)
+    fake = _FakeAdb(pid="123")
+    p = _prove_adb(_adb_candidate(metro_url="http://127.0.0.1:19000", start_cmd="x"), fake)
+    assert p.outcome == provemod.RUNNING_READY
+    assert fake.ran("reverse", "tcp:19000", "tcp:19000")
+    assert fake.ran("shell", "monkey")
 
 
 def test_adb_metro_up_reverses_port(_adb_present, monkeypatch):

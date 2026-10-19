@@ -17,6 +17,8 @@ import re
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+from flow_review.android.adb import valid_package
+
 SCHEMA_VERSION = 2
 
 
@@ -125,6 +127,9 @@ def _validate_options(surface: Surface) -> None:
         _check_keys(surface.options, set(TAURI_OPTION_KEYS), where)
     elif surface.driver == "adb":
         _check_keys(surface.options, set(ADB_OPTION_KEYS), where)
+        app_id = surface.options.get("app_id")
+        if app_id is not None and not valid_package(app_id):
+            raise ValueError(f"{where}.app_id {app_id!r} is not a valid Android package name")
     elif surface.options:
         _check_keys(surface.options, set(), where)
 

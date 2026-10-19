@@ -54,6 +54,7 @@ wrong". Three of four screenshot-derived defects in a past run were false.
 | layout / overlap / clipping | `getBoundingClientRect()` intersection math (overlap = >2px on both axes; clipped = `rect.right > innerWidth`) or native UI-tree bounds |
 | token / colour / spacing | `getComputedStyle()` value, compared to the token |
 | motion | **computed** `transitionDuration`, never the inline `style` attribute |
+| android layout (adb) | UI-tree bounds in dp from the engine rules `rect.target-size`, `rect.overlap`, `rect.offscreen`; the shot is `drive/<surface>/shot-NNNN.png` |
 | text fit | canvas `measureText` in the real font vs the content box |
 | crash / hang / wrong content / failed round trip | the log excerpt or the file itself -- objective, no council vote needed |
 

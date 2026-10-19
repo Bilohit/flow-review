@@ -73,8 +73,9 @@ yes at the GO gate) or sticky per surface (`record: true`). Without either, noth
    `flow-review serve --run <RUN_DIR>` and print the URL it returns. Then record the run's lifecycle for the dashboard, since nothing else emits it:
    `flow-review event --run DIR --type run mode=<mode> flows_total=<N planned flows>` (`N` is the
    number of flows the plan/GO scope settled on across every surface).
-4. **Drive sessions.** For every runnable web or tauri surface the plan touches (a tauri
-   surface's own dev server must already be up), start its drive session
+4. **Drive sessions.** For every runnable web, tauri or adb surface the plan touches (a tauri
+   surface's own dev server, or an adb surface's device/app/Metro per `references/setup.md` 5.6,
+   must already be up), start its drive session
    before any explorer is dispatched against it: `flow-review drive start --surface ID --run DIR
    [--record]` (the `--record` flag mirrors whatever the GO gate resolved for that surface, A-1/
    A-2). This is the orchestrator's only direct use of `drive` -- every other verb (`goto`,

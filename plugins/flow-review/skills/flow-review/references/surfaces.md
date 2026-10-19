@@ -69,7 +69,39 @@ to the ledger; `flow-review confirm` also produces a screenshot at `<run_dir>/na
 
 ## Driver: adb
 
-pending-driver until M2/M3/M4 (A-14).
+Drives an Android app on one emulator or phone over `adb` (UI hierarchy dump, input events,
+screencap). Same verbs as web (`goto`, `click`, `fill`, `press`, `look`); Maestro is not required.
+
+**Launch.** Nothing is launched by config. `flow-review prove` starts the installed app if it is
+not running (never force-stops, clears or uninstalls it). `start_cmd` is advisory text (e.g. the
+Metro command) -- the engine never runs it.
+
+**Options.** `app_id` (package name; required), `device` (adb serial; required when more than one
+device is attached), `start_cmd`, `scheme` (deep-link scheme, enables `goto /x`), `metro_url`
+(e.g. `http://localhost:8081`; Metro is needed only when the installed build is debuggable).
+
+**Proven attached when.** `flow-review prove` finds exactly one device (or `options.device`), the
+app is installed, Metro answers at `metro_url` if the build is debuggable, the app is foreground
+and its hierarchy dumps, and the screen is not a dev launcher or red box.
+
+**Driving.**
+- Each action costs about 3-5s (hierarchy dump ~2s + 1s settle).
+- Route is the screen-title slug; url is `android://<app_id>/<route>`. `goto /` brings the app to
+  front; `goto /x` opens deep link `<scheme>://x` when `scheme` is set.
+- Locators: `{"role":"button","name":...}` matches content-desc or visible text
+  (accessibilityLabel); `{"testid": x}` matches RN `testID` / resource-id. `css` is unsupported.
+- `LocatorNotFound` lists the foreground package and visible labels. If a system permission
+  dialog is up, `click` its button by text ("Allow", "While using the app").
+- `fill` is ASCII only and cannot contain `%`.
+- No console or network signals, and no `fault` verbs.
+
+**Evidence it can produce.** UI-tree bounds in dp via rules `rect.target-size` (<48dp),
+`rect.overlap`, `rect.offscreen`; screenshots at `drive/<surface>/shot-NNNN.png`, attached to
+each finding. When `uiautomator` cannot dump (animated screen) the step is `not-exercised` with
+reason `hierarchy-unavailable`.
+
+**Recordings.** Each recording is also exported as Maestro YAML (`<flow>.maestro.yaml`),
+runnable with `maestro test`. Optional; nothing depends on it.
 
 ## Driver: ios-sim
 

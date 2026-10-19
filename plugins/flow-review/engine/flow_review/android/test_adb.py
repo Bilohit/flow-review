@@ -92,6 +92,31 @@ def test_run_errors_become_adberror(monkeypatch):
         mk()[0].run("shell", "x")
 
 
+def test_run_errors_never_leak_input_text_secret():
+    secret = "hunter two s3cret"
+    for reply in [(1, ""), FileNotFoundError(f"adb input text {secret}"),
+                  subprocess.TimeoutExpired(["adb", "input", "text", secret], 20)]:
+        with pytest.raises(AdbError) as ei:
+            mk(reply)[0].run("shell", "input", "text", secret, "tail")
+        msg = str(ei.value)
+        assert "hunter" not in msg and "s3cret" not in msg and "<redacted>" in msg
+    with pytest.raises(AdbError, match="timed out after 20s"):
+        mk(subprocess.TimeoutExpired("adb", 20))[0].run("shell", "x")
+
+
+def test_valid_package_and_methods_reject_bad_ids():
+    from flow_review.android.adb import valid_package
+    assert valid_package("com.example.app_1") and not valid_package("com")
+    for bad in ["x; rm -rf /", "com.1a.b", "a.b c", "", "a..b"]:
+        assert not valid_package(bad)
+        a, f = mk()
+        for call in (a.start, a.pidof, a.is_installed, a.is_debuggable, a.wait_foreground,
+                     lambda i: a.open_link("http://x", i)):
+            with pytest.raises(ValueError):
+                call(bad)
+        assert f.calls == []
+
+
 def test_density_override_wins_and_falls_back():
     assert mk((0, "Physical density: 420\n"))[0].density() == 420
     assert mk((0, "Physical density: 420\nOverride density: 320\n"))[0].density() == 320

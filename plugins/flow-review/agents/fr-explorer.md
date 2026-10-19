@@ -21,7 +21,12 @@ contract, not a summary of it.
 by the orchestrator before you are dispatched, per `SKILL.md` section 3, never by you), `goto`,
 `click`, `fill`, `press`, `look`, `fault`, `flow-begin`, `flow-end`, `stop` (run once by the
 orchestrator at run end, never by you). Tauri surfaces are driven with the same verbs as web
-surfaces (`goto`, `click`, `fill`, `press`); no new verbs to learn. For unhappy paths, inject with
+surfaces (`goto`, `click`, `fill`, `press`); no new verbs to learn. So are `adb` (Android)
+surfaces (`references/surfaces.md`, Driver: adb): each action takes ~3-5s; `goto /` foregrounds
+the app; click a system permission dialog's button by text ("Allow", "While using the app"); fill
+is ASCII only; there is no `fault` on `adb`. **Android devices hold real data: never delete,
+reset, clear or sign out of a synced account unless the surface is `disposable` or the GO opt-in
+allows it -- file it `not-exercised` instead.** For unhappy paths on web/tauri, inject with
 `flow-review drive fault --kind offline|5xx|slow --pattern GLOB --delay-ms N` and undo with
 `flow-review drive fault --clear`. **You do not have, and must never reach for, a
 browser-automation library, an MCP browser tool, or any other means of touching a browser.** Your

@@ -54,6 +54,29 @@ class _FakeDriver:
         Image.new("RGB", (10, 10), (255, 255, 255)).save(path)
 
 
+def test_replay_one_replays_press_steps():
+    log = actionlog.new_log("webapp", "keys")
+    actionlog.record_step(log, "press", value="Enter", url="/")
+    pressed = []
+    driver = _FakeDriver()
+    driver.press = pressed.append
+    result = replay_mod.replay_one(driver, log)
+    assert pressed == ["Enter"] and result["status"] == "clean"
+
+
+@pytest.mark.parametrize("reached,status", [(True, "clean"), (False, "divergence")])
+def test_replay_one_returns_to_recorded_start_screen_first(reached, status):
+    log = actionlog.new_log("mobile", "f")
+    log["start_route"] = "notes"
+    asked = []
+    driver = _FakeDriver()
+    driver.return_to = lambda route: asked.append(route) or reached
+    result = replay_mod.replay_one(driver, log)
+    assert asked == ["notes"] and result["status"] == status
+    if not reached:
+        assert result["divergence"]["reason"] == "start_screen_unreached"
+
+
 def test_replay_one_clean_flow_calls_measure_after_goto_and_click():
     log = actionlog.new_log("webapp", "load-and-click")
     actionlog.record_step(log, "goto", url="/")
@@ -1282,3 +1305,95 @@ def test_replay_log_result_path_is_keyed_by_surface(tmp_path, monkeypatch):
     log_path = actionlog.save(log, run_dir, project_root, record_enabled=False)
     replay_mod.replay_log(cfg, project_root, log_path, run_dir, mode="quick")
     assert (run_dir / "replay" / actionlog._slug("webapp") / "f.result.json").exists()
+
+
+# ---------- adb surfaces (fake driver, no device) ----------
+
+class _FakeAdbDriver:
+    kind = "adb"
+    page = None
+
+    def __init__(self):
+        self.route = "login"
+        self.closed = False
+
+    @property
+    def current_url(self):
+        return f"android://com.x/{self.route}"
+
+    def launch(self, base_url=None): pass
+    def goto(self, path): pass
+    def click(self, locator): self.route = "home"
+    def begin_step(self, i): pass
+    def end_step(self): pass
+    def close(self): self.closed = True
+    def screenshot(self, path): Image.new("RGB", (4, 4)).save(path)
+
+
+def _adb_cfg():
+    return config.Config(schema_version=2, generator_version="test", surfaces=[
+        config.Surface(id="app", name="App", kind="ui", driver="adb", launch="",
+                       options={"app_id": "com.x"})])
+
+
+def test_replay_one_adb_url_path_and_checkpoint():
+    log = actionlog.new_log("app", "f")
+    actionlog.record_step(log, "click", locator={"testid": "go"}, url="android://com.x/home")
+    actionlog.record_step(log, "assert_url", url="android://com.x/home", checkpoint="c")
+    assert replay_mod.replay_one(_FakeAdbDriver(), log)["status"] == "clean"
+    log["steps"][1]["url"] = "android://com.x/other"
+    assert replay_mod.replay_one(_FakeAdbDriver(), log)["status"] == "regression"
+
+
+def _adb_setup(monkeypatch):
+    fake = _FakeAdbDriver()
+    monkeypatch.setitem(replay_mod.drive.DRIVER_FACTORIES, "adb",
+                        lambda h, v, options=None: fake)
+    monkeypatch.setattr(replay_mod, "_health_ok", lambda s: pytest.fail("no health for adb"))
+    monkeypatch.setattr(replay_mod.drive, "adb_findings", lambda d, s, f: [{
+        "surface_id": s, "flow_id": f, "rule": "rect.target-size", "route": d.route,
+        "locator": "testid:go", "sev": "P2", "text": "small", "evidence": [],
+        "disposition": "engine"}])
+    log = actionlog.new_log("app", "f")
+    actionlog.record_step(log, "click", locator={"testid": "go"}, url="android://com.x/home")
+    return fake, log
+
+
+def test_replay_adb_variants_not_exercised(tmp_path, monkeypatch):
+    fake, log = _adb_setup(monkeypatch)
+    actionlog.save(log, tmp_path, tmp_path, record_enabled=True)
+    replay_mod.replay(_adb_cfg(), tmp_path, variants=True)
+    assert fake.closed
+    events_file = next((tmp_path / ".flow-review" / "runs").glob("*/events.jsonl"))
+    evs = [json.loads(line) for line in events_file.read_text().splitlines()]
+    assert any(e.get("reason") == "variants-unsupported" and e["state"] == "not-exercised"
+               and e["flow_id"] == "f" for e in evs)
+
+
+def test_replay_log_adb_files_hierarchy_finding(tmp_path, monkeypatch):
+    _, log = _adb_setup(monkeypatch)
+    run_dir = tmp_path / "run"
+    log_path = actionlog.save(log, run_dir, tmp_path, record_enabled=False)
+    code = replay_mod.replay_log(_adb_cfg(), tmp_path, log_path, run_dir, variants=True)
+    assert code == 1
+    data = json.loads((run_dir / "replay" / "app" / "f.result.json").read_text())
+    assert data["findings"][0]["rule"] == "rect.target-size"
+    assert "variants-unsupported" in (run_dir / "events.jsonl").read_text()
+
+
+def test_current_path_adb_swallows_adb_error():
+    class Down(_FakeAdbDriver):
+        @property
+        def current_url(self):
+            raise replay_mod.AdbError("hierarchy unavailable")
+    assert replay_mod._current_path(Down()) == "/"
+
+
+def test_replay_adb_skips_visual_baseline(tmp_path, monkeypatch):
+    _adb_setup(monkeypatch)
+    _, log = _adb_setup(monkeypatch)
+    actionlog.save(log, tmp_path, tmp_path, record_enabled=True)
+    monkeypatch.setattr(replay_mod, "_visual_baseline_check",
+                        lambda *a, **k: pytest.fail("no visual baseline on adb"))
+    replay_mod.replay(_adb_cfg(), tmp_path)
+    assert not list((tmp_path / ".flow-review" / "recordings").rglob("*.baseline.png"))

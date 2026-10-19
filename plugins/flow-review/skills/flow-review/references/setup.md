@@ -151,6 +151,27 @@ For a `tauri` driver surface, three extra steps precede proving:
    against the project root. The `confirm` verb uses this to launch the native app for native P0/P1
    finding verification on Windows.
 
+## 5.6. Android: device, build and Metro
+
+For an `adb` driver surface, check before proving:
+
+1. **Device.** `adb devices` lists exactly one emulator or phone in state `device`. With more
+   than one, set the surface's `device` option to a serial. No adb: install Android SDK
+   Platform-Tools and add it to PATH (`flow-review setup-env` prints a `missing adb` line).
+
+2. **Install a build.** The app (`app_id`) must already be installed; `prove` never installs,
+   force-stops, clears or uninstalls. For Expo, `npx expo run:android` (recorded in `start_cmd`).
+
+3. **Metro, debug builds only.** If the installed build is debuggable, run its dev server (the
+   `start_cmd`) so `metro_url` answers; `prove` then sets `adb reverse` for the port. A release
+   build needs no Metro.
+
+4. **Prove.** `flow-review prove --candidate-json <json | @path>` (no `--precondition`; the checks
+   are built in). `NOT_PROVEN` carries a one-line reason: no device, ambiguous device, not
+   installed, start Metro, or app showing the dev launcher / red box.
+
+If the app holds real data, set the surface's `state` to `persistent` (section 6).
+
 ## 6. Surface setup: state, reset, and credentials
 
 Lens sets are no longer chosen at setup -- `references/lenses/ui.md` fixes the lens set by surface

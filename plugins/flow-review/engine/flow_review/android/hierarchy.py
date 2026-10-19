@@ -75,6 +75,7 @@ def _by_name(cands: list[dict], name: str) -> dict | None:
 
 
 def resolve(nodes: list[dict], locator: dict) -> dict:
+    nodes = [n for n in nodes if _area(n) > 0]
     found = None
     if "testid" in locator:
         t = locator["testid"]

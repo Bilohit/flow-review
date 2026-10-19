@@ -1315,6 +1315,7 @@ class AdbFakeDriver:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         Path(path).write_bytes(b"png")
         self.shots.append(str(path))
+        return Path(path)
 
     def console_errors(self):
         return []
@@ -1452,3 +1453,105 @@ def test_serve_parser_accepts_missing_base_url():
     args = drive.build_drive_parser().parse_args(
         ["serve", "--surface", "p", "--run", "r", "--project", "x", "--driver", "adb"])
     assert args.base_url is None
+
+
+class _AdbFake(FakeDriver):
+    kind = "adb"
+    app_id = "com.x"
+    options = {"scheme": "notes"}
+    page = None
+    current_url = "android://com.x/home"
+    density = 160
+    screen_wh = (1080, 2400)
+    route = "home"
+
+    def nodes(self):
+        return []
+
+
+def test_flow_end_writes_maestro_yaml_for_adb_when_recording(tmp_path):
+    run_dir, project_root = _dirs(tmp_path)
+    session = DriveSession(_AdbFake(), "app", run_dir, project_root, record_enabled=True)
+    session.flow_begin("f1")
+    session.goto("/notes/1")
+    result = session.flow_end("f1", "ok")
+    path = Path(result["maestro_path"])
+    assert path == Path(result["log_path"]).with_suffix(".maestro.yaml")
+    assert 'openLink: "notes://notes/1"' in path.read_text(encoding="utf-8")
+
+
+def test_flow_end_no_maestro_yaml_when_not_recording_or_not_adb(tmp_path):
+    run_dir, project_root = _dirs(tmp_path)
+    session = DriveSession(_AdbFake(), "app", run_dir, project_root, record_enabled=False)
+    session.flow_begin("f1")
+    assert "maestro_path" not in session.flow_end("f1", "ok")
+    session = DriveSession(FakeDriver(), "webapp", run_dir, project_root, record_enabled=True)
+    session.flow_begin("f1")
+    assert "maestro_path" not in session.flow_end("f1", "ok")
+
+
+class _SecretShotDriver(AdbFakeDriver):
+    def screenshot(self, path):
+        self.shots.append(None)
+        return None
+
+
+def test_look_shot_none_when_secret_on_screen(tmp_path):
+    run_dir, project_root = _dirs(tmp_path)
+    session = DriveSession(_SecretShotDriver(), "phone", run_dir, project_root, False)
+    result = session.look(shot=True)
+    assert result["shot"] is None and result["shot_skipped"] == "secret-on-screen"
+    assert not (run_dir / "events.jsonl").exists()
+
+
+def test_adb_finding_evidence_skips_none_shot(tmp_path, monkeypatch):
+    monkeypatch.setattr(drive.hierarchy, "check", lambda *a: [_adb_finding("a")])
+    run_dir, project_root = _dirs(tmp_path)
+    session = DriveSession(_SecretShotDriver(), "phone", run_dir, project_root, False)
+    session.flow_begin("f")
+    session.click({"testid": "x"})
+    [found] = [e for e in _events(run_dir) if e["type"] == "finding"]
+    assert found["evidence"] == ["w=20dp"]
+
+
+def test_flow_end_survives_maestro_export_failure(tmp_path, monkeypatch):
+    from flow_review.android import maestro_export
+    monkeypatch.setattr(maestro_export, "to_maestro",
+                        lambda *a, **k: (_ for _ in ()).throw(ValueError("boom")))
+    run_dir, project_root = _dirs(tmp_path)
+    session = DriveSession(_AdbFake(), "app", run_dir, project_root, record_enabled=True)
+    session.flow_begin("f1")
+    result = session.flow_end("f1", "ok")
+    assert "maestro_path" not in result and result["log_path"]
+
+
+def test_read_state_retries_permission_error(tmp_path, monkeypatch):
+    (tmp_path / "drive").mkdir()
+    (tmp_path / "drive" / "mobile.json").write_text('{"port": 5, "pid": 1}')
+    real, calls = Path.read_text, []
+
+    def flaky(self, *a, **k):
+        calls.append(1)
+        if len(calls) == 1:
+            raise PermissionError(13, "Access is denied")
+        return real(self, *a, **k)
+
+    monkeypatch.setattr(Path, "read_text", flaky)
+    assert drive._read_state(tmp_path, "mobile") == {"port": 5, "pid": 1}
+    assert len(calls) == 2
+
+
+def test_write_state_retries_replace_permission_error(tmp_path, monkeypatch):
+    real, calls = os.replace, []
+
+    def flaky(src, dst):
+        calls.append(1)
+        if len(calls) == 1:
+            raise PermissionError(13, "Access is denied")
+        return real(src, dst)
+
+    monkeypatch.setattr(drive.os, "replace", flaky)
+    path = tmp_path / "mobile.json"
+    drive._write_state(path, {"port": 7, "pid": 2})
+    assert json.loads(path.read_text()) == {"port": 7, "pid": 2} and len(calls) == 2
+    assert not list(tmp_path.glob("*.tmp"))

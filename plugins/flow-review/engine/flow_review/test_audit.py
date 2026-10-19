@@ -399,3 +399,24 @@ def test_expo_start_web_dev_script_is_kept(tmp_path):
 def test_only_a_tauri_dev_script_yields_no_web_candidate(tmp_path):
     _write(tmp_path, "package.json", json.dumps({"scripts": {"dev": "tauri dev"}}))
     assert [c for c in audit.detect(tmp_path) if c.name == "web"] == []
+
+
+@pytest.mark.parametrize("dev", ["npx expo start", "yarn expo start", "cross-env X=1 tauri dev"])
+def test_dev_command_anywhere_in_script_is_skipped(tmp_path, dev):
+    _write(tmp_path, "package.json", json.dumps({"scripts": {"dev": dev, "start": "vite"}}))
+    web = [c for c in audit.detect(tmp_path) if c.name == "web"]
+    assert [c.launch for c in web] == ["npm run start"]
+
+
+def test_expo_start_web_anywhere_is_kept(tmp_path):
+    _write(tmp_path, "package.json", json.dumps({"scripts": {"dev": "npx expo start --web"}}))
+    assert [c.launch for c in audit.detect(tmp_path) if c.name == "web"] == ["npm run dev"]
+
+
+def test_gradle_first_application_id_wins_over_later_flavor(tmp_path):
+    _write(tmp_path, "package.json", json.dumps({"devDependencies": {"react-native": "0.76"}}))
+    _write(tmp_path, "android/app/build.gradle",
+           'defaultConfig {\n    applicationId "com.main"\n}\n'
+           'productFlavors {\n  free {\n    applicationId "com.main.free"\n  }\n}\n')
+    [c] = _mobile(tmp_path)
+    assert c.options["app_id"] == "com.main"
