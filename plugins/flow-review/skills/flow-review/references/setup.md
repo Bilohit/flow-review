@@ -69,9 +69,11 @@ check (section 5) never re-proposes it as newly detected on every subsequent run
 ## 4. Prove each accepted surface
 
 Every accepted surface -- audited or hand-typed via the preset path -- is proven before it can be
-written into `config.json`, using `fr.prove.prove(candidate, root, preconditions=surface.preconditions)`.
+written into `config.json`, using `flow-review prove --candidate-json <json | @path>` (add `--precondition <json>` once per
+entry of `surface.preconditions`). It prints `{"outcome", "reason", "provenance"}` and exits 0
+when proven, 1 when not, 3 on bad input.
 
-**Proving a launch is not a pass/fail exit code.** `fr.prove.prove` returns a `Proof` whose
+**Proving a launch is not a pass/fail exit code.** `prove` reports an
 `outcome` is one of four values, never a boolean:
 
 | Outcome | Meaning |
@@ -81,24 +83,24 @@ written into `config.json`, using `fr.prove.prove(candidate, root, preconditions
 | `RUNNING_READY` | the command never exited, and an independent precondition confirmed it is ready |
 | `NOT_PROVEN` | neither of the above happened before the deadline |
 
-Feed the surface's own `preconditions` list into `prove()` -- readiness comes from those and
+Feed the surface's own `preconditions` list into `prove` -- readiness comes from those and
 nothing else. A dev server or any other long-lived process **never exits** on its own; waiting for
 an exit that will never come is the bug this design replaces. `RUNNING_READY` **is proven** -- for
 a `ui` surface backed by a server, still-running-and-ready is not a partial result, it **is** the
 success case, and it must be treated as proven exactly like a clean exit.
 
-Convert the outcome with `fr.prove.outcome_to_provenance(outcome)` rather than reading any
-boolean -- it returns `"proven"` for `EXITED_CLEAN` and `RUNNING_READY`, and `"audited"` (i.e.
+Use the `provenance` field of the `prove` output rather than reading any
+boolean -- it is `"proven"` for `EXITED_CLEAN` and `RUNNING_READY`, and `"audited"` (i.e.
 still unproven) for everything else, including `EXITED_FAILED`. Write that value into
 `surface.provenance["launch"]`; never derive it yourself from the outcome by hand.
 
 When the outcome is `NOT_PROVEN` because the launch never exits and no precondition was given --
 the common case for a web UI that has no health endpoint yet -- **do not record it as a failure.**
 Ask the user for a readiness command (a URL that returns 200, a log line to watch for, a port to
-poll) and retry `prove()` with it as a precondition. This is the expected path for a plain web UI,
+poll) and retry `prove` with it as a precondition. This is the expected path for a plain web UI,
 not an edge case.
 
-Report to the user, by name, any surface whose `Proof.teardown_ok` came back `False`. A process
+Report to the user, by name, any surface whose `teardown_ok` (from `flow-review prove`) came back `False`. A process
 `prove()` could not confirm dead after the kill is now the user's problem to check manually --
 silently discarding that fact and moving on is how an orphaned process outlives the setup run that
 started it.
@@ -112,7 +114,7 @@ entirely and writing a surface with no `provenance["launch"]` value at all.
 ## 5. Stamp provenance
 
 Every surface accepted from the audit in section 2 -- and only those -- gets
-`surface.provenance["origin"] = "audited"` written alongside whatever `fr.prove` recorded. A
+`surface.provenance["origin"] = "audited"` written alongside whatever `prove` recorded. A
 surface the user typed in by hand through the preset path never carries this key.
 
 This is the exact marker `fr.drift.detect_drift` keys on (`DETECTED_PROVENANCE_KEY` /

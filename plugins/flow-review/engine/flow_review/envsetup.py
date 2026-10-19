@@ -81,6 +81,19 @@ def setup_env(
     return SetupResult(created=True, venv_path=venv_path)
 
 
+ADB_INSTALL_LINE = "Android SDK Platform-Tools; add platform-tools to PATH"
+
+
+def adb_gap(cfg, find=None) -> str | None:
+    """The install line when some live surface drives Android over adb and adb is not found."""
+    if not any(s.driver == "adb" and not s.declined for s in cfg.surfaces):
+        return None
+    if find is None:
+        from flow_review.android import adb as adbmod
+        find = adbmod.adb_path
+    return None if find() else ADB_INSTALL_LINE
+
+
 def write_gitignore(flow_review_dir: Path, commit_recordings: bool = True) -> None:
     flow_review_dir = Path(flow_review_dir)
     flow_review_dir.mkdir(parents=True, exist_ok=True)

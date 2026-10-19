@@ -16,8 +16,9 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from flow_review import envsetup, events, ledger
+from flow_review.android import hierarchy
+from flow_review.android.adb import AdbError
 from flow_review.web import actionlog, faults, measure
-from flow_review.web.driver import WebDriver
 from flow_review.web.faults import url_matches
 
 MAX_BODY = 64 * 1024  # an action POST is a few hundred bytes to a few KiB (a fill value)
@@ -42,6 +43,7 @@ class DriveSession:
         self._active_fault = False
         self._seen_fingerprints: set[str] = set()
         self._mock_missing_warned: set[tuple[str, str | None]] = set()
+        self._hierarchy_down = False
 
     def flow_begin(self, flow_id: str) -> dict:
         self.flow_id = flow_id
@@ -114,6 +116,7 @@ class DriveSession:
         return result
 
     def fault(self, kind: str, pattern: str | None = None, delay_ms: int | None = None) -> dict:
+        self._no_faults_on_adb()
         page = self.driver.page
         if kind == "offline":
             faults.inject_offline(page)
@@ -134,6 +137,7 @@ class DriveSession:
         return {"ok": True, "fault": spec}
 
     def clear_faults(self) -> dict:
+        self._no_faults_on_adb()
         faults.clear_faults(self.driver.page)
         self._offline_active = False
         self._active_5xx_patterns = []
@@ -144,6 +148,10 @@ class DriveSession:
             "fault": spec,
         })
         return {"ok": True, "fault": spec}
+
+    def _no_faults_on_adb(self) -> None:
+        if getattr(self.driver, "kind", None) == "adb":
+            raise ValueError("faults unsupported on android driver")
 
     def _act(self, action, op, *, locator=None, value=None, secret=False, url_hint=None,
              from_env=None):
@@ -159,6 +167,7 @@ class DriveSession:
 
     def _after(self, action, *, step_index, locator=None, value=None, secret=False,
                url_hint=None, record=True, from_env=None):
+        self._hierarchy_down = False
         if record and self.log is not None:
             log_locator = dict(locator) if locator else None
             if log_locator is not None and secret:
@@ -175,10 +184,15 @@ class DriveSession:
         # A-6: the route is the URL path only, so fingerprints match replay's and survive a
         # port change between runs. route_template collapses numeric/uuid segments so
         # /orders/41 and /orders/42 fingerprint identically (final-review Important #5, A-44).
-        route = ledger.route_template(urlparse(self._current_url() or "").path or "/")
-        findings = measure.check_page(
-            self.driver, self.surface_id, self.flow_id, route, self.tokens, step_index,
-        )
+        is_adb = getattr(self.driver, "kind", None) == "adb"
+        if is_adb:
+            findings = self._adb_findings()
+        else:
+            route = ledger.route_template(urlparse(self._current_url() or "").path or "/")
+            findings = measure.check_page(
+                self.driver, self.surface_id, self.flow_id, route, self.tokens, step_index,
+            )
+        shot = None
         new_ids = []
         for finding in findings:
             if self._is_self_inflicted(finding):
@@ -195,12 +209,43 @@ class DriveSession:
             if seen_key in self._seen_fingerprints:
                 continue
             self._seen_fingerprints.add(seen_key)
+            if is_adb:  # R4: one screenshot per step, shared as evidence by its findings
+                shot = shot or self._adb_shot()
+                if shot:
+                    finding = {**finding, "evidence": [*finding.get("evidence", []), shot]}
             event = events.append(self.run_dir, {
                 "type": "finding", "surface_id": self.surface_id, "flow_id": self.flow_id,
                 **finding,
             })
             new_ids.append(event["id"])
         return new_ids
+
+    def _adb_findings(self) -> list:
+        d = self.driver
+        try:
+            raw = hierarchy.check(d.nodes(), d.route, d.density, d.app_id, d.screen_wh)
+        except AdbError:
+            self._note_hierarchy_down()
+            return []
+        return [{"surface_id": self.surface_id, "flow_id": self.flow_id,
+                 **f, "locator": actionlog.locator_key(f["locator"]) if f["locator"] else ""}
+                for f in raw]
+
+    def _adb_shot(self) -> str | None:
+        self.step_index += 1
+        path = self.run_dir / "drive" / self.surface_id / f"shot-{self.step_index:04d}.png"
+        try:
+            self.driver.screenshot(path)
+        except AdbError:
+            return None
+        return str(path)
+
+    def _note_hierarchy_down(self) -> None:
+        self._hierarchy_down = True
+        events.append(self.run_dir, {
+            "type": "status", "state": "not-exercised", "surface_id": self.surface_id,
+            "flow_id": self.flow_id, "reason": "hierarchy-unavailable",
+        })
 
     def _is_self_inflicted(self, finding: dict) -> bool:
         # A fault we injected ourselves must not surface as a product finding (it would be a
@@ -233,7 +278,12 @@ class DriveSession:
 
     def _current_url(self) -> str | None:
         page = getattr(self.driver, "page", None)
-        return getattr(page, "url", None) if page is not None else None
+        if page is not None:
+            return getattr(page, "url", None)
+        try:
+            return getattr(self.driver, "current_url", None)
+        except AdbError:
+            return None
 
     def _note_mock_invocation(self, command: str) -> None:
         key = (command, self.flow_id)
@@ -266,12 +316,17 @@ class DriveSession:
         if page is not None:
             title_fn = getattr(page, "title", None)
             title = title_fn() if callable(title_fn) else None
-        snap = self.driver.snapshot()
+        try:
+            snap = self.driver.snapshot()
+        except AdbError:
+            if not self._hierarchy_down:
+                self._note_hierarchy_down()
+            snap = {"aria": ""}
         text = snap.get("aria") if isinstance(snap, dict) else None
         if not isinstance(text, str):
             text = json.dumps(snap, ensure_ascii=False)
         snapshot = events.redact(text)[:4000]
-        return {
+        result = {
             "url": self._current_url(),
             "title": title,
             "snapshot": snapshot,
@@ -279,9 +334,13 @@ class DriveSession:
             "new_findings": new_ids,
             "console_errors": len(self.driver.console_errors()),
         }
+        if self._hierarchy_down:
+            result["not_exercised"] = "hierarchy-unavailable"
+        return result
 
 
 def _default_driver_factory(headless: bool, viewport: dict | None):
+    from flow_review.web.driver import WebDriver
     return WebDriver(headless=headless, viewport=viewport)
 
 
@@ -302,15 +361,23 @@ def tauri_init_script(options: dict) -> str:
 
 
 def _tauri_driver_factory(headless: bool, viewport: dict | None, options: dict | None = None):
+    from flow_review.web.driver import WebDriver
     options = options or {}
     return WebDriver(headless=headless, viewport=viewport,
                       init_script=tauri_init_script(options))
+
+
+def _adb_driver_factory(headless: bool, viewport: dict | None, options: dict | None = None):
+    from flow_review.android.driver import AndroidDriver
+    options = options or {}
+    return AndroidDriver(options["app_id"], options.get("device"), options)
 
 
 DRIVER_FACTORIES = {
     "playwright": lambda headless, viewport, options=None: _default_driver_factory(headless,
                                                                                    viewport),
     "tauri": _tauri_driver_factory,
+    "adb": _adb_driver_factory,
 }
 
 
@@ -366,7 +433,7 @@ class _ActionHandler(BaseHTTPRequestHandler):
         try:
             result = self._dispatch(verb, args)
         except Exception as exc:
-            self._respond(500, {"error": str(exc)})
+            self._respond(500, {"error": events.redact(str(exc))})
             return
         self._respond(200, result)
         if verb == "stop":
@@ -428,7 +495,7 @@ def make_server(host: str, port: int, session: DriveSession) -> HTTPServer:
     return httpd
 
 
-def serve(surface_id: str, run_dir, project_root, base_url: str, *,
+def serve(surface_id: str, run_dir, project_root, base_url: str | None, *,
           record_enabled: bool = False, headless: bool = True, viewport: dict | None = None,
           tokens: dict | None = None, driver_factory=_default_driver_factory) -> None:
     run_dir = Path(run_dir)
@@ -501,7 +568,7 @@ def _post(port: int, verb: str, args: dict) -> dict:
         try:
             message = json.loads(exc.read().decode("utf-8")).get("error") or str(exc)
         except ValueError:
-            message = str(exc)
+            message = events.redact(str(exc))
         raise RuntimeError(message) from None
 
 
@@ -546,6 +613,10 @@ def cmd_start(args: argparse.Namespace) -> dict:
         prove_tauri_dev_server(base_url)
         _load_tauri_mocks(options["mocks_file"])  # a corrupt mocks file fails here, not silently
                                                   # inside the detached serve process
+    elif surface.driver == "adb":
+        base_url = None  # no URL and no health check: the app is addressed by options.app_id
+        if not options.get("app_id"):
+            raise ValueError(f"surface {args.surface!r} has no options.app_id")
     else:
         base_url = options.get("base_url")
         if not base_url:
@@ -560,9 +631,10 @@ def cmd_start(args: argparse.Namespace) -> dict:
     cmd = [
         sys.executable, "-m", "flow_review.web.drive", "serve",
         "--surface", args.surface, "--run", str(run_dir), "--project", str(project_root),
-        "--base-url", base_url, "--driver", surface.driver,
-        "--options-json", json.dumps(options),
+        "--driver", surface.driver, "--options-json", json.dumps(options),
     ]
+    if base_url is not None:
+        cmd += ["--base-url", base_url]
     if record_enabled:
         cmd.append("--record")
     if viewport is not None:
@@ -735,7 +807,7 @@ def build_drive_parser() -> argparse.ArgumentParser:
     p.add_argument("--surface", required=True)
     p.add_argument("--run", required=True, dest="run_dir")
     p.add_argument("--project", required=True, dest="project_root")
-    p.add_argument("--base-url", required=True)
+    p.add_argument("--base-url", default=None)
     p.add_argument("--record", action="store_true")
     p.add_argument("--headless", dest="headless", action="store_true", default=True)
     p.add_argument("--no-headless", dest="headless", action="store_false")

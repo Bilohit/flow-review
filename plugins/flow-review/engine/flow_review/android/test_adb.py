@@ -242,3 +242,12 @@ def test_reverse():
     a, f = mk()
     a.reverse(8081)
     assert f.cmds[0][-3:] == ["reverse", "tcp:8081", "tcp:8081"]
+
+
+@pytest.mark.parametrize("flags,expected", [
+    ("pkgFlags=[ DEBUGGABLE HAS_CODE ALLOW_BACKUP ]", True),
+    ("pkgFlags=[ HAS_CODE ALLOW_BACKUP ]\n    privatePkgFlags=[ DEBUGGABLE ]", False),
+    ("", False)])
+def test_is_debuggable_reads_pkg_flags_only(flags, expected):
+    adb, _ = mk((0, flags))
+    assert adb.is_debuggable("com.x") is expected

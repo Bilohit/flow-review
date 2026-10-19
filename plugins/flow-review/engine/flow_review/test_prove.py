@@ -4,6 +4,8 @@ import os
 import subprocess
 import sys
 import time
+
+import pytest
 from pathlib import Path
 
 from flow_review.audit import Candidate
@@ -411,3 +413,158 @@ def test_descendant_snapshot_is_throttled_over_a_multi_second_prove(tmp_path, mo
 
     assert proof.outcome == provemod.EXITED_CLEAN
     assert calls["n"] <= math.ceil(proof.duration_s) + 2
+
+
+# ---- adb candidates (A-78) -------------------------------------------------------------------
+
+from types import SimpleNamespace as _NS  # noqa: E402
+
+from flow_review.android import adb as _adbmod  # noqa: E402
+
+_FOCUS = "mCurrentFocus=Window{abc u0 com.x.app/com.x.app.Main}"
+_OK_XML = '<hierarchy rotation="0"><node text="Home" /></hierarchy>'
+
+
+def _adb_candidate(**opts) -> Candidate:
+    base = {"app_id": "com.x.app", "device": "", "start_cmd": "", "metro_url": ""}
+    base.update(opts)
+    return Candidate(name="app", kind="ui", driver="adb", launch="", evidence="test:1 -> x",
+                     options=base)
+
+
+class _FakeAdb:
+    """Recorded-output runner keyed on the adb args after the exe (and optional -s serial)."""
+
+    def __init__(self, devices="List of devices attached\nemu-1\tdevice\n", installed=True,
+                 pid="123", xml=_OK_XML, debuggable=True):
+        self.calls: list[list[str]] = []
+        self.debuggable = debuggable
+        self.devices, self.installed, self.pid, self.xml = devices, installed, pid, xml
+
+    def __call__(self, cmd, **kw):
+        args = cmd[1:]
+        if args[:1] == ["-s"]:
+            args = args[2:]
+        self.calls.append(args)
+        out = ""
+        if args == ["devices"]:
+            out = self.devices
+        elif args[:3] == ["shell", "pm", "list"]:
+            out = "package:com.x.app\n" if self.installed else ""
+        elif args[:3] == ["shell", "dumpsys", "package"]:
+            out = "  pkgFlags=[ %sHAS_CODE ]\n" % ("DEBUGGABLE " if self.debuggable else "")
+        elif args[:2] == ["shell", "dumpsys"]:
+            out = _FOCUS
+        elif args[0] == "shell" and "pidof" in args[1]:
+            out = self.pid
+        elif args[:2] == ["exec-out", "uiautomator"]:
+            out = self.xml
+        return _NS(returncode=0, stdout=out, stderr="")
+
+    def ran(self, *prefix) -> bool:
+        return any(c[:len(prefix)] == list(prefix) for c in self.calls)
+
+
+@pytest.fixture
+def _adb_present(monkeypatch):
+    monkeypatch.setattr(_adbmod, "adb_path", lambda: "adb")
+
+
+def _prove_adb(cand, fake):
+    return provemod.prove_android(cand, runner=fake, sleep=lambda s: None)
+
+
+def test_adb_ready_when_installed_foreground_and_clean_hierarchy(_adb_present):
+    fake = _FakeAdb()
+    proof = _prove_adb(_adb_candidate(), fake)
+    assert proof.outcome == provemod.RUNNING_READY
+    assert provemod.outcome_to_provenance(proof.outcome) == provemod.PROVEN
+    assert not fake.ran("shell", "monkey")  # already running: attach, never relaunch
+
+
+def test_adb_starts_app_when_not_running(_adb_present):
+    fake = _FakeAdb(pid="")
+    assert _prove_adb(_adb_candidate(), fake).outcome == provemod.RUNNING_READY
+    assert fake.ran("shell", "monkey", "-p", "com.x.app")
+
+
+def test_adb_missing(monkeypatch):
+    monkeypatch.setattr(_adbmod, "adb_path", lambda: None)
+    proof = _prove_adb(_adb_candidate(), _FakeAdb())
+    assert proof.outcome == provemod.NOT_PROVEN and "adb not found" in proof.reason
+
+
+def test_adb_no_device(_adb_present):
+    proof = _prove_adb(_adb_candidate(), _FakeAdb(devices="List of devices attached\n"))
+    assert proof.outcome == provemod.NOT_PROVEN
+    assert proof.reason == "no device: start an emulator or plug in a phone (adb devices)"
+
+
+def test_adb_ambiguous_devices(_adb_present):
+    two = "List of devices attached\na\tdevice\nb\tdevice\n"
+    proof = _prove_adb(_adb_candidate(), _FakeAdb(devices=two))
+    assert proof.outcome == provemod.NOT_PROVEN
+    assert proof.reason == "ambiguous: set options.device to one of a, b"
+
+
+def test_adb_explicit_device_skips_listing_and_is_passed(_adb_present):
+    fake = _FakeAdb()
+    _prove_adb(_adb_candidate(device="emu-9"), fake)
+    assert not fake.ran("devices")
+
+
+def test_adb_not_installed_expo_hint_and_plain_hint(_adb_present):
+    p = _prove_adb(_adb_candidate(start_cmd="npx expo start"), _FakeAdb(installed=False))
+    assert p.outcome == provemod.NOT_PROVEN and "npx expo run:android" in p.reason
+    p = _prove_adb(_adb_candidate(), _FakeAdb(installed=False))
+    assert "install the app on the device" in p.reason
+
+
+def test_adb_metro_down(_adb_present, monkeypatch):
+    monkeypatch.setattr(provemod, "_metro_running", lambda url: False)
+    fake = _FakeAdb()
+    p = _prove_adb(_adb_candidate(metro_url="http://127.0.0.1:8081",
+                                  start_cmd="npx expo start --dev-client"), fake)
+    assert p.outcome == provemod.NOT_PROVEN
+    assert p.reason == "start Metro: npx expo start --dev-client"
+    assert not fake.ran("reverse")
+
+
+def test_adb_release_build_needs_no_metro(_adb_present, monkeypatch):
+    monkeypatch.setattr(provemod, "_metro_running", lambda url: False)
+    fake = _FakeAdb(debuggable=False)
+    p = _prove_adb(_adb_candidate(metro_url="http://127.0.0.1:8081",
+                                  start_cmd="npx expo start --dev-client"), fake)
+    assert p.outcome == provemod.RUNNING_READY
+    assert not fake.ran("reverse")
+
+
+def test_adb_metro_up_reverses_port(_adb_present, monkeypatch):
+    monkeypatch.setattr(provemod, "_metro_running", lambda url: True)
+    fake = _FakeAdb()
+    p = _prove_adb(_adb_candidate(metro_url="http://127.0.0.1:8081", start_cmd="npx expo start"),
+                   fake)
+    assert p.outcome == provemod.RUNNING_READY
+    assert fake.ran("reverse", "tcp:8081", "tcp:8081")
+
+
+@pytest.mark.parametrize("text", ["Could not connect to development server",
+                                  "Unable to load script", "Development servers"])
+def test_adb_dev_launcher_or_red_box_is_not_proven(_adb_present, text):
+    xml = f'<hierarchy><node text="{text}" /></hierarchy>'
+    p = _prove_adb(_adb_candidate(), _FakeAdb(xml=xml))
+    assert p.outcome == provemod.NOT_PROVEN and text in p.reason
+
+
+def test_adb_never_issues_destructive_commands(_adb_present):
+    fake = _FakeAdb(pid="")
+    _prove_adb(_adb_candidate(), fake)
+    flat = " ".join(" ".join(c) for c in fake.calls)
+    for bad in ("force-stop", "pm clear", "uninstall", "install "):
+        assert bad not in flat
+
+
+def test_prove_dispatches_adb_candidates(monkeypatch, tmp_path):
+    cand = _adb_candidate()
+    monkeypatch.setattr(provemod, "prove_android", lambda c: "sentinel")
+    assert provemod.prove(cand, tmp_path) == "sentinel"

@@ -108,6 +108,13 @@ def _run_setup_env(args: argparse.Namespace) -> int:
         print(str(exc), file=sys.stderr)
         return 1
     print(f"flow-review: environment ready at .flow-review/.venv (extras={args.extras})")
+    try:
+        from flow_review import config as configmod
+        gap = envsetupmod.adb_gap(configmod.load(project_dir / ".flow-review" / "config.json"))
+    except Exception:  # noqa: BLE001 -- no/unreadable config yet: nothing to check
+        gap = None
+    if gap:
+        print(f"flow-review: missing adb -- install {gap}")
     return 0
 
 
@@ -257,6 +264,14 @@ def build_parser() -> argparse.ArgumentParser:
                                    help="print detected surface candidates as JSON (setup)")
     audit_parser.set_defaults(func=_run_audit)
 
+    prove_parser = sub.add_parser("prove", parents=[project_after_verb],
+                                   help="prove one candidate launches and is ready (setup)")
+    prove_parser.add_argument("--candidate-json", required=True,
+                              help="a Candidate as JSON, or @path to a JSON file")
+    prove_parser.add_argument("--precondition", action="append", default=[], metavar="JSON",
+                              help="a surface precondition as JSON; repeatable (non-adb only)")
+    prove_parser.set_defaults(func=_run_prove)
+
     confirm_parser = sub.add_parser("confirm", parents=[project_after_verb],
                                      help="replay P0/P1 findings on the native app over CDP (A-35)")
     confirm_parser.add_argument("--run", required=True, dest="run_dir", type=Path)
@@ -394,6 +409,34 @@ def _run_audit(args: argparse.Namespace) -> int:
     root = args.project_root if args.project_root is not None else Path.cwd()
     print(json.dumps([asdict(c) for c in auditmod.detect(root)]))
     return 0
+
+
+def _run_prove(args: argparse.Namespace) -> int:
+    from dataclasses import fields
+    from flow_review import audit as auditmod
+    from flow_review import prove as provemod
+    raw = args.candidate_json
+    try:
+        if raw.startswith("@"):
+            raw = Path(raw[1:]).read_text(encoding="utf-8")
+        data = json.loads(raw)
+        if not isinstance(data, dict) or set(data) - {f.name for f in fields(auditmod.Candidate)}:
+            raise ValueError("candidate must be a JSON object with Candidate keys only")
+        candidate = auditmod.Candidate(**data)
+        preconditions = [json.loads(p) for p in args.precondition]
+    except (OSError, TypeError, ValueError) as exc:
+        print(f"bad --candidate-json: {exc}", file=sys.stderr)
+        return 3
+    root = args.project_root if args.project_root is not None else Path.cwd()
+    try:
+        proof = provemod.prove(candidate, Path(root), preconditions=preconditions)
+    except ValueError as exc:  # invalid preconditions
+        print(str(exc), file=sys.stderr)
+        return 3
+    print(json.dumps({"outcome": proof.outcome, "reason": proof.reason,
+                      "provenance": provemod.outcome_to_provenance(proof.outcome),
+                      "teardown_ok": proof.teardown_ok}))
+    return 0 if provemod.outcome_to_provenance(proof.outcome) == provemod.PROVEN else 1
 
 
 def _run_tauri_mocks(args: argparse.Namespace) -> int:

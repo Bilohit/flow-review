@@ -176,3 +176,16 @@ def test_load_dotenv_defaults_to_os_environ_when_none_given(tmp_path, monkeypatc
     envsetup.load_dotenv(path)
     import os
     assert os.environ["SOME_VAR"] == "abc"
+
+
+def _cfg(*drivers, declined=False):
+    from types import SimpleNamespace as NS
+    return NS(surfaces=[NS(driver=d, declined=declined) for d in drivers])
+
+
+def test_adb_gap_only_when_adb_surface_and_adb_missing():
+    assert envsetup.adb_gap(_cfg("adb"), find=lambda: None) == envsetup.ADB_INSTALL_LINE
+    assert "platform-tools" in envsetup.ADB_INSTALL_LINE
+    assert envsetup.adb_gap(_cfg("adb"), find=lambda: "/x/adb") is None
+    assert envsetup.adb_gap(_cfg("playwright"), find=lambda: None) is None
+    assert envsetup.adb_gap(_cfg("adb", declined=True), find=lambda: None) is None

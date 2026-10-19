@@ -159,6 +159,11 @@ class Adb:
     def is_installed(self, app_id: str) -> bool:
         return f"package:{app_id}" in self.run("shell", "pm", "list", "packages", app_id).split()
 
+    def is_debuggable(self, app_id: str) -> bool:
+        # a release build embeds its JS bundle; only a debuggable one loads it from Metro
+        m = re.search(r"pkgFlags=\[([^\]]*)\]", self.run("shell", "dumpsys", "package", app_id))
+        return bool(m) and "DEBUGGABLE" in m.group(1).split()
+
     def ime_shown(self) -> bool:
         return "mInputShown=true" in self.run("shell", "dumpsys", "input_method")
 

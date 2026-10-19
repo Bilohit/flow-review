@@ -29,6 +29,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from flow_review.android import adb as adbmod
 from flow_review.audit import Candidate
 from flow_review.config import validate_preconditions
 
@@ -479,6 +480,69 @@ def _cleanup_sink(path: Path) -> None:
             time.sleep(_UNLINK_RETRY_DELAY_S)
 
 
+_DEV_LAUNCHER_TEXT = ("Could not connect to development server", "Unable to load script",
+                      "Development servers")
+_METRO_PORT = 8081
+
+
+def _metro_running(metro_url: str) -> bool:
+    import urllib.request
+    try:
+        with urllib.request.urlopen(metro_url.rstrip("/") + "/status", timeout=2) as resp:
+            return "packager-status:running" in resp.read().decode("utf-8", "replace")
+    except Exception:  # noqa: BLE001 -- any failure means Metro is not answering
+        return False
+
+
+def prove_android(candidate: Candidate, runner=subprocess.run, sleep=time.sleep) -> Proof:
+    """A-78 readiness for an adb surface. Checks in order and stops at the first failure with a
+    one-line, user-actionable reason. Never stops, clears or uninstalls anything."""
+    started = time.monotonic()
+
+    def done(outcome: str, reason: str = "") -> Proof:
+        return Proof(candidate, outcome, None, time.monotonic() - started, "", "", "", True, reason)
+
+    def fail(reason: str) -> Proof:
+        return done(NOT_PROVEN, reason)
+
+    opts = candidate.options or {}
+    app_id = opts.get("app_id")
+    if not app_id:
+        return fail("set options.app_id")
+    if not adbmod.adb_path():
+        return fail("adb not found: install Android SDK Platform-Tools and add it to PATH")
+    try:
+        device = opts.get("device")
+        if not device:
+            found = adbmod.devices(runner)
+            if not found:
+                return fail("no device: start an emulator or plug in a phone (adb devices)")
+            if len(found) > 1:
+                return fail("ambiguous: set options.device to one of " + ", ".join(found))
+            device = found[0]
+        adb = adbmod.Adb(device, runner, sleep)
+        start_cmd = opts.get("start_cmd") or ""
+        if not adb.is_installed(app_id):
+            hint = "npx expo run:android" if "expo" in start_cmd else None
+            return fail(f"{app_id} is not installed: install a build: {hint}" if hint
+                        else f"{app_id} is not installed: install the app on the device")
+        metro_url = opts.get("metro_url")
+        if metro_url and adb.is_debuggable(app_id):
+            if not _metro_running(metro_url):
+                return fail(f"start Metro: {start_cmd}")
+            adb.reverse(_METRO_PORT)
+        if not adb.pidof(app_id):
+            adb.start(app_id)
+        adb.wait_foreground(app_id, 60)
+        xml = adb.dump()
+    except adbmod.AdbError as exc:
+        return fail(str(exc))
+    for text in _DEV_LAUNCHER_TEXT:
+        if text in xml:
+            return fail(f"app shows the dev launcher/red box: {text}; reload once Metro is up")
+    return done(RUNNING_READY)
+
+
 def prove(
     candidate: Candidate,
     root: Path,
@@ -486,6 +550,8 @@ def prove(
     ready_timeout_s: float = 15,
     exit_timeout_s: float = 60,
 ) -> Proof:
+    if candidate.driver == "adb":
+        return prove_android(candidate)
     started = time.monotonic()
 
     preconditions = list(preconditions)

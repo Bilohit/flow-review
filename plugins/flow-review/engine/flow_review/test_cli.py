@@ -5,6 +5,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+
 from flow_review import cli
 
 ENGINE_ROOT = Path(__file__).resolve().parent.parent  # plugins/flow-review/engine
@@ -701,3 +703,61 @@ def test_audit_prints_detected_candidates_with_options_as_json(capsys):
     assert out == [asdict(c) for c in audit.detect(root)]
     tauri = [c for c in out if c["driver"] == "tauri"]
     assert tauri and {"dev_url", "binary", "native"} <= set(tauri[0]["options"])
+
+
+def _cand_json(**over):
+    d = {"name": "a", "kind": "ui", "driver": "adb", "launch": "", "evidence": "t:1",
+         "options": {"app_id": "com.x"}}
+    d.update(over)
+    return json.dumps(d)
+
+
+def _fake_proof(outcome, reason=""):
+    from flow_review import prove as provemod
+    return lambda cand, root, preconditions=(): provemod.Proof(
+        cand, outcome, None, 0.0, "", "", "", True, reason)
+
+
+@pytest.mark.parametrize("outcome,code,prov", [
+    ("running_ready", 0, "proven"), ("not_proven", 1, "audited")])
+def test_prove_verb_prints_json_and_exit_code(monkeypatch, capsys, tmp_path, outcome, code, prov):
+    from flow_review import prove as provemod
+    monkeypatch.setattr(provemod, "prove", _fake_proof(outcome, "why"))
+    assert cli.main(["prove", "--project", str(tmp_path), "--candidate-json", _cand_json()]) == code
+    out = json.loads(capsys.readouterr().out)
+    assert out == {"outcome": outcome, "reason": "why", "provenance": prov, "teardown_ok": True}
+
+
+def test_prove_verb_reads_candidate_from_file(monkeypatch, capsys, tmp_path):
+    from flow_review import prove as provemod
+    monkeypatch.setattr(provemod, "prove", _fake_proof("running_ready"))
+    f = tmp_path / "c.json"
+    f.write_text(_cand_json(), encoding="utf-8")
+    assert cli.main(["prove", "--candidate-json", f"@{f}"]) == 0
+
+
+@pytest.mark.parametrize("bad", ["{nope", "[1]", '{"name": "a", "bogus": 1}', "@/no/such/file"])
+def test_prove_verb_bad_input_exits_3(bad):
+    assert cli.main(["prove", "--candidate-json", bad]) == 3
+
+
+def test_prove_verb_runs_non_adb_candidates_through_prove(capsys, tmp_path):
+    cand = _cand_json(kind="cli", driver="shell", launch=f'"{sys.executable}" -c "pass"',
+                      options={})
+    assert cli.main(["prove", "--project", str(tmp_path), "--candidate-json", cand]) == 0
+    assert json.loads(capsys.readouterr().out)["outcome"] == "exited_clean"
+
+
+def test_setup_env_prints_adb_gap_only_for_adb_surface(monkeypatch, capsys, tmp_path):
+    from flow_review import envsetup
+    from flow_review.android import adb as adbmod
+    monkeypatch.setattr(envsetup, "setup_env", lambda *a, **k: None)
+    monkeypatch.setattr(adbmod, "adb_path", lambda: None)
+    assert cli.main(["setup-env", "--project", str(tmp_path)]) == 0
+    assert "adb" not in capsys.readouterr().out  # no config: no gap
+    cfg = tmp_path / ".flow-review" / "config.json"
+    cfg.write_text(json.dumps({"schema_version": 2, "generator_version": "t", "surfaces": [{
+        "id": "m", "name": "m", "kind": "ui", "driver": "adb", "launch": "",
+        "options": {"app_id": "com.x"}}]}), encoding="utf-8")
+    assert cli.main(["setup-env", "--project", str(tmp_path)]) == 0
+    assert envsetup.ADB_INSTALL_LINE in capsys.readouterr().out

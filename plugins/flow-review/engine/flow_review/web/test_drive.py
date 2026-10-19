@@ -1019,7 +1019,7 @@ def test_tauri_driver_factory_passes_init_script_to_webdriver(monkeypatch, tmp_p
     from flow_review.web import drive
     mocks_file = tmp_path / "tauri-mocks.json"
     mocks_file.write_text('{"load_items": [{"id": 1}]}', encoding="utf-8")
-    monkeypatch.setattr(drive, "WebDriver", _LazyPageFakeDriver)
+    monkeypatch.setattr("flow_review.web.driver.WebDriver", _LazyPageFakeDriver)
     options = {"dev_url": "http://127.0.0.1:1421", "mocks_file": str(mocks_file)}
     d = drive.DRIVER_FACTORIES["tauri"](headless=True, viewport=None, options=options)
     d.launch(options["dev_url"])
@@ -1279,3 +1279,176 @@ def test_tauri_absent_mock_is_missing_and_not_reattributed_to_the_next_flow(tmp_
     statuses = [json.loads(l) for l in lines if json.loads(l).get("type") == "status"]
     assert [(s["step"], s["reason"], s["flow_id"]) for s in statuses] == [
         ("save_note", "mock-missing", "save")]
+
+
+# ---------- adb driver dispatch (M3 T5) ----------
+
+class AdbFakeDriver:
+    kind = "adb"
+    page = None
+    init_script = None
+    app_id = "com.example.notes"
+    density = 480
+    screen_wh = (1080, 2400)
+    route = "home"
+    current_url = "android://com.example.notes/home"
+
+    def __init__(self, down=False):
+        self.down = down
+        self.shots = []
+
+    def nodes(self):
+        if self.down:
+            raise drive.AdbError("hierarchy unavailable")
+        return []
+
+    def begin_step(self, i): pass
+    def end_step(self): pass
+    def click(self, locator): pass
+
+    def snapshot(self):
+        if self.down:
+            raise drive.AdbError("hierarchy unavailable")
+        return {"aria": '- button "Go"'}
+
+    def screenshot(self, path):
+        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        Path(path).write_bytes(b"png")
+        self.shots.append(str(path))
+
+    def console_errors(self):
+        return []
+
+
+def _adb_finding(text="Tiny is 20x20dp"):
+    return {"rule": "rect.target-size", "sev": "P2", "locator": {"testid": "tiny"},
+            "route": "home", "text": text, "evidence": ["w=20dp"], "disposition": "engine"}
+
+
+def _events(run_dir):
+    return [json.loads(l) for l in (run_dir / "events.jsonl").read_text().splitlines()]
+
+
+def test_adb_checks_use_hierarchy_route_and_attach_one_shot(tmp_path, monkeypatch):
+    seen = {}
+
+    def _check(nodes, route, density, app_id, screen_wh):
+        seen.update(route=route, density=density, app_id=app_id, wh=screen_wh)
+        return [_adb_finding("a"), _adb_finding("b")]
+
+    monkeypatch.setattr(drive.hierarchy, "check", _check)
+    run_dir, project_root = _dirs(tmp_path)
+    driver = AdbFakeDriver()
+    session = DriveSession(driver, "phone", run_dir, project_root, record_enabled=False)
+    session.flow_begin("f")
+    result = session.click({"testid": "x"})
+    assert seen == {"route": "home", "density": 480, "app_id": "com.example.notes",
+                    "wh": (1080, 2400)}
+    assert len(result["new_findings"]) == 2 and len(driver.shots) == 1
+    found = [e for e in _events(run_dir) if e["type"] == "finding"]
+    assert [e["evidence"][-1] for e in found] == driver.shots * 2
+    assert found[0]["route"] == "home" and found[0]["locator"]
+    assert result["url"] == "android://com.example.notes/home"
+    assert "not_exercised" not in result
+
+
+def test_adb_no_findings_takes_no_shot(tmp_path, monkeypatch):
+    monkeypatch.setattr(drive.hierarchy, "check", lambda *a: [])
+    run_dir, project_root = _dirs(tmp_path)
+    driver = AdbFakeDriver()
+    DriveSession(driver, "phone", run_dir, project_root, False).click({"testid": "x"})
+    assert driver.shots == []
+
+
+def test_adb_hierarchy_unavailable_is_status_not_finding(tmp_path):
+    run_dir, project_root = _dirs(tmp_path)
+    session = DriveSession(AdbFakeDriver(down=True), "phone", run_dir, project_root, False)
+    session.flow_begin("f")
+    result = session.click({"testid": "x"})
+    assert result["not_exercised"] == "hierarchy-unavailable"
+    assert result["new_findings"] == []
+    statuses = [e for e in _events(run_dir) if e["type"] == "status"]
+    assert statuses and all(e["state"] == "not-exercised" and
+                            e["reason"] == "hierarchy-unavailable" for e in statuses)
+    assert not [e for e in _events(run_dir) if e["type"] == "finding"]
+
+
+def test_adb_faults_unsupported(tmp_path):
+    run_dir, project_root = _dirs(tmp_path)
+    session = DriveSession(AdbFakeDriver(), "phone", run_dir, project_root, False)
+    with pytest.raises(ValueError, match="faults unsupported on android driver"):
+        session.fault("offline")
+    with pytest.raises(ValueError, match="faults unsupported on android driver"):
+        session.clear_faults()
+
+
+def test_current_url_falls_back_to_driver_current_url_for_pageless_driver(tmp_path):
+    run_dir, project_root = _dirs(tmp_path)
+    session = DriveSession(AdbFakeDriver(), "phone", run_dir, project_root, False)
+    assert session._current_url() == "android://com.example.notes/home"
+
+
+def test_adb_factory_builds_android_driver():
+    d = drive.DRIVER_FACTORIES["adb"](True, None, options={"app_id": "a.b", "device": "emu-1"})
+    assert (d.app_id, d.adb.device, d.kind) == ("a.b", "emu-1", "adb")
+
+
+def test_drive_module_does_not_import_playwright_driver_eagerly():
+    import subprocess
+    import sys
+    code = ("import sys; import flow_review.web.drive; "
+            "sys.exit(1 if 'flow_review.web.driver' in sys.modules else 0)")
+    engine = str(Path(drive.__file__).parents[2])
+    env = {**os.environ, "PYTHONPATH": engine}
+    assert subprocess.run([sys.executable, "-c", code], env=env).returncode == 0
+
+
+def test_http_error_message_is_redacted(monkeypatch):
+    events.register_secret("hunter2-secret")
+    import io
+
+    def _boom(req, timeout):
+        raise urllib.error.HTTPError("u", 500, "x", {}, io.BytesIO(b"not json hunter2-secret"))
+
+    monkeypatch.setattr(drive.urllib.request, "urlopen", _boom)
+    with pytest.raises(RuntimeError) as ei:
+        drive._post(1, "look", {})
+    assert "hunter2-secret" not in str(ei.value)
+
+
+def test_start_adb_surface_needs_no_base_url_and_no_health_check(tmp_path, monkeypatch):
+    project_root = tmp_path / "project"
+    (project_root / ".flow-review").mkdir(parents=True)
+    (project_root / ".flow-review" / "config.json").write_text(json.dumps({
+        "schema_version": 2, "generator_version": "2.0.0", "model_profile": "default",
+        "role_overrides": {}, "budget": {"cap_tokens": None}, "test_inbox": None,
+        "flows_hash": "", "surfaces": [{
+            "id": "phone", "name": "Phone", "kind": "ui", "driver": "adb",
+            "launch": "", "cwd": ".", "env": {}, "options": {"app_id": "com.example.notes"},
+            "preconditions": [], "state": "disposable", "reset": None, "creds": {},
+            "record": False, "provenance": {}, "declined": False,
+        }],
+    }))
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    captured = {}
+
+    def _fake_popen(cmd, **kw):
+        captured["cmd"] = cmd
+        (run_dir / "drive").mkdir(parents=True, exist_ok=True)
+        (run_dir / "drive" / "phone.json").write_text(json.dumps({"port": 9, "pid": os.getpid()}))
+
+    monkeypatch.setattr(drive.subprocess, "Popen", _fake_popen)
+    monkeypatch.setattr(drive.urllib.request, "urlopen",
+                        lambda *a, **k: pytest.fail("no health check for adb"))
+    ns = argparse.Namespace(surface="phone", run_dir=str(run_dir),
+                            project_root=str(project_root), record=False)
+    assert drive.cmd_start(ns) == {"surface_id": "phone", "port": 9}
+    assert "--base-url" not in captured["cmd"]
+    assert captured["cmd"][captured["cmd"].index("--driver") + 1] == "adb"
+
+
+def test_serve_parser_accepts_missing_base_url():
+    args = drive.build_drive_parser().parse_args(
+        ["serve", "--surface", "p", "--run", "r", "--project", "x", "--driver", "adb"])
+    assert args.base_url is None
